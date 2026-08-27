@@ -456,7 +456,7 @@ export default function StockPage() {
                     const catRows: React.ReactNode[] = [
                       <tr key={`cat-${cat}`} className={CATEGORY_BG[cat] ?? 'bg-gray-700 text-white'}>
                         <td colSpan={8} className="px-3 py-1 text-xs font-bold tracking-wider">
-                          หมวด {cat}
+                          กระดาษฝอย {cat}
                         </td>
                         <td className="px-2 py-1 text-center whitespace-nowrap">
                           <button
