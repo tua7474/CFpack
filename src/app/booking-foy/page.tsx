@@ -31,7 +31,7 @@ interface CatGroup {
 const CATEGORIES_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
 
 const CATEGORY_BG: Record<string, string> = {
-  '2 มิล':   'bg-gray-500 text-white',
+  '2 มิล':   'bg-[#d4ccc4] text-gray-700',
   '4 มิล':   'bg-slate-200 text-gray-700',
   '1.5 มิล': 'bg-[#C5D6BA] text-gray-700',
   'ฝอยหยัก': 'bg-[#ece4d4] text-gray-700',
