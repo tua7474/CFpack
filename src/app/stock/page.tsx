@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback } from 'react'
+import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -8,6 +8,7 @@ import Link from 'next/link'
 interface StockItem {
   id: number
   model_name: string
+  category: string
   color_code: string
   color_name: string
   stock_qty: string
@@ -20,6 +21,16 @@ interface StockItem {
   show_in_booking: boolean
   prev_warehouse_price: string | null
   price_updated_at: string | null
+}
+
+const CATEGORIES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก', 'Graphic'] as const
+
+const CATEGORY_BG: Record<string, string> = {
+  '2 มิล':   'bg-[#9b9484] text-white',
+  '4 มิล':   'bg-blue-700 text-white',
+  '1.5 มิล': 'bg-teal-700 text-white',
+  'ฝอยหยัก': 'bg-purple-700 text-white',
+  'Graphic':  'bg-pink-700 text-white',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -44,7 +55,7 @@ function fmtDate(iso: string | null): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', warehouse_price: '', retail_price: '' }
+const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', warehouse_price: '', retail_price: '', category: '2 มิล' }
 
 export default function StockPage() {
   const [items, setItems]               = useState<StockItem[]>([])
@@ -111,6 +122,7 @@ export default function StockPage() {
         ...newRow,
         warehouse_price: parseFloat(newRow.warehouse_price) || 0,
         retail_price:    parseFloat(newRow.retail_price)    || 0,
+        category: newRow.category,
       }),
     })
     setBusy(b => ({ ...b, new: false }))
@@ -335,6 +347,11 @@ export default function StockPage() {
                   return (
                     <tr className="bg-blue-50 border-b-2 border-blue-300">
                       <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px]">
+                        <select value={newRow.category}
+                          onChange={e => setNewRow(p => ({ ...p, category: e.target.value }))}
+                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1">
+                          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
                         <select value={newRow.model_name}
                           onChange={e => setNewRow(p => ({ ...p, model_name: e.target.value }))}
                           className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
@@ -387,8 +404,41 @@ export default function StockPage() {
                   <tr>
                     <td colSpan={12} className="text-center py-10 text-gray-400">ยังไม่มีข้อมูล กรอกแถวด้านบนเพื่อเพิ่มรุ่น</td>
                   </tr>
-                ) : items.map((item, i) => {
-                  const isFirstOfModel = i === 0 || items[i - 1].model_name !== item.model_name
+                ) : (() => {
+                  // Group: category → model_name → items
+                  const grouped = new Map<string, Map<string, StockItem[]>>()
+                  for (const item of items) {
+                    const cat = item.category || '2 มิล'
+                    if (!grouped.has(cat)) grouped.set(cat, new Map())
+                    const byModel = grouped.get(cat)!
+                    if (!byModel.has(item.model_name)) byModel.set(item.model_name, [])
+                    byModel.get(item.model_name)!.push(item)
+                  }
+                  const orderedCats = [
+                    ...CATEGORIES.filter(c => grouped.has(c)),
+                    ...[...grouped.keys()].filter(c => !(CATEGORIES as readonly string[]).includes(c)),
+                  ]
+                  let rowIdx = 0
+                  return orderedCats.flatMap(cat => {
+                    const byModel = grouped.get(cat)!
+                    const catRows: React.ReactNode[] = [
+                      <tr key={`cat-${cat}`} className={CATEGORY_BG[cat] ?? 'bg-gray-700 text-white'}>
+                        <td colSpan={12} className="px-3 py-1.5 text-xs font-bold tracking-wider">
+                          หมวด {cat}
+                        </td>
+                      </tr>,
+                    ]
+                    for (const [modelName, modelItems] of byModel) {
+                      catRows.push(
+                        <tr key={`model-${cat}-${modelName}`} className="bg-gray-200">
+                          <td colSpan={12} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
+                            {modelName}
+                          </td>
+                        </tr>
+                      )
+                      for (const item of modelItems) {
+                        const rowBg = rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                        rowIdx++
                   const hasPending = !!rowEdits[item.id] && Object.keys(rowEdits[item.id]!).length > 0
                   const stock      = parseFloat(item.stock_qty)
                   const editModel  = String(rowEdits[item.id]?.model_name ?? item.model_name)
@@ -399,16 +449,9 @@ export default function StockPage() {
                   const price9   = wPrice > 0 ? wPrice * 1.09 : null
                   const price9p7 = wPrice > 0 ? wPrice * 1.09 * 1.07 : null
 
-                  return (
+                  catRows.push(
                     <Fragment key={item.id}>
-                    {isFirstOfModel && (
-                      <tr className="bg-[#9b9484] text-white">
-                        <td colSpan={12} className="px-3 py-1 text-[11px] font-bold tracking-wide">
-                          {item.model_name}
-                        </td>
-                      </tr>
-                    )}
-                    <tr className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <tr className={rowBg}>
 
                       {/* 1. ชื่อรุ่น */}
                       <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px]">
@@ -542,7 +585,11 @@ export default function StockPage() {
                     </tr>
                     </Fragment>
                   )
-                })}
+                      } // end for item
+                    }   // end for modelName
+                    return catRows
+                  }) // end flatMap
+                })()}
               </tbody>
               <tfoot>
                 <tr className="bg-[#9b9484] text-white text-xs">

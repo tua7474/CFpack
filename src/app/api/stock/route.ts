@@ -54,7 +54,7 @@ const CREATE_TABLE = `
 // Also ensures '2 มิล พิเศษ A' exists in catalog group กระดาษฝอย (for dropdown).
 // Does NOT delete from catalog — user will verify first.
 
-async function migrateGroup(modelTarget: string, groupSource: string) {
+async function migrateGroup(modelTarget: string, groupSource: string, category = '2 มิล') {
   // Fetch source products from catalog
   const { rows: src } = await pool.query(
     `SELECT product_name, price FROM products_catalog WHERE group_name = $1 ORDER BY id`,
@@ -70,9 +70,9 @@ async function migrateGroup(modelTarget: string, groupSource: string) {
     )
     if (dup.length > 0) continue
     await pool.query(
-      `INSERT INTO paper_stock (model_name, color_name, warehouse_price)
-       VALUES ($1, $2, $3)`,
-      [modelTarget, p.product_name, parseFloat(p.price ?? '0') || 0]
+      `INSERT INTO paper_stock (model_name, color_name, warehouse_price, category)
+       VALUES ($1, $2, $3, $4)`,
+      [modelTarget, p.product_name, parseFloat(p.price ?? '0') || 0, category]
     )
   }
 
@@ -101,11 +101,24 @@ export async function GET() {
   `)
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS prev_warehouse_price DECIMAL(10,2)`)
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS price_updated_at TIMESTAMP`)
-  await migrateGroup('2 มิล พิเศษ A', 'รุ่นสีพิเศษ A')
-  await migrateGroup('2 มิล พิเศษ B', 'รุ่นสีพิเศษ B')
-  await migrateGroup('2 มิล สีอ่อน', 'รุ่นสีอ่อน')
+  await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT '2 มิล'`)
+  // Strip "2 มิล " prefix from model_name and set category (idempotent)
+  await pool.query(`
+    UPDATE paper_stock
+    SET category = '2 มิล', model_name = REPLACE(model_name, '2 มิล ', '')
+    WHERE model_name LIKE '2 มิล %'
+  `)
+  // Strip "2 มิล " prefix from catalog too (for dropdown consistency)
+  await pool.query(`
+    UPDATE products_catalog
+    SET product_name = REPLACE(product_name, '2 มิล ', '')
+    WHERE group_name = 'กระดาษฝอย' AND product_name LIKE '2 มิล %'
+  `)
+  await migrateGroup('พิเศษ A', 'รุ่นสีพิเศษ A', '2 มิล')
+  await migrateGroup('พิเศษ B', 'รุ่นสีพิเศษ B', '2 มิล')
+  await migrateGroup('สีอ่อน', 'รุ่นสีอ่อน', '2 มิล')
   const { rows } = await pool.query(
-    'SELECT * FROM paper_stock ORDER BY model_name, color_name'
+    'SELECT * FROM paper_stock ORDER BY category, model_name, color_name'
   )
   return NextResponse.json(rows)
 }
@@ -113,12 +126,12 @@ export async function GET() {
 // ── POST — create new item ────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  const { model_name, color_code, color_name, warehouse_price, retail_price } = await request.json()
+  const { model_name, color_code, color_name, warehouse_price, retail_price, category } = await request.json()
   await pool.query(CREATE_TABLE)
   const { rows } = await pool.query(
-    `INSERT INTO paper_stock (model_name, color_code, color_name, warehouse_price, retail_price)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [model_name, color_code ?? '', color_name ?? '', warehouse_price ?? 0, retail_price ?? 0]
+    `INSERT INTO paper_stock (model_name, color_code, color_name, warehouse_price, retail_price, category)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [model_name, color_code ?? '', color_name ?? '', warehouse_price ?? 0, retail_price ?? 0, category ?? '2 มิล']
   )
   return NextResponse.json(rows[0], { status: 201 })
 }
