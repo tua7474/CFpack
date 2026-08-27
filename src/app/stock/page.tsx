@@ -333,16 +333,16 @@ export default function StockPage() {
             <table className="min-w-full text-xs">
               <thead className="sticky top-0 z-20">
                 <tr className="bg-[#9b9484] text-white text-left">
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสี ✎</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">สต็อคล่าสุด</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เพิ่มเข้าสต็อค</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">จำนวนจอง</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right w-14">ราคาโกดัง ✎</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right">ราคาลูกค้า ✎</th>
-                  <th className="px-3 py-2 border-r border-yellow-400 whitespace-nowrap text-right bg-yellow-500 text-gray-500 w-12">+9%</th>
-                  <th className="px-3 py-2 border-r border-red-500 whitespace-nowrap text-right bg-red-600 w-14">+9%+7%</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">ใบจองฝอย</th>
-                  <th className="px-3 py-2 whitespace-nowrap text-center">จัดการ</th>
+                  <th className="px-2 py-2 border-r border-gray-500 whitespace-nowrap w-20">ชื่อสี ✎</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[90px]">สต็อคล่าสุด</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[220px]">เพิ่มเข้าสต็อค</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[190px]">จำนวนจอง</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right min-w-[90px]">ราคาโกดัง ✎</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right min-w-[90px]">ราคาลูกค้า ✎</th>
+                  <th className="px-3 py-2 border-r border-yellow-400 whitespace-nowrap text-right bg-yellow-500 text-gray-500 min-w-[80px]">+9%</th>
+                  <th className="px-3 py-2 border-r border-red-500 whitespace-nowrap text-right bg-red-600 min-w-[90px]">+9%+7%</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[80px]">ใบจองฝอย</th>
+                  <th className="px-3 py-2 whitespace-nowrap text-center min-w-[60px]">จัดการ</th>
                 </tr>
 
                 {/* ── Add new row (sticky) ── */}
@@ -453,7 +453,7 @@ export default function StockPage() {
                     <tr className={rowBg}>
 
                       {/* 1. ชื่อสี */}
-                      <td className="px-2 py-1.5 border-r border-gray-200">
+                      <td className="px-2 py-1.5 border-r border-gray-200 w-20">
                         <input type="text" value={editVal(item, 'color_name')}
                           onChange={e => setEdit(item.id, 'color_name', e.target.value)}
                           className={editDup ? 'w-full px-1.5 py-1 text-xs rounded border border-red-400 bg-red-50 text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400' : inputCls(!!rowEdits[item.id]?.color_name)} />
