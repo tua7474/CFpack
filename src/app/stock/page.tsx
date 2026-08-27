@@ -367,10 +367,10 @@ export default function StockPage() {
                         <div className="flex gap-1">
                           <input type="text" placeholder="รหัสสี" value={newRow.color_code}
                             onChange={e => setNewRow(p => ({ ...p, color_code: e.target.value }))}
-                            className="w-1/3 px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            className="w-14 shrink-0 px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
                           <input type="text" placeholder="ชื่อสี" value={newRow.color_name}
                             onChange={e => setNewRow(p => ({ ...p, color_name: e.target.value }))}
-                            className={`flex-1 px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${addDup ? 'border-red-400 bg-red-50 text-red-600 focus:ring-red-400' : 'border-blue-300 bg-white focus:ring-blue-400'}`} />
+                            className={`flex-1 min-w-0 px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${addDup ? 'border-red-400 bg-red-50 text-red-600 focus:ring-red-400' : 'border-blue-300 bg-white focus:ring-blue-400'}`} />
                         </div>
                         {addDup && <div className="text-[10px] text-red-600 mt-0.5 font-semibold">ชื่อนี้ซ้ำกับที่มีอยู่แล้ว</div>}
                       </td>
@@ -458,14 +458,14 @@ export default function StockPage() {
                     <tr className={rowBg}>
 
                       {/* 1. รหัส/ชื่อสี */}
-                      <td className="px-2 py-1.5 border-r border-gray-200">
+                      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[160px]">
                         <div className="flex gap-1">
                           <input type="text" value={editVal(item, 'color_code')}
                             onChange={e => setEdit(item.id, 'color_code', e.target.value)}
-                            className={`w-1/3 ${inputCls(!!rowEdits[item.id]?.color_code)}`} />
+                            className={`w-14 shrink-0 px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 focus:ring-gray-400 ${rowEdits[item.id]?.color_code ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}`} />
                           <input type="text" value={editVal(item, 'color_name')}
                             onChange={e => setEdit(item.id, 'color_name', e.target.value)}
-                            className={`flex-1 ${editDup ? 'px-1.5 py-1 text-xs rounded border border-red-400 bg-red-50 text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400' : inputCls(!!rowEdits[item.id]?.color_name)}`} />
+                            className={`flex-1 min-w-0 px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 focus:ring-gray-400 ${editDup ? 'border-red-400 bg-red-50 text-red-600' : rowEdits[item.id]?.color_name ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}`} />
                         </div>
                         {editDup && <div className="text-[10px] text-red-600 mt-0.5 font-semibold">ชื่อนี้ซ้ำกับที่มีอยู่แล้ว</div>}
                       </td>
