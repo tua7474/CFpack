@@ -113,9 +113,10 @@ export default function StockPage() {
 
   // ── Duplicate check ──────────────────────────────────────────────────────────
 
-  const isDuplicate = (model_name: string, color_name: string, excludeId?: number) =>
+  const isDuplicate = (category: string, model_name: string, color_name: string, excludeId?: number) =>
     items.some(it =>
       it.id !== excludeId &&
+      it.category.trim() === category.trim() &&
       it.model_name.trim() === model_name.trim() &&
       it.color_name.trim() === color_name.trim()
     )
@@ -124,8 +125,8 @@ export default function StockPage() {
 
   const handleAddRow = async () => {
     if (!newRow.category || !newRow.model_name.trim()) return
-    if (isDuplicate(newRow.model_name, newRow.color_name)) {
-      showMsg('❌ ชื่อรุ่น + ชื่อสี ซ้ำกับที่มีอยู่แล้ว')
+    if (isDuplicate(newRow.category, newRow.model_name, newRow.color_name)) {
+      showMsg('❌ ชื่อรุ่น + ชื่อสี ซ้ำกับที่มีอยู่แล้ว (ในหมวดเดียวกัน)')
       return
     }
     setBusy(b => ({ ...b, new: true }))
@@ -175,7 +176,7 @@ export default function StockPage() {
       if (!item) return false
       const newModel = String(edits.model_name ?? item.model_name)
       const newColor = String(edits.color_name  ?? item.color_name)
-      return !isDuplicate(newModel, newColor, item.id)
+      return !isDuplicate(item.category, newModel, newColor, item.id)
     })
     if (!stockEntries.length && !infoEntries.length) return
     setBusy(b => ({ ...b, addAll: true }))
@@ -218,8 +219,8 @@ export default function StockPage() {
     if (item) {
       const newModel = edits.model_name ?? item.model_name
       const newColor = edits.color_name ?? item.color_name
-      if (isDuplicate(String(newModel), String(newColor), id)) {
-        showMsg('❌ ชื่อรุ่น + ชื่อสี ซ้ำกับที่มีอยู่แล้ว')
+      if (isDuplicate(item.category, String(newModel), String(newColor), id)) {
+        showMsg('❌ ชื่อรุ่น + ชื่อสี ซ้ำกับที่มีอยู่แล้ว (ในหมวดเดียวกัน)')
         return
       }
     }
@@ -357,7 +358,7 @@ export default function StockPage() {
       <main className="p-4">
         {/* ── Add new item card ── */}
         {(() => {
-          const addDup = !!(newRow.model_name && isDuplicate(newRow.model_name, newRow.color_name))
+          const addDup = !!(newRow.category && newRow.model_name && isDuplicate(newRow.category, newRow.model_name, newRow.color_name))
           return (
             <div className="mb-3 bg-blue-50 border border-blue-200 rounded px-2 py-1.5 flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] font-semibold text-blue-500 whitespace-nowrap">+ เพิ่มใหม่</span>
@@ -477,7 +478,7 @@ export default function StockPage() {
                   const stock      = parseFloat(item.stock_qty)
                   const editModel  = String(rowEdits[item.id]?.model_name ?? item.model_name)
                   const editColor  = String(rowEdits[item.id]?.color_name ?? item.color_name)
-                  const editDup    = hasPending && isDuplicate(editModel, editColor, item.id)
+                  const editDup    = hasPending && isDuplicate(item.category, editModel, editColor, item.id)
 
                   const wPrice   = parseFloat(item.warehouse_price) || 0
                   const price9   = wPrice > 0 ? wPrice * 1.09 : null
