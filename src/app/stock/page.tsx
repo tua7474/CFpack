@@ -325,6 +325,60 @@ export default function StockPage() {
 
       {/* Main */}
       <main className="p-4">
+        {/* ── Add new item card ── */}
+        {(() => {
+          const addDup = !!(newRow.model_name && isDuplicate(newRow.model_name, newRow.color_name))
+          return (
+            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 shadow-sm">
+              <div className="text-xs font-semibold text-blue-600 mb-2">+ เพิ่มรายการสินค้าใหม่</div>
+              <div className="flex flex-wrap gap-2 items-end">
+                <div className="flex flex-col gap-1 min-w-[130px]">
+                  <label className="text-[10px] text-gray-500">หมวด</label>
+                  <select value={newRow.category}
+                    onChange={e => setNewRow(p => ({ ...p, category: e.target.value, model_name: '' }))}
+                    className="px-2 py-1.5 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+                    <option value="">-- เลือกหมวด --</option>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 min-w-[130px]">
+                  <label className="text-[10px] text-gray-500">รุ่น</label>
+                  <select value={newRow.model_name}
+                    onChange={e => setNewRow(p => ({ ...p, model_name: e.target.value }))}
+                    disabled={!newRow.category}
+                    className="px-2 py-1.5 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40 disabled:bg-gray-50">
+                    <option value="">-- เลือกรุ่น --</option>
+                    {(CATEGORY_MODELS[newRow.category] ?? modelOptions).map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 min-w-[140px]">
+                  <label className="text-[10px] text-gray-500">ชื่อสี</label>
+                  <input type="text" placeholder="ชื่อสี" value={newRow.color_name}
+                    onChange={e => setNewRow(p => ({ ...p, color_name: e.target.value }))}
+                    className={`px-2 py-1.5 text-xs rounded border focus:outline-none focus:ring-1 ${addDup ? 'border-red-400 bg-red-50 text-red-600 focus:ring-red-400' : 'border-blue-300 bg-white focus:ring-blue-400'}`} />
+                  {addDup && <div className="text-[10px] text-red-600 font-semibold">ชื่อนี้ซ้ำกับที่มีอยู่แล้ว</div>}
+                </div>
+                <div className="flex flex-col gap-1 w-24">
+                  <label className="text-[10px] text-gray-500">ราคาโกดัง</label>
+                  <input type="text" inputMode="numeric" placeholder="0.00" value={newRow.warehouse_price}
+                    onChange={e => setNewRow(p => ({ ...p, warehouse_price: e.target.value }))}
+                    className="px-2 py-1.5 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
+                </div>
+                <div className="flex flex-col gap-1 w-24">
+                  <label className="text-[10px] text-gray-500">ราคาลูกค้า</label>
+                  <input type="text" inputMode="numeric" placeholder="0.00" value={newRow.retail_price}
+                    onChange={e => setNewRow(p => ({ ...p, retail_price: e.target.value }))}
+                    className="px-2 py-1.5 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
+                </div>
+                <button onClick={handleAddRow} disabled={!!busy.new || addDup}
+                  className="px-4 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors disabled:opacity-50 whitespace-nowrap self-end">
+                  + เพิ่ม
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
         {loading ? (
           <div className="flex items-center justify-center h-40 text-gray-400">กำลังโหลด...</div>
         ) : (
@@ -345,56 +399,6 @@ export default function StockPage() {
                   <th className="px-3 py-2 whitespace-nowrap text-center min-w-[60px]">จัดการ</th>
                 </tr>
 
-                {/* ── Add new row (sticky) ── */}
-                {(() => {
-                  const addDup = !!(newRow.model_name && isDuplicate(newRow.model_name, newRow.color_name))
-                  return (
-                    <tr className="bg-blue-50 border-b-2 border-blue-300">
-                      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[170px]">
-                        <select value={newRow.category}
-                          onChange={e => setNewRow(p => ({ ...p, category: e.target.value, model_name: '' }))}
-                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1">
-                          <option value="">-- เลือกหมวด --</option>
-                          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                        <select value={newRow.model_name}
-                          onChange={e => setNewRow(p => ({ ...p, model_name: e.target.value }))}
-                          disabled={!newRow.category}
-                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40 disabled:bg-gray-50 mb-1">
-                          <option value="">-- เลือกรุ่น --</option>
-                          {(CATEGORY_MODELS[newRow.category] ?? modelOptions).map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                        <input type="text" placeholder="ชื่อสี" value={newRow.color_name}
-                          onChange={e => setNewRow(p => ({ ...p, color_name: e.target.value }))}
-                          className={`w-full px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${addDup ? 'border-red-400 bg-red-50 text-red-600 focus:ring-red-400' : 'border-blue-300 bg-white focus:ring-blue-400'}`} />
-                        {addDup && <div className="text-[10px] text-red-600 mt-0.5 font-semibold">ชื่อนี้ซ้ำกับที่มีอยู่แล้ว</div>}
-                      </td>
-                      <td className="border-r border-gray-200" />
-                      <td className="border-r border-gray-200" />
-                      <td className="border-r border-gray-200" />
-                      <td className="px-2 py-1.5 border-r border-gray-200">
-                        <input type="text" inputMode="numeric" placeholder="ราคาโกดัง" value={newRow.warehouse_price}
-                          onChange={e => setNewRow(p => ({ ...p, warehouse_price: e.target.value }))}
-                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
-                      </td>
-                      <td className="px-2 py-1.5 border-r border-gray-200">
-                        <input type="text" inputMode="numeric" placeholder="ราคาลูกค้า" value={newRow.retail_price}
-                          onChange={e => setNewRow(p => ({ ...p, retail_price: e.target.value }))}
-                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
-                      </td>
-                      {/* ราคา+9%, ราคา+9%+7%, ใบจอง — empty in add row */}
-                      <td className="border-r border-gray-200 bg-yellow-50" />
-                      <td className="border-r border-gray-200 bg-red-50" />
-                      <td className="border-r border-gray-200" />
-                      <td className="px-2 py-1.5 text-center">
-                        <button onClick={handleAddRow} disabled={!!busy.new || addDup}
-                          className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors disabled:opacity-50 whitespace-nowrap">
-                          + เพิ่ม
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })()}
               </thead>
               <tbody>
 
