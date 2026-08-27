@@ -376,8 +376,22 @@ export default function StockPage() {
                 {(CATEGORY_MODELS[newRow.category] ?? modelOptions).map(m => <option key={m} value={m}>{m}</option>)}
               </select>
               <input type="text" placeholder="ชื่อสี" value={newRow.color_name}
-                onChange={e => setNewRow(p => ({ ...p, color_name: e.target.value }))}
+                list="stock-color-names"
+                onChange={e => {
+                  const val = e.target.value
+                  // Auto-fill: พิมพ์ 3 หลักตัวเลข → หาชื่อสีที่ขึ้นต้นด้วยรหัสนั้น
+                  if (/^\d{3}$/.test(val.trim())) {
+                    const match = items.find(it => it.color_name.trimStart().startsWith(val.trim()))
+                    if (match) { setNewRow(p => ({ ...p, color_name: match.color_name })); return }
+                  }
+                  setNewRow(p => ({ ...p, color_name: val }))
+                }}
                 className={`w-32 px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${addDup ? 'border-red-400 bg-red-50 text-red-600 focus:ring-red-400' : 'border-blue-300 bg-white focus:ring-blue-400'}`} />
+              <datalist id="stock-color-names">
+                {[...new Set(items.map(it => it.color_name).filter(Boolean))].map(n => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
               <input type="text" inputMode="numeric" placeholder="ราคาโกดัง" value={newRow.warehouse_price}
                 onChange={e => setNewRow(p => ({ ...p, warehouse_price: e.target.value }))}
                 className="w-24 px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
