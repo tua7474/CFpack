@@ -11,6 +11,7 @@ export async function ensureTables() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `)
+  await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS color_group VARCHAR(20)`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS branch_phones (
       id           SERIAL PRIMARY KEY,
@@ -50,7 +51,7 @@ export async function ensureTables() {
 export async function GET() {
   try {
     await ensureTables()
-    const { rows: branches } = await pool.query(`SELECT id, name, created_at FROM branches ORDER BY name`)
+    const { rows: branches } = await pool.query(`SELECT id, name, color_group, created_at FROM branches ORDER BY name`)
     const { rows: phones }   = await pool.query(`SELECT id, branch_id, phone, is_admin, line_user_id FROM branch_phones ORDER BY branch_id, id`)
     const { rows: counts }   = await pool.query(`
       SELECT branch_id, COUNT(*)::int AS pending_count
@@ -77,9 +78,12 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     await ensureTables()
-    const { name } = await req.json()
+    const { name, color_group } = await req.json()
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
-    const { rows } = await pool.query(`INSERT INTO branches (name) VALUES ($1) RETURNING *`, [name])
+    const { rows } = await pool.query(
+      `INSERT INTO branches (name, color_group) VALUES ($1, $2) RETURNING *`,
+      [name, color_group ?? null]
+    )
     return NextResponse.json(rows[0], { status: 201 })
   } catch (err) {
     console.error(err)

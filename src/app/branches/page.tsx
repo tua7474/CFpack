@@ -6,17 +6,18 @@ import Link from 'next/link'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface BranchPhone { id: number; phone: string; is_admin: boolean; line_user_id: string | null }
-interface Branch { id: number; name: string; phones: BranchPhone[]; pending_count: number }
+interface Branch { id: number; name: string; color_group: string | null; phones: BranchPhone[]; pending_count: number }
 
 // ── Color groups ──────────────────────────────────────────────────────────────
 
 const GREEN_BRANCHES  = ['โกดัง', 'โกดังCF']
-const YELLOW_BRANCHES = ['ท่าฉลอม', 'หนองแขม', 'ไทรม้า', 'อ้อมน้อย', 'นครชัยศรี']
+const YELLOW_BRANCHES = ['ท่าฉลอม', 'หนองแขม', 'ไทรม้า', 'อ้อมน้อย', 'นครชัยศรี', 'ศรีนครินทร์']
 const RED_BRANCHES    = ['สนามบินน้ำ', 'ตลาดรังสิต']
 
 type ColorGroup = 'green' | 'yellow' | 'red' | 'orange'
 
-function getBranchColor(name: string): ColorGroup {
+function getBranchColor(name: string, colorGroup?: string | null): ColorGroup {
+  if (colorGroup === 'yellow' || colorGroup === 'red' || colorGroup === 'orange') return colorGroup
   if (GREEN_BRANCHES.some(n => name.includes(n)))  return 'green'
   if (YELLOW_BRANCHES.some(n => name.includes(n))) return 'yellow'
   if (RED_BRANCHES.some(n => name.includes(n)))    return 'red'
@@ -47,7 +48,7 @@ const GROUP_LABEL: Record<ColorGroup, string> = {
 function sortAndGroup(branches: Branch[]): { color: ColorGroup; items: Branch[] }[] {
   const grouped: Record<ColorGroup, Branch[]> = { green: [], yellow: [], red: [], orange: [] }
   for (const b of branches) {
-    grouped[getBranchColor(b.name)].push(b)
+    grouped[getBranchColor(b.name, b.color_group)].push(b)
   }
   // Sort within each group by pending_count desc
   for (const g of GROUP_ORDER) {
@@ -456,6 +457,7 @@ export default function BranchesPage() {
   const [manageBranch, setManageBranch] = useState<Branch | null>(null)
   const [showAddBranch, setShowAddBranch] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
+  const [newBranchColor, setNewBranchColor] = useState<'yellow' | 'red' | 'orange'>('orange')
 
   // Load session from localStorage
   useEffect(() => {
@@ -502,9 +504,9 @@ export default function BranchesPage() {
     await fetch('/api/branches', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newBranchName.trim() }),
+      body: JSON.stringify({ name: newBranchName.trim(), color_group: newBranchColor }),
     })
-    setNewBranchName(''); setShowAddBranch(false)
+    setNewBranchName(''); setNewBranchColor('orange'); setShowAddBranch(false)
     loadBranches()
   }
 
@@ -569,12 +571,24 @@ export default function BranchesPage() {
             <h3 className="text-base font-bold text-green-400 mb-3">เพิ่มสาขาใหม่</h3>
             <input value={newBranchName} onChange={e => setNewBranchName(e.target.value)}
               placeholder="ชื่อสาขา" className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400 mb-3" />
+            <div className="mb-3">
+              <div className="text-xs text-gray-500 mb-1.5">กลุ่มสี</div>
+              <div className="flex gap-2">
+                {([['yellow', 'สีเหลือง', 'bg-yellow-200 text-yellow-900'], ['red', 'สีแดง', 'bg-red-200 text-red-900'], ['orange', 'สีส้ม', 'bg-orange-200 text-orange-900']] as const).map(([val, label, cls]) => (
+                  <button key={val} type="button"
+                    onClick={() => setNewBranchColor(val)}
+                    className={`flex-1 py-1.5 text-xs rounded font-semibold border-2 transition-colors ${newBranchColor === val ? `${cls} border-current` : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex gap-2">
               <button onClick={handleAddBranch}
                 className="flex-1 py-1.5 text-sm rounded bg-[#9b9484] hover:bg-[#9b9484] text-white font-medium">
                 เพิ่ม
               </button>
-              <button onClick={() => { setShowAddBranch(false); setNewBranchName('') }}
+              <button onClick={() => { setShowAddBranch(false); setNewBranchName(''); setNewBranchColor('orange') }}
                 className="flex-1 py-1.5 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-500">
                 ยกเลิก
               </button>

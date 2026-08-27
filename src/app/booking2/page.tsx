@@ -569,6 +569,15 @@ function Booking2Inner() {
 
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
+  // Scale A4 landscape frame to fit narrow screens (same pattern as booking-foy)
+  const [viewScale, setViewScale] = useState(1)
+  useEffect(() => {
+    const calc = () => setViewScale(Math.min(1, (window.innerWidth - 16) / A4_W_PX))
+    calc()
+    window.addEventListener('resize', calc)
+    return () => window.removeEventListener('resize', calc)
+  }, [])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -718,7 +727,8 @@ function Booking2Inner() {
 
       {/* Main */}
       <main>
-        <div className="screen-zoom-wrapper p-4 flex justify-center overflow-x-auto">
+        <div className="screen-zoom-wrapper p-4 flex justify-center"
+          style={{ zoom: viewScale < 1 ? viewScale : undefined }}>
 
           {/* ── ยังไม่ได้ระบุสาขา → lock screen ── */}
           {branchReady === false ? (
