@@ -333,7 +333,6 @@ export default function StockPage() {
             <table className="min-w-full text-xs">
               <thead className="sticky top-0 z-20">
                 <tr className="bg-[#9b9484] text-white text-left">
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[180px]">ชื่อรุ่น ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">รหัสสี ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสี ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">สต็อคล่าสุด</th>
@@ -352,7 +351,7 @@ export default function StockPage() {
                   const addDup = !!(newRow.model_name && isDuplicate(newRow.model_name, newRow.color_name))
                   return (
                     <tr className="bg-blue-50 border-b-2 border-blue-300">
-                      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px]">
+                      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[170px]">
                         <select value={newRow.category}
                           onChange={e => setNewRow(p => ({ ...p, category: e.target.value, model_name: '' }))}
                           className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1">
@@ -362,12 +361,10 @@ export default function StockPage() {
                         <select value={newRow.model_name}
                           onChange={e => setNewRow(p => ({ ...p, model_name: e.target.value }))}
                           disabled={!newRow.category}
-                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40 disabled:bg-gray-50">
+                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40 disabled:bg-gray-50 mb-1">
                           <option value="">-- เลือกรุ่น --</option>
                           {(CATEGORY_MODELS[newRow.category] ?? modelOptions).map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
-                      </td>
-                      <td className="px-2 py-1.5 border-r border-gray-200">
                         <input type="text" placeholder="รหัสสี" value={newRow.color_code}
                           onChange={e => setNewRow(p => ({ ...p, color_code: e.target.value }))}
                           className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
@@ -410,7 +407,7 @@ export default function StockPage() {
                 {/* ── Data rows ── */}
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="text-center py-10 text-gray-400">ยังไม่มีข้อมูล กรอกแถวด้านบนเพื่อเพิ่มรุ่น</td>
+                    <td colSpan={11} className="text-center py-10 text-gray-400">ยังไม่มีข้อมูล กรอกแถวด้านบนเพื่อเพิ่มรุ่น</td>
                   </tr>
                 ) : (() => {
                   // Group: category → model_name → items
@@ -431,7 +428,7 @@ export default function StockPage() {
                     const byModel = grouped.get(cat)!
                     const catRows: React.ReactNode[] = [
                       <tr key={`cat-${cat}`} className={CATEGORY_BG[cat] ?? 'bg-gray-700 text-white'}>
-                        <td colSpan={12} className="px-3 py-1.5 text-xs font-bold tracking-wider">
+                        <td colSpan={11} className="px-3 py-1.5 text-xs font-bold tracking-wider">
                           หมวด {cat}
                         </td>
                       </tr>,
@@ -439,7 +436,7 @@ export default function StockPage() {
                     for (const [modelName, modelItems] of byModel) {
                       catRows.push(
                         <tr key={`model-${cat}-${modelName}`} className="bg-gray-200">
-                          <td colSpan={12} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
+                          <td colSpan={11} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
                             {modelName}
                           </td>
                         </tr>
@@ -461,16 +458,7 @@ export default function StockPage() {
                     <Fragment key={item.id}>
                     <tr className={rowBg}>
 
-                      {/* 1. ชื่อรุ่น */}
-                      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px]">
-                        <select value={editVal(item, 'model_name')}
-                          onChange={e => setEdit(item.id, 'model_name', e.target.value)}
-                          className={inputCls(!!rowEdits[item.id]?.model_name)}>
-                          {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                      </td>
-
-                      {/* 2. รหัสสี */}
+                      {/* 1. รหัสสี */}
                       <td className="px-2 py-1.5 border-r border-gray-200">
                         <input type="text" value={editVal(item, 'color_code')}
                           onChange={e => setEdit(item.id, 'color_code', e.target.value)}
@@ -601,7 +589,7 @@ export default function StockPage() {
               </tbody>
               <tfoot>
                 <tr className="bg-[#9b9484] text-white text-xs">
-                  <td colSpan={9} className="px-3 py-2 text-right font-semibold">
+                  <td colSpan={8} className="px-3 py-2 text-right font-semibold">
                     มูลค่าสต็อครวมทั้งหมด
                   </td>
                   <td colSpan={3} className="px-3 py-2 text-right font-bold text-base whitespace-nowrap">
@@ -610,7 +598,7 @@ export default function StockPage() {
                 </tr>
                 {dateStr && (
                   <tr className="bg-[#9b9484] text-orange-200 text-[11px]">
-                    <td colSpan={12} className="px-3 py-1 text-right">{dateStr}</td>
+                    <td colSpan={11} className="px-3 py-1 text-right">{dateStr}</td>
                   </tr>
                 )}
               </tfoot>
