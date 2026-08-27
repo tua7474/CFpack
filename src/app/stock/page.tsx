@@ -400,9 +400,9 @@ export default function StockPage() {
             <table className="min-w-full text-xs">
               <thead className="sticky top-0 z-20">
                 <tr className="bg-[#9b9484] text-white text-left">
-                  <th className="px-2 py-2 border-r border-gray-500 whitespace-nowrap w-20">ชื่อสี ✎</th>
+                  <th className="px-2 py-2 border-r border-gray-500 whitespace-nowrap w-40">ชื่อสี ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[90px]">สต็อคล่าสุด</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[220px]">เพิ่มเข้าสต็อค</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[154px]">เพิ่มเข้าสต็อค</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[190px]">จำนวนจอง</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right min-w-[90px]">ราคาโกดัง ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right min-w-[90px]">ราคาลูกค้า ✎</th>
@@ -488,7 +488,7 @@ export default function StockPage() {
                     <tr className={rowBg}>
 
                       {/* 1. ชื่อสี */}
-                      <td className="px-2 py-1.5 border-r border-gray-200 w-20">
+                      <td className="px-2 py-1.5 border-r border-gray-200 w-40">
                         <input type="text" value={editVal(item, 'color_name')}
                           onChange={e => setEdit(item.id, 'color_name', e.target.value)}
                           className={editDup ? 'w-full px-1.5 py-1 text-xs rounded border border-red-400 bg-red-50 text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400' : inputCls(!!rowEdits[item.id]?.color_name)} />
@@ -504,7 +504,7 @@ export default function StockPage() {
                       </td>
 
                       {/* 5. เพิ่มเข้าสต็อค */}
-                      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[192px]">
+                      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[134px]">
                         <div className="text-[10px] text-gray-500 mb-1">
                           ล่าสุด: <span className="font-semibold text-green-400">{fmtQty(item.last_added_qty)}</span>
                           <span className="ml-1 text-gray-400">({fmtDate(item.last_added_at)})</span>
