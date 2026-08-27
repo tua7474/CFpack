@@ -419,7 +419,7 @@ export default function StockPage() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[90px]">สต็อคล่าสุด</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[154px]">เพิ่มเข้าสต็อค</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[190px]">จำนวนจอง</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right min-w-[90px]">ราคาโกดัง ✎</th>
+                  <th className="px-3 py-2 border-r border-orange-400 whitespace-nowrap text-right min-w-[90px] bg-orange-500 text-white">ราคาโกดัง ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right min-w-[90px]">ราคาลูกค้า ✎</th>
                   <th className="px-3 py-2 border-r border-yellow-400 whitespace-nowrap text-right bg-yellow-500 text-gray-500 min-w-[80px]">+9%</th>
                   <th className="px-3 py-2 border-r border-red-500 whitespace-nowrap text-right bg-red-600 min-w-[90px]">+9%+7%</th>
