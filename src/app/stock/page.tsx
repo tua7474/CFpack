@@ -461,7 +461,7 @@ export default function StockPage() {
                         <td className="px-2 py-1 text-center whitespace-nowrap">
                           <button
                             onClick={() => handleToggleCategoryVis(cat, !catShown)}
-                            className={`px-2 py-0.5 text-[11px] rounded-full font-semibold transition-colors ${catShown ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
+                            className={`px-2 py-0.5 text-[11px] text-white rounded-full font-semibold transition-colors ${catShown ? 'bg-green-500 hover:bg-green-400' : 'bg-red-500 hover:bg-red-400'}`}>
                             {catShown ? '● โชว์' : '● ซ่อน'}
                           </button>
                         </td>
