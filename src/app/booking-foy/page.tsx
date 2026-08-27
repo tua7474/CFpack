@@ -9,6 +9,7 @@ import Link from 'next/link'
 interface StockItem {
   id: number
   model_name: string
+  category: string
   color_code: string
   color_name: string
   stock_qty: string
@@ -55,6 +56,7 @@ function fmt2(n: number) {
 export default function BookingFoyPage() {
   const router = useRouter()
   const [items, setItems]         = useState<StockItem[]>([])
+  const [categoryVis, setCategoryVis] = useState<Record<string, boolean>>({})
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [saveMsg, setSaveMsg]     = useState<string | null>(null)
@@ -132,7 +134,11 @@ export default function BookingFoyPage() {
   useEffect(() => {
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: StockItem[]) => { setItems(data); setLoading(false) })
+      .then((data: { items: StockItem[]; categoryVis: Record<string, boolean> }) => {
+        setItems(data.items)
+        setCategoryVis(data.categoryVis)
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [])
 
@@ -235,10 +241,10 @@ export default function BookingFoyPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  // Group items by model_name, only items with show_in_booking = true
+  // Group items by model_name, only items with show_in_booking = true AND category visible
   const modelGroups: ModelGroup[] = []
   const seen = new Map<string, ModelGroup>()
-  for (const item of items.filter(it => it.show_in_booking)) {
+  for (const item of items.filter(it => it.show_in_booking && categoryVis[it.category] !== false)) {
     if (!seen.has(item.model_name)) {
       const g: ModelGroup = { name: item.model_name, items: [] }
       seen.set(item.model_name, g)

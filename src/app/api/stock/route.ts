@@ -89,7 +89,7 @@ async function migrateGroup(modelTarget: string, groupSource: string, category =
   }
 }
 
-// ── GET — list all items ──────────────────────────────────────────────────────
+// ── GET — list all items + category visibility ────────────────────────────────
 
 export async function GET() {
   await pool.query(CREATE_TABLE)
@@ -102,6 +102,13 @@ export async function GET() {
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS prev_warehouse_price DECIMAL(10,2)`)
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS price_updated_at TIMESTAMP`)
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT '2 มิล'`)
+  // Category visibility table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paper_stock_category_vis (
+      category        VARCHAR(50) PRIMARY KEY,
+      show_in_booking BOOLEAN NOT NULL DEFAULT true
+    )
+  `)
   // Strip "2 มิล " prefix from model_name and set category (idempotent)
   await pool.query(`
     UPDATE paper_stock
@@ -120,7 +127,12 @@ export async function GET() {
   const { rows } = await pool.query(
     'SELECT * FROM paper_stock ORDER BY category, model_name, color_name'
   )
-  return NextResponse.json(rows)
+  const { rows: catVisRows } = await pool.query(
+    'SELECT category, show_in_booking FROM paper_stock_category_vis'
+  )
+  const categoryVis: Record<string, boolean> = {}
+  for (const r of catVisRows) categoryVis[r.category] = r.show_in_booking
+  return NextResponse.json({ items: rows, categoryVis })
 }
 
 // ── POST — create new item ────────────────────────────────────────────────────
@@ -144,6 +156,17 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const body = await request.json()
   const { id, action, qty } = body
+
+  if (action === 'category_vis') {
+    const { category, show_in_booking } = body
+    await pool.query(
+      `INSERT INTO paper_stock_category_vis (category, show_in_booking)
+       VALUES ($1, $2)
+       ON CONFLICT (category) DO UPDATE SET show_in_booking = $2`,
+      [category, show_in_booking]
+    )
+    return NextResponse.json({ ok: true })
+  }
 
   if (action === 'add') {
     const { rows } = await pool.query(

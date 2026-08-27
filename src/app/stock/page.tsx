@@ -65,6 +65,7 @@ const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', warehouse_pr
 
 export default function StockPage() {
   const [items, setItems]               = useState<StockItem[]>([])
+  const [categoryVis, setCategoryVis]   = useState<Record<string, boolean>>({})
   const [loading, setLoading]           = useState(true)
   const [modelOptions, setModelOptions] = useState<string[]>([])
   const [newRow, setNewRow]             = useState(EMPTY_NEW)
@@ -80,7 +81,12 @@ export default function StockPage() {
     setLoading(true)
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: StockItem[]) => { setItems(data); setLoading(false); setNow(new Date()) })
+      .then((data: { items: StockItem[]; categoryVis: Record<string, boolean> }) => {
+        setItems(data.items)
+        setCategoryVis(data.categoryVis)
+        setLoading(false)
+        setNow(new Date())
+      })
       .catch(() => setLoading(false))
   }, [])
 
@@ -233,7 +239,7 @@ export default function StockPage() {
     }
   }
 
-  // ── Toggle show_in_booking ───────────────────────────────────────────────────
+  // ── Toggle show_in_booking (per item) ───────────────────────────────────────
 
   const handleToggleBooking = useCallback(async (id: number, newVal: boolean) => {
     setItems(prev => prev.map(it => it.id === id ? { ...it, show_in_booking: newVal } : it))
@@ -241,6 +247,17 @@ export default function StockPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, show_in_booking: newVal }),
+    })
+  }, [])
+
+  // ── Toggle show_in_booking (per category) ────────────────────────────────────
+
+  const handleToggleCategoryVis = useCallback(async (category: string, newVal: boolean) => {
+    setCategoryVis(prev => ({ ...prev, [category]: newVal }))
+    await fetch('/api/stock', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'category_vis', category, show_in_booking: newVal }),
     })
   }, [])
 
@@ -407,10 +424,18 @@ export default function StockPage() {
                   let rowIdx = 0
                   return orderedCats.flatMap(cat => {
                     const byModel = grouped.get(cat)!
+                    const catShown = categoryVis[cat] !== false
                     const catRows: React.ReactNode[] = [
                       <tr key={`cat-${cat}`} className={CATEGORY_BG[cat] ?? 'bg-gray-700 text-white'}>
-                        <td colSpan={10} className="px-3 py-1.5 text-xs font-bold tracking-wider">
-                          หมวด {cat}
+                        <td colSpan={10} className="px-3 py-1 text-xs font-bold tracking-wider">
+                          <div className="flex items-center justify-between gap-2">
+                            <span>หมวด {cat}</span>
+                            <button
+                              onClick={() => handleToggleCategoryVis(cat, !catShown)}
+                              className={`px-2 py-0.5 text-[11px] rounded-full font-semibold transition-colors whitespace-nowrap ${catShown ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
+                              {catShown ? '● โชว์ในใบจอง' : '● ซ่อนในใบจอง'}
+                            </button>
+                          </div>
                         </td>
                       </tr>,
                     ]
