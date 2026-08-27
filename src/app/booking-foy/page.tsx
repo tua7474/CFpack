@@ -311,7 +311,6 @@ export default function BookingFoyPage() {
   // ── Model section renderer ─────────────────────────────────────────────────
 
   const renderModelSection = (g: ModelGroup, ci: number, mi: number) => {
-    const modelPrice = getItemPrice(g.items[0])
     return (
     <div key={`c${ci}m${mi}`} className="mb-1.5">
       <table className="border-collapse" style={{ tableLayout: 'fixed', width: COL_W }}>
@@ -321,17 +320,10 @@ export default function BookingFoyPage() {
           <col style={{ width: MCOL_TOTAL }} />
         </colgroup>
         <thead>
-          {/* รุ่น header — แสดงชื่อรุ่น + ราคาโกดัง */}
+          {/* รุ่น header */}
           <tr className="bg-[#9b9484] text-white">
-            <th colSpan={3} className="border border-gray-500 px-1 py-0.5 font-bold overflow-hidden text-[10px]">
-              <div className="flex items-center justify-between gap-1">
-                <span className="truncate">{g.name}</span>
-                {modelPrice > 0 && (
-                  <span className="shrink-0 font-semibold text-yellow-200">
-                    ฿{modelPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                  </span>
-                )}
-              </div>
+            <th colSpan={3} className="border border-gray-500 px-1 py-0.5 font-bold overflow-hidden text-[10px] text-left truncate">
+              {g.name}
             </th>
           </tr>
           {/* sub-column header */}
