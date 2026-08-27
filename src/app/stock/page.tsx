@@ -23,7 +23,7 @@ interface StockItem {
   price_updated_at: string | null
 }
 
-const CATEGORIES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก', 'Graphic'] as const
+const CATEGORIES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
 
 const CATEGORY_MODELS: Record<string, string[]> = {
   '2 มิล':   ['สีอ่อน', 'พิเศษA', 'พิเศษB', 'ปุยนุ่น', 'โรมิโอ'],
@@ -37,7 +37,6 @@ const CATEGORY_BG: Record<string, string> = {
   '4 มิล':   'bg-blue-700 text-white',
   '1.5 มิล': 'bg-teal-700 text-white',
   'ฝอยหยัก': 'bg-purple-700 text-white',
-  'Graphic':  'bg-pink-700 text-white',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
