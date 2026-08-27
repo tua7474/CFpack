@@ -427,16 +427,17 @@ export default function StockPage() {
                     const catShown = categoryVis[cat] !== false
                     const catRows: React.ReactNode[] = [
                       <tr key={`cat-${cat}`} className={CATEGORY_BG[cat] ?? 'bg-gray-700 text-white'}>
-                        <td colSpan={10} className="px-3 py-1 text-xs font-bold tracking-wider">
-                          <div className="flex items-center justify-between gap-2">
-                            <span>หมวด {cat}</span>
-                            <button
-                              onClick={() => handleToggleCategoryVis(cat, !catShown)}
-                              className={`px-2 py-0.5 text-[11px] rounded-full font-semibold transition-colors whitespace-nowrap ${catShown ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
-                              {catShown ? '● โชว์ในใบจอง' : '● ซ่อนในใบจอง'}
-                            </button>
-                          </div>
+                        <td colSpan={8} className="px-3 py-1 text-xs font-bold tracking-wider">
+                          หมวด {cat}
                         </td>
+                        <td className="px-2 py-1 text-center whitespace-nowrap">
+                          <button
+                            onClick={() => handleToggleCategoryVis(cat, !catShown)}
+                            className={`px-2 py-0.5 text-[11px] rounded-full font-semibold transition-colors ${catShown ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
+                            {catShown ? '● โชว์' : '● ซ่อน'}
+                          </button>
+                        </td>
+                        <td className="px-2 py-1" />
                       </tr>,
                     ]
                     for (const [modelName, modelItems] of byModel) {
