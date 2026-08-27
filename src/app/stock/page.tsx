@@ -333,8 +333,7 @@ export default function StockPage() {
             <table className="min-w-full text-xs">
               <thead className="sticky top-0 z-20">
                 <tr className="bg-[#9b9484] text-white text-left">
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">รหัสสี ✎</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสี ✎</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">รหัส/ชื่อสี ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">สต็อคล่าสุด</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เพิ่มเข้าสต็อค</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">จำนวนจอง</th>
@@ -365,14 +364,14 @@ export default function StockPage() {
                           <option value="">-- เลือกรุ่น --</option>
                           {(CATEGORY_MODELS[newRow.category] ?? modelOptions).map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
-                        <input type="text" placeholder="รหัสสี" value={newRow.color_code}
-                          onChange={e => setNewRow(p => ({ ...p, color_code: e.target.value }))}
-                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </td>
-                      <td className="px-2 py-1.5 border-r border-gray-200">
-                        <input type="text" placeholder="ชื่อสี" value={newRow.color_name}
-                          onChange={e => setNewRow(p => ({ ...p, color_name: e.target.value }))}
-                          className={`w-full px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${addDup ? 'border-red-400 bg-red-50 text-red-600 focus:ring-red-400' : 'border-blue-300 bg-white focus:ring-blue-400'}`} />
+                        <div className="flex gap-1">
+                          <input type="text" placeholder="รหัสสี" value={newRow.color_code}
+                            onChange={e => setNewRow(p => ({ ...p, color_code: e.target.value }))}
+                            className="w-1/3 px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                          <input type="text" placeholder="ชื่อสี" value={newRow.color_name}
+                            onChange={e => setNewRow(p => ({ ...p, color_name: e.target.value }))}
+                            className={`flex-1 px-1.5 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${addDup ? 'border-red-400 bg-red-50 text-red-600 focus:ring-red-400' : 'border-blue-300 bg-white focus:ring-blue-400'}`} />
+                        </div>
                         {addDup && <div className="text-[10px] text-red-600 mt-0.5 font-semibold">ชื่อนี้ซ้ำกับที่มีอยู่แล้ว</div>}
                       </td>
                       <td className="border-r border-gray-200" />
@@ -407,7 +406,7 @@ export default function StockPage() {
                 {/* ── Data rows ── */}
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-10 text-gray-400">ยังไม่มีข้อมูล กรอกแถวด้านบนเพื่อเพิ่มรุ่น</td>
+                    <td colSpan={10} className="text-center py-10 text-gray-400">ยังไม่มีข้อมูล กรอกแถวด้านบนเพื่อเพิ่มรุ่น</td>
                   </tr>
                 ) : (() => {
                   // Group: category → model_name → items
@@ -428,7 +427,7 @@ export default function StockPage() {
                     const byModel = grouped.get(cat)!
                     const catRows: React.ReactNode[] = [
                       <tr key={`cat-${cat}`} className={CATEGORY_BG[cat] ?? 'bg-gray-700 text-white'}>
-                        <td colSpan={11} className="px-3 py-1.5 text-xs font-bold tracking-wider">
+                        <td colSpan={10} className="px-3 py-1.5 text-xs font-bold tracking-wider">
                           หมวด {cat}
                         </td>
                       </tr>,
@@ -436,7 +435,7 @@ export default function StockPage() {
                     for (const [modelName, modelItems] of byModel) {
                       catRows.push(
                         <tr key={`model-${cat}-${modelName}`} className="bg-gray-200">
-                          <td colSpan={11} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
+                          <td colSpan={10} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
                             {modelName}
                           </td>
                         </tr>
@@ -458,18 +457,16 @@ export default function StockPage() {
                     <Fragment key={item.id}>
                     <tr className={rowBg}>
 
-                      {/* 1. รหัสสี */}
+                      {/* 1. รหัส/ชื่อสี */}
                       <td className="px-2 py-1.5 border-r border-gray-200">
-                        <input type="text" value={editVal(item, 'color_code')}
-                          onChange={e => setEdit(item.id, 'color_code', e.target.value)}
-                          className={inputCls(!!rowEdits[item.id]?.color_code)} />
-                      </td>
-
-                      {/* 3. ชื่อสี */}
-                      <td className="px-2 py-1.5 border-r border-gray-200">
-                        <input type="text" value={editVal(item, 'color_name')}
-                          onChange={e => setEdit(item.id, 'color_name', e.target.value)}
-                          className={editDup ? 'w-full px-1.5 py-1 text-xs rounded border border-red-400 bg-red-50 text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400' : inputCls(!!rowEdits[item.id]?.color_name)} />
+                        <div className="flex gap-1">
+                          <input type="text" value={editVal(item, 'color_code')}
+                            onChange={e => setEdit(item.id, 'color_code', e.target.value)}
+                            className={`w-1/3 ${inputCls(!!rowEdits[item.id]?.color_code)}`} />
+                          <input type="text" value={editVal(item, 'color_name')}
+                            onChange={e => setEdit(item.id, 'color_name', e.target.value)}
+                            className={`flex-1 ${editDup ? 'px-1.5 py-1 text-xs rounded border border-red-400 bg-red-50 text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400' : inputCls(!!rowEdits[item.id]?.color_name)}`} />
+                        </div>
                         {editDup && <div className="text-[10px] text-red-600 mt-0.5 font-semibold">ชื่อนี้ซ้ำกับที่มีอยู่แล้ว</div>}
                       </td>
 
@@ -589,7 +586,7 @@ export default function StockPage() {
               </tbody>
               <tfoot>
                 <tr className="bg-[#9b9484] text-white text-xs">
-                  <td colSpan={8} className="px-3 py-2 text-right font-semibold">
+                  <td colSpan={7} className="px-3 py-2 text-right font-semibold">
                     มูลค่าสต็อครวมทั้งหมด
                   </td>
                   <td colSpan={3} className="px-3 py-2 text-right font-bold text-base whitespace-nowrap">
@@ -598,7 +595,7 @@ export default function StockPage() {
                 </tr>
                 {dateStr && (
                   <tr className="bg-[#9b9484] text-orange-200 text-[11px]">
-                    <td colSpan={11} className="px-3 py-1 text-right">{dateStr}</td>
+                    <td colSpan={10} className="px-3 py-1 text-right">{dateStr}</td>
                   </tr>
                 )}
               </tfoot>
