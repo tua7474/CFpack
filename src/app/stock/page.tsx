@@ -574,7 +574,7 @@ export default function StockPage() {
                       </td>
 
                       {/* 8. ราคาลูกค้า */}
-                      <td className="px-2 py-1.5 border-r border-gray-200">
+                      <td className="px-2 py-1.5 border-r border-gray-200 w-14">
                         <input type="text" inputMode="numeric"
                           value={editVal(item, 'retail_price')}
                           onChange={e => setEdit(item.id, 'retail_price', e.target.value)}
