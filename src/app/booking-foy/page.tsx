@@ -23,6 +23,20 @@ interface ModelGroup {
   items: StockItem[]
 }
 
+interface CatGroup {
+  name: string
+  models: ModelGroup[]
+}
+
+const CATEGORIES_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
+
+const CATEGORY_BG: Record<string, string> = {
+  '2 มิล':   'bg-[#9b9484] text-white',
+  '4 มิล':   'bg-blue-700 text-white',
+  '1.5 มิล': 'bg-teal-700 text-white',
+  'ฝอยหยัก': 'bg-purple-700 text-white',
+}
+
 // ── Layout constants (A4 portrait) ────────────────────────────────────────────
 //
 // A4 portrait content width = (210 − 2×8)mm × (96/25.4) ≈ 733 px
@@ -243,23 +257,23 @@ export default function BookingFoyPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  // Group items by model_name — filter by category + model visibility (set from stock page)
-  const modelGroups: ModelGroup[] = []
-  const seen = new Map<string, ModelGroup>()
+  // Group items: category → model_name, filtered by visibility
+  const catMap = new Map<string, Map<string, StockItem[]>>()
   for (const item of items.filter(it => categoryVis[it.category] !== false && modelVis[it.model_name] !== false)) {
-    if (!seen.has(item.model_name)) {
-      const g: ModelGroup = { name: item.model_name, items: [] }
-      seen.set(item.model_name, g)
-      modelGroups.push(g)
-    }
-    seen.get(item.model_name)!.items.push(item)
+    const cat = item.category || '2 มิล'
+    if (!catMap.has(cat)) catMap.set(cat, new Map())
+    const mm = catMap.get(cat)!
+    if (!mm.has(item.model_name)) mm.set(item.model_name, [])
+    mm.get(item.model_name)!.push(item)
   }
-
-  // Distribute models into NUM_COLS columns, top-down
-  const perCol = Math.ceil(modelGroups.length / NUM_COLS)
-  const columns: ModelGroup[][] = Array.from({ length: NUM_COLS }, (_, ci) =>
-    modelGroups.slice(ci * perCol, (ci + 1) * perCol)
-  )
+  const orderedCats = [
+    ...CATEGORIES_ORDER.filter(c => catMap.has(c)),
+    ...[...catMap.keys()].filter(c => !CATEGORIES_ORDER.includes(c)),
+  ]
+  const catGroups: CatGroup[] = orderedCats.map(cat => ({
+    name: cat,
+    models: [...catMap.get(cat)!.entries()].map(([name, its]) => ({ name, items: its })),
+  }))
 
   // Grand total (auto-calc from pending)
   let grandTotal = 0
@@ -386,7 +400,7 @@ export default function BookingFoyPage() {
         </Link>
         <div>
           <h1 className="text-xl font-bold">ใบจองกระดาษฝอย</h1>
-          <p className="text-orange-200 text-xs mt-0.5">A4 แนวตั้ง · 3 คอลัมน์ · {modelGroups.length} รุ่น</p>
+          <p className="text-orange-200 text-xs mt-0.5">A4 แนวตั้ง · 3 คอลัมน์ · {catGroups.reduce((s, c) => s + c.models.length, 0)} รุ่น</p>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -451,14 +465,31 @@ export default function BookingFoyPage() {
                   ใบจองกระดาษฝอย
                 </div>
 
-                {/* ── 3-column model grid ── */}
-                <div className="flex" style={{ gap: COL_GAP, width: TOTAL_W }}>
-                  {columns.map((colGroups, ci) => (
-                    <div key={ci} style={{ width: COL_W, flexShrink: 0 }}>
-                      {colGroups.map((g, mi) => renderModelSection(g, ci, mi))}
+                {/* ── Categories with 3-column model grid per category ── */}
+                {catGroups.map(cg => {
+                  const perCol = Math.ceil(cg.models.length / NUM_COLS)
+                  const cols: ModelGroup[][] = Array.from({ length: NUM_COLS }, (_, ci) =>
+                    cg.models.slice(ci * perCol, (ci + 1) * perCol)
+                  )
+                  const catCls = CATEGORY_BG[cg.name] ?? 'bg-gray-700 text-white'
+                  return (
+                    <div key={cg.name} className="mb-2">
+                      {/* Category header */}
+                      <div className={`${catCls} px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-sm mb-1`}
+                        style={{ width: TOTAL_W }}>
+                        หมวด {cg.name}
+                      </div>
+                      {/* Models in 3 columns */}
+                      <div className="flex" style={{ gap: COL_GAP, width: TOTAL_W }}>
+                        {cols.map((colGroups, ci) => (
+                          <div key={ci} style={{ width: COL_W, flexShrink: 0 }}>
+                            {colGroups.map((g, mi) => renderModelSection(g, ci, mi))}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  )
+                })}
 
                 {/* ── Info panel ── */}
                 <div className="flex gap-1 mt-2" style={{ width: TOTAL_W }}>
