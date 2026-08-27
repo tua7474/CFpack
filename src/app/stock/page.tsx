@@ -55,7 +55,7 @@ function fmtDate(iso: string | null): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', warehouse_price: '', retail_price: '', category: '2 มิล' }
+const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', warehouse_price: '', retail_price: '', category: '' }
 
 export default function StockPage() {
   const [items, setItems]               = useState<StockItem[]>([])
@@ -109,7 +109,7 @@ export default function StockPage() {
   // ── Add new row ──────────────────────────────────────────────────────────────
 
   const handleAddRow = async () => {
-    if (!newRow.model_name.trim()) return
+    if (!newRow.category || !newRow.model_name.trim()) return
     if (isDuplicate(newRow.model_name, newRow.color_name)) {
       showMsg('❌ ชื่อรุ่น + ชื่อสี ซ้ำกับที่มีอยู่แล้ว')
       return
@@ -347,10 +347,10 @@ export default function StockPage() {
                   return (
                     <tr className="bg-blue-50 border-b-2 border-blue-300">
                       <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px]">
-                        <div className="text-[10px] text-blue-500 font-semibold mb-0.5">เลือกหมวด</div>
                         <select value={newRow.category}
                           onChange={e => setNewRow(p => ({ ...p, category: e.target.value }))}
-                          className="w-full px-1.5 py-1 text-xs rounded border-2 border-blue-400 bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1.5 font-semibold text-blue-700">
+                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1">
+                          <option value="">-- เลือกหมวด --</option>
                           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                         <select value={newRow.model_name}
