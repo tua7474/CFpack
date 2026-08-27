@@ -43,10 +43,11 @@ const CATEGORY_BG: Record<string, string> = {
 // 3 columns with 4px gap each → COL_W = (733 − 8) / 3 ≈ 241px
 //
 const NUM_COLS   = 3
-const MCOL_COLOR = 144         // ชื่อสี (รวม space ที่เคยเป็นราคา)
+const MCOL_COLOR = 96          // ชื่อสี
+const MCOL_PRICE = 48          // ราคา (แบ่งมาจาก MCOL_COLOR เดิม)
 const MCOL_QTY   = 42          // จำนวน
 const MCOL_TOTAL = 55          // รวม
-const COL_W      = MCOL_COLOR + MCOL_QTY + MCOL_TOTAL  // 241
+const COL_W      = MCOL_COLOR + MCOL_PRICE + MCOL_QTY + MCOL_TOTAL  // 241
 const COL_GAP    = 4
 const TOTAL_W    = NUM_COLS * COL_W + (NUM_COLS - 1) * COL_GAP      // 731
 
@@ -316,19 +317,21 @@ export default function BookingFoyPage() {
       <table className="border-collapse" style={{ tableLayout: 'fixed', width: COL_W }}>
         <colgroup>
           <col style={{ width: MCOL_COLOR }} />
+          <col style={{ width: MCOL_PRICE }} />
           <col style={{ width: MCOL_QTY }} />
           <col style={{ width: MCOL_TOTAL }} />
         </colgroup>
         <thead>
           {/* รุ่น header */}
           <tr className="bg-[#9b9484] text-white">
-            <th colSpan={3} className="border border-gray-500 px-1 py-0.5 font-bold overflow-hidden text-[10px] text-left truncate">
+            <th colSpan={4} className="border border-gray-500 px-1 py-0.5 font-bold overflow-hidden text-[10px] text-left truncate">
               {g.name}
             </th>
           </tr>
           {/* sub-column header */}
           <tr className="bg-[#9b9484] text-white text-[9px]">
             <th className="border border-gray-500 px-1 py-0.5 text-left font-medium">ชื่อสี</th>
+            <th className="border border-gray-500 px-1 py-0.5 text-right font-medium">ราคา</th>
             <th className="border border-gray-500 px-1 py-0.5 text-right font-medium">จำนวน</th>
             <th className="border border-gray-500 px-1 py-0.5 text-right font-medium">รวม</th>
           </tr>
@@ -347,6 +350,10 @@ export default function BookingFoyPage() {
                     <div className="truncate text-[9px] text-gray-500">{item.color_name || item.color_code || '–'}</div>
                     <div className="shrink-0 text-[7px] text-gray-400 leading-tight">{parseInt(item.stock_qty) || 0}</div>
                   </div>
+                </td>
+                {/* ราคา */}
+                <td className="border border-gray-300 px-1 py-px text-right bg-gray-100 text-[9px] text-gray-500">
+                  {price > 0 ? fmt2(price) : ''}
                 </td>
                 {/* จำนวน */}
                 <td className={`border border-gray-300 p-0 ${hasPending ? 'bg-yellow-50' : 'bg-white'}`}>
