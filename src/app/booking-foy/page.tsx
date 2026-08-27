@@ -84,8 +84,9 @@ export default function BookingFoyPage() {
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState('')
-  const [branchInfo, setBranchInfo]   = useState<{ name: string; phone: string } | null>(null)
-  const [isAdmin, setIsAdmin]         = useState(true)
+  const [branchInfo, setBranchInfo]       = useState<{ name: string; phone: string } | null>(null)
+  const [isAdmin, setIsAdmin]             = useState(true)
+  const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
 
   // ตรวจว่าเปิดจาก booking2 และ/หรือ edit_foy mode
   useEffect(() => {
@@ -131,6 +132,16 @@ export default function BookingFoyPage() {
         const s = JSON.parse(bs)
         if (s?.branch_name) setBranchInfo({ name: s.branch_name, phone: s.phone ?? '' })
         setIsAdmin(s?.is_admin !== false)
+        // Fetch color group for pricing
+        if (s?.branch_id) {
+          fetch('/api/branches')
+            .then(r => r.json())
+            .then((branches: { id: number; color_group: string | null }[]) => {
+              const b = branches.find(br => br.id === s.branch_id)
+              if (b?.color_group) setBranchColorGroup(b.color_group as 'orange' | 'yellow' | 'red')
+            })
+            .catch(() => {})
+        }
       }
     } catch { /* ignore */ }
     // Load persisted source/vehicle from localStorage (shared with booking2)
@@ -257,6 +268,18 @@ export default function BookingFoyPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
+  // ── Branch price helper ────────────────────────────────────────────────────
+  // orange → retail_price, yellow → +9%, red → +9%+7%, null → warehouse_price
+
+  const getItemPrice = (item: StockItem): number => {
+    const wp = parseFloat(item.warehouse_price) || 0
+    const rp = parseFloat(item.retail_price)    || 0
+    if (branchColorGroup === 'orange') return rp || wp
+    if (branchColorGroup === 'yellow') return Math.round(wp * 1.09 * 100) / 100
+    if (branchColorGroup === 'red')    return Math.round(wp * 1.09 * 1.07 * 100) / 100
+    return wp
+  }
+
   // Group items: category → model_name, filtered by visibility
   const catMap = new Map<string, Map<string, StockItem[]>>()
   for (const item of items.filter(it => categoryVis[it.category] !== false && modelVis[it.model_name] !== false)) {
@@ -279,7 +302,7 @@ export default function BookingFoyPage() {
   let grandTotal = 0
   for (const [idStr, qty] of Object.entries(pending)) {
     const item = items.find(it => it.id === Number(idStr))
-    if (item) grandTotal += (parseFloat(item.warehouse_price) || 0) * qty
+    if (item) grandTotal += getItemPrice(item) * qty
   }
   const displayTotal = manualTotal !== '' ? manualTotal : grandTotal.toFixed(2)
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -288,7 +311,7 @@ export default function BookingFoyPage() {
   // ── Model section renderer ─────────────────────────────────────────────────
 
   const renderModelSection = (g: ModelGroup, ci: number, mi: number) => {
-    const modelPrice = parseFloat(g.items[0]?.warehouse_price ?? '0') || 0
+    const modelPrice = getItemPrice(g.items[0])
     return (
     <div key={`c${ci}m${mi}`} className="mb-1.5">
       <table className="border-collapse" style={{ tableLayout: 'fixed', width: COL_W }}>
@@ -320,7 +343,7 @@ export default function BookingFoyPage() {
         </thead>
         <tbody>
           {g.items.map(item => {
-            const price      = parseFloat(item.warehouse_price) || 0
+            const price      = getItemPrice(item)
             const qty        = pending[item.id] ?? 0
             const total      = qty * price
             const hasPending = qty > 0
