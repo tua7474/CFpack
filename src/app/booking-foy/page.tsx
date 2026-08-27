@@ -57,6 +57,7 @@ export default function BookingFoyPage() {
   const router = useRouter()
   const [items, setItems]         = useState<StockItem[]>([])
   const [categoryVis, setCategoryVis] = useState<Record<string, boolean>>({})
+  const [modelVis, setModelVis]       = useState<Record<string, boolean>>({})
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [saveMsg, setSaveMsg]     = useState<string | null>(null)
@@ -134,9 +135,10 @@ export default function BookingFoyPage() {
   useEffect(() => {
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: { items: StockItem[]; categoryVis: Record<string, boolean> }) => {
+      .then((data: { items: StockItem[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
         setItems(data.items)
         setCategoryVis(data.categoryVis)
+        setModelVis(data.modelVis)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -241,10 +243,10 @@ export default function BookingFoyPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  // Group items by model_name — filter only by category visibility (set from stock page)
+  // Group items by model_name — filter by category + model visibility (set from stock page)
   const modelGroups: ModelGroup[] = []
   const seen = new Map<string, ModelGroup>()
-  for (const item of items.filter(it => categoryVis[it.category] !== false)) {
+  for (const item of items.filter(it => categoryVis[it.category] !== false && modelVis[it.model_name] !== false)) {
     if (!seen.has(item.model_name)) {
       const g: ModelGroup = { name: item.model_name, items: [] }
       seen.set(item.model_name, g)

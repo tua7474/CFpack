@@ -66,6 +66,7 @@ const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', warehouse_pr
 export default function StockPage() {
   const [items, setItems]               = useState<StockItem[]>([])
   const [categoryVis, setCategoryVis]   = useState<Record<string, boolean>>({})
+  const [modelVis, setModelVis]         = useState<Record<string, boolean>>({})
   const [loading, setLoading]           = useState(true)
   const [modelOptions, setModelOptions] = useState<string[]>([])
   const [newRow, setNewRow]             = useState(EMPTY_NEW)
@@ -81,9 +82,10 @@ export default function StockPage() {
     setLoading(true)
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: { items: StockItem[]; categoryVis: Record<string, boolean> }) => {
+      .then((data: { items: StockItem[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
         setItems(data.items)
         setCategoryVis(data.categoryVis)
+        setModelVis(data.modelVis)
         setLoading(false)
         setNow(new Date())
       })
@@ -258,6 +260,17 @@ export default function StockPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'category_vis', category, show_in_booking: newVal }),
+    })
+  }, [])
+
+  // ── Toggle show_in_booking (per model) ───────────────────────────────────────
+
+  const handleToggleModelVis = useCallback(async (model_name: string, newVal: boolean) => {
+    setModelVis(prev => ({ ...prev, [model_name]: newVal }))
+    await fetch('/api/stock', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'model_vis', model_name, show_in_booking: newVal }),
     })
   }, [])
 
@@ -441,11 +454,20 @@ export default function StockPage() {
                       </tr>,
                     ]
                     for (const [modelName, modelItems] of byModel) {
+                      const modelShown = modelVis[modelName] !== false
                       catRows.push(
                         <tr key={`model-${cat}-${modelName}`} className="bg-gray-200">
-                          <td colSpan={10} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
+                          <td colSpan={8} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
                             {modelName}
                           </td>
+                          <td className="px-2 py-0.5 text-center whitespace-nowrap">
+                            <button
+                              onClick={() => handleToggleModelVis(modelName, !modelShown)}
+                              className={`px-2 py-0.5 text-[11px] rounded-full font-semibold transition-colors ${modelShown ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
+                              {modelShown ? '● โชว์' : '● ซ่อน'}
+                            </button>
+                          </td>
+                          <td className="px-2 py-0.5" />
                         </tr>
                       )
                       for (const item of modelItems) {

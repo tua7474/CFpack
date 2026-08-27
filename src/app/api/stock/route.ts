@@ -109,6 +109,13 @@ export async function GET() {
       show_in_booking BOOLEAN NOT NULL DEFAULT true
     )
   `)
+  // Model visibility table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paper_stock_model_vis (
+      model_name      VARCHAR(100) PRIMARY KEY,
+      show_in_booking BOOLEAN NOT NULL DEFAULT true
+    )
+  `)
   // Strip "2 มิล " prefix from model_name and set category (idempotent)
   await pool.query(`
     UPDATE paper_stock
@@ -132,7 +139,14 @@ export async function GET() {
   )
   const categoryVis: Record<string, boolean> = {}
   for (const r of catVisRows) categoryVis[r.category] = r.show_in_booking
-  return NextResponse.json({ items: rows, categoryVis })
+
+  const { rows: modelVisRows } = await pool.query(
+    'SELECT model_name, show_in_booking FROM paper_stock_model_vis'
+  )
+  const modelVis: Record<string, boolean> = {}
+  for (const r of modelVisRows) modelVis[r.model_name] = r.show_in_booking
+
+  return NextResponse.json({ items: rows, categoryVis, modelVis })
 }
 
 // ── POST — create new item ────────────────────────────────────────────────────
@@ -164,6 +178,17 @@ export async function PATCH(request: Request) {
        VALUES ($1, $2)
        ON CONFLICT (category) DO UPDATE SET show_in_booking = $2`,
       [category, show_in_booking]
+    )
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'model_vis') {
+    const { model_name, show_in_booking } = body
+    await pool.query(
+      `INSERT INTO paper_stock_model_vis (model_name, show_in_booking)
+       VALUES ($1, $2)
+       ON CONFLICT (model_name) DO UPDATE SET show_in_booking = $2`,
+      [model_name, show_in_booking]
     )
     return NextResponse.json({ ok: true })
   }
