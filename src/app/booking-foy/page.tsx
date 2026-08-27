@@ -477,7 +477,7 @@ export default function BookingFoyPage() {
                       {/* Category header */}
                       <div className={`${catCls} px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-sm mb-1`}
                         style={{ width: TOTAL_W }}>
-                        หมวด {cg.name}
+                        กระดาษฝอย {cg.name}
                       </div>
                       {/* Models in 3 columns */}
                       <div className="flex" style={{ gap: COL_GAP, width: TOTAL_W }}>
