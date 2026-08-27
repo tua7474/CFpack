@@ -25,6 +25,13 @@ interface StockItem {
 
 const CATEGORIES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก', 'Graphic'] as const
 
+const CATEGORY_MODELS: Record<string, string[]> = {
+  '2 มิล':   ['สีอ่อน', 'พิเศษA', 'พิเศษB', 'ปุยนุ่น', 'โรมิโอ'],
+  '4 มิล':   ['สีอ่อน', 'พิเศษA', 'พิเศษB', 'โรมิโอ'],
+  '1.5 มิล': ['สีอ่อน', 'พิเศษA', 'พิเศษB', 'โรมิโอ'],
+  'ฝอยหยัก': ['สีอ่อน', 'พิเศษA', 'พิเศษB', 'โรมิโอ'],
+}
+
 const CATEGORY_BG: Record<string, string> = {
   '2 มิล':   'bg-[#9b9484] text-white',
   '4 มิล':   'bg-blue-700 text-white',
@@ -348,16 +355,17 @@ export default function StockPage() {
                     <tr className="bg-blue-50 border-b-2 border-blue-300">
                       <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px]">
                         <select value={newRow.category}
-                          onChange={e => setNewRow(p => ({ ...p, category: e.target.value }))}
+                          onChange={e => setNewRow(p => ({ ...p, category: e.target.value, model_name: '' }))}
                           className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1">
                           <option value="">-- เลือกหมวด --</option>
                           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                         <select value={newRow.model_name}
                           onChange={e => setNewRow(p => ({ ...p, model_name: e.target.value }))}
-                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+                          disabled={!newRow.category}
+                          className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40 disabled:bg-gray-50">
                           <option value="">-- เลือกรุ่น --</option>
-                          {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                          {(CATEGORY_MODELS[newRow.category] ?? modelOptions).map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </td>
                       <td className="px-2 py-1.5 border-r border-gray-200">
