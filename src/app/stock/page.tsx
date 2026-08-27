@@ -33,10 +33,10 @@ const CATEGORY_MODELS: Record<string, string[]> = {
 }
 
 const CATEGORY_BG: Record<string, string> = {
-  '2 มิล':   'bg-[#9b9484] text-white',
-  '4 มิล':   'bg-blue-700 text-white',
-  '1.5 มิล': 'bg-teal-700 text-white',
-  'ฝอยหยัก': 'bg-purple-700 text-white',
+  '2 มิล':   'bg-[#d4ccc4] text-gray-700',
+  '4 มิล':   'bg-[#c4bcac] text-gray-700',
+  '1.5 มิล': 'bg-[#C5D6BA] text-gray-700',
+  'ฝอยหยัก': 'bg-[#ece4d4] text-gray-700',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
