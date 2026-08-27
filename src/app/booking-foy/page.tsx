@@ -241,10 +241,10 @@ export default function BookingFoyPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  // Group items by model_name, only items with show_in_booking = true AND category visible
+  // Group items by model_name — filter only by category visibility (set from stock page)
   const modelGroups: ModelGroup[] = []
   const seen = new Map<string, ModelGroup>()
-  for (const item of items.filter(it => it.show_in_booking && categoryVis[it.category] !== false)) {
+  for (const item of items.filter(it => categoryVis[it.category] !== false)) {
     if (!seen.has(item.model_name)) {
       const g: ModelGroup = { name: item.model_name, items: [] }
       seen.set(item.model_name, g)
