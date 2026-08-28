@@ -1011,24 +1011,20 @@ function Booking2Inner() {
                           ]
 
                           if (cell.type === 'subgroup') {
-                            const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             const isFoy = FOY_SUBGROUP_NAMES.has(cell.name)
+                            if (isFoy) return [
+                              <td key={`${si}-sg`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />,
+                            ]
+                            const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             return [
                               <td key={`${si}-sg`} colSpan={4}
-                                onClick={isFoy ? () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking') : undefined}
-                                className={`border px-2 py-px text-[11px] font-bold ${SUBGROUP_BG[cell.color]}${isFoy ? ' cursor-pointer' : ''}`}>
-                                {isFoy ? (
-                                  <div className="flex items-center justify-between gap-1 w-full">
-                                    <span className="text-[9px] font-normal opacity-90">→ ใบจองกระดาษฝอย</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span>{cell.name}</span>
-                                    {sgTotal > 0 && (
-                                      <span className="text-[8px] font-semibold opacity-90 whitespace-nowrap">฿{fmt2(sgTotal)}</span>
-                                    )}
-                                  </div>
-                                )}
+                                className={`border px-2 py-px text-[11px] font-bold ${SUBGROUP_BG[cell.color]}`}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span>{cell.name}</span>
+                                  {sgTotal > 0 && (
+                                    <span className="text-[8px] font-semibold opacity-90 whitespace-nowrap">฿{fmt2(sgTotal)}</span>
+                                  )}
+                                </div>
                               </td>,
                             ]
                           }
