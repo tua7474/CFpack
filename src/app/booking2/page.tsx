@@ -38,25 +38,21 @@ interface Section {
 // key = "section_order-subgroup_order"
 
 const SUBGROUP_COLOR: Record<string, SubgroupColor> = {
-  // S2 ซองน้ำตาล
-  '2-1': 'gray',   '2-2': 'light',  '2-3': 'gray',   '2-4': 'gray',
-  '2-5': 'orange', '2-6': 'gray',   '2-7': 'orange', '2-8': 'orange',
-  '2-9': 'gray',   '2-10': 'gray',
-  // S3 ซอง PP
+  // S2 — กล่อง Thank You, กล่องผลไม้ 5 ชั้น, กล่องเอกสาร, กล่อง 5 ชั้น, [กระดาษฝอย=5], ถุงใส่กระดาษฝอย
+  '2-1': 'light',  '2-2': 'gray',   '2-3': 'gray',   '2-4': 'gray',
+  '2-6': 'light',
+  // S3 — ซอง PP, ซองเมทาลิค, ซอง PP สี, ซองน้ำตาล, ซองขยายข้าง, ซองจ่าหน้า, ซองบับเบิล, ซองPPกันกระแทก, ฟิล์มยืด
   '3-1': 'gray',   '3-2': 'gray',   '3-3': 'gray',   '3-4': 'gray',
-  '3-5': 'light',  '3-6': 'light',  '3-7': 'teal',   '3-8': 'orange',
-  // S4 บับเบิล
-  '4-1': 'light',  '4-2': 'light',  '4-2.5': 'light', '4-3': 'gray',   '4-4': 'light',
-  '4-5': 'gray',   '4-6': 'gray',   '4-7': 'orange', '4-8': 'orange',
-  '4-9': 'orange', '4-10': 'orange','4-11': 'orange', '4-12': 'orange',
-  '4-13': 'light', '4-14': 'light', '4-15': 'gray',  '4-16': 'gray',
-  '4-17': 'light', '4-18': 'teal',
-  // S5 กล่อง Thank You
-  '5-1': 'light',  '5-2': 'gray',   '5-3': 'gray',   '5-4': 'gray',
-  '5-5': 'orange', '5-6': 'orange',
-  // S6 ซองกันกระแทก
-  '6-1': 'gray',   '6-2': 'orange', '6-3': 'orange', '6-4': 'gray',
-  '6-5': 'gray',   '6-6': 'orange', '6-7': 'orange', '6-8': 'orange',
+  '3-5': 'light',  '3-6': 'gray',   '3-7': 'gray',   '3-8': 'orange',  '3-9': 'light',
+  // S4 — บับเบิล, บับเบิลสี, บับเบิลบาง 35g, โฟมบาง 2 มิล, ตัวตัดเทป, เทป OPP แกนดำ, เทประวังแตก, เทป OPP แกนส้ม, เทป Thank You, ถุงหิ้วบริการ, ลาเบล 10x15, สติกเกอร์ระวังแตก
+  '4-1': 'light',  '4-2': 'light',  '4-3': 'light',  '4-4': 'gray',   '4-5': 'light',
+  '4-6': 'gray',   '4-7': 'orange', '4-8': 'orange', '4-9': 'gray',   '4-10': 'orange',
+  '4-11': 'gray',  '4-12': 'orange',
+  // S5 — ถุงแก้วฝากาว 60M/100P, ถุงซิปรูด, ซองใสปะหน้า, กระบอก, ฝาปิดกระบอก, สายรัด PP, กระดาษห่อ, เชือก, เบิกฟรี, เครื่อง/สติกเกอร์/เคส
+  '5-1': 'gray',   '5-2': 'gray',   '5-3': 'gray',   '5-4': 'light',  '5-5': 'teal',
+  '5-6': 'gray',   '5-7': 'gray',   '5-8': 'orange', '5-9': 'teal',   '5-10': 'orange',
+  // S6 — AIRBAG แผ่น/เมตร, MINI AIR BAG ม้วนเปล่า, MINI AIR เครื่องเป่า, กระดาษพิมพ์สลิป, ปากกาเขียน PP
+  '6-1': 'gray',   '6-2': 'orange', '6-3': 'orange', '6-4': 'orange', '6-5': 'gray',
 }
 
 const SUBGROUP_BG: Record<SubgroupColor, string> = {
