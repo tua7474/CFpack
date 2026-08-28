@@ -24,6 +24,8 @@ type SubgroupColor = 'gray' | 'light' | 'orange' | 'teal' | 'maroon'
 type SectionRow =
   | { type: 'subgroup'; name: string; color: SubgroupColor }
   | { type: 'product'; product: CatalogProduct }
+  | { type: 'foy_cat'; category: string }
+  | { type: 'foy_item'; category: string; model_name: string; qty: number; amount: number }
 
 interface Section {
   order: number
@@ -69,6 +71,14 @@ const SUBGROUP_BG: Record<SubgroupColor, string> = {
 // ทุก model จาก paper_stock จะมี group_name='กระดาษฝอย' และ subgroup_name='กระดาษฝอย'
 const FOY_SUBGROUP_NAMES = new Set(['กระดาษฝอย'])
 const FOY_GROUP_NAMES    = new Set(['กระดาษฝอย'])
+
+const FOY_CATS_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
+const FOY_CAT_BG: Record<string, string> = {
+  '2 มิล':   'bg-[#d4ccc4] text-gray-700',
+  '4 มิล':   'bg-[#c4bcac] text-gray-700',
+  '1.5 มิล': 'bg-[#C5D6BA] text-gray-700',
+  'ฝอยหยัก': 'bg-[#ece4d4] text-gray-700',
+}
 
 // ── Column widths ─────────────────────────────────────────────────────────────
 
@@ -121,6 +131,55 @@ function buildSections(products: CatalogProduct[]): Section[] {
     sec.rows.push({ type: 'product', product: p })
   }
   return Array.from(map.values()).sort((a, b) => a.order - b.order)
+}
+
+// ── Inject dynamic FOY rows (category-separated) ──────────────────────────────
+// Replaces catalog กระดาษฝอย product rows with foy_cat/foy_item rows derived
+// from foyPending (keys = "category|model_name").
+
+function injectFoyRows(
+  sections: Section[],
+  foyPending: Record<string, { qty: number; amount: number }>
+): Section[] {
+  // Group foyPending by category
+  const byCat = new Map<string, { model: string; qty: number; amount: number }[]>()
+  for (const [key, data] of Object.entries(foyPending)) {
+    if (data.qty <= 0) continue
+    const idx = key.indexOf('|')
+    if (idx === -1) continue  // legacy key — skip
+    const cat   = key.slice(0, idx)
+    const model = key.slice(idx + 1)
+    if (!byCat.has(cat)) byCat.set(cat, [])
+    byCat.get(cat)!.push({ model, qty: data.qty, amount: data.amount })
+  }
+
+  return sections.map(sec => {
+    const hasFoy = sec.rows.some(r => r.type === 'product' && FOY_GROUP_NAMES.has(r.product.group_name))
+    if (!hasFoy) return sec
+
+    const newRows: SectionRow[] = []
+    let foyInjected = false
+    for (const row of sec.rows) {
+      if (row.type === 'product' && FOY_GROUP_NAMES.has(row.product.group_name)) {
+        if (!foyInjected) {
+          foyInjected = true
+          if (byCat.size > 0) {
+            for (const cat of FOY_CATS_ORDER) {
+              const its = byCat.get(cat)
+              if (!its?.length) continue
+              newRows.push({ type: 'foy_cat', category: cat })
+              for (const it of its) {
+                newRows.push({ type: 'foy_item', category: cat, model_name: it.model, qty: it.qty, amount: it.amount })
+              }
+            }
+          }
+        }
+        continue  // always skip original catalog FOY rows
+      }
+      newRows.push(row)
+    }
+    return { ...sec, rows: newRows }
+  })
 }
 
 const BUBBLE_GROUPS_SET = new Set(['บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
@@ -474,7 +533,7 @@ function Booking2Inner() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const sections    = buildSections(products)
+  const sections    = injectFoyRows(buildSections(products), foyPending)
   const lastSec     = sections[sections.length - 1]
   const lastSecRows = lastSec?.rows.length ?? 0
   const maxRows     = sections.length
@@ -491,6 +550,15 @@ function Booking2Inner() {
     for (const row of sec.rows) {
       if (row.type === 'subgroup') {
         currentSubgroup = row.name
+      } else if (row.type === 'foy_cat') {
+        // category header — no value
+      } else if (row.type === 'foy_item') {
+        // FOY amount tracked separately in foyTotal; add to subgroupTotals for display
+        if (currentSubgroup !== null) {
+          const sgKey = `${sec.order}-${currentSubgroup}`
+          subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + row.amount)
+        }
+        secTotal += row.amount
       } else {
         const qty   = pending[row.product.id] ?? 0
         const price = parseFloat(row.product.price ?? '0') || 0
@@ -966,6 +1034,38 @@ function Booking2Inner() {
                             ]
                           }
 
+                          if (cell.type === 'foy_cat') {
+                            const catBg = FOY_CAT_BG[cell.category] ?? 'bg-gray-200 text-gray-700'
+                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
+                            return [
+                              <td key={`${si}-fc`} colSpan={4}
+                                onClick={foyClick}
+                                className={`border px-2 py-px text-[10px] font-bold ${catBg} cursor-pointer`}>
+                                <div className="flex items-center justify-between gap-1 w-full">
+                                  <span>กระดาษฝอย {cell.category}</span>
+                                  <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
+                                </div>
+                              </td>,
+                            ]
+                          }
+
+                          if (cell.type === 'foy_item') {
+                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
+                            return [
+                              <td key={`${si}-fin`} onClick={foyClick} className="border border-gray-300 px-1 py-px bg-yellow-50 text-gray-700 overflow-hidden cursor-pointer">
+                                <span className="truncate block">{cell.model_name}</span>
+                              </td>,
+                              <td key={`${si}-fip`} onClick={foyClick} className="border border-gray-300 px-1 py-px text-right bg-yellow-50 text-gray-400 cursor-pointer">
+                              </td>,
+                              <td key={`${si}-fiq`} onClick={foyClick} className="border border-gray-300 px-1 py-px text-right bg-yellow-50 font-semibold text-gray-700 cursor-pointer">
+                                {cell.qty}
+                              </td>,
+                              <td key={`${si}-fit`} onClick={foyClick} className="border border-gray-300 px-1 py-px text-right bg-yellow-50 text-gray-700 cursor-pointer">
+                                {fmt2(cell.amount)}
+                              </td>,
+                            ]
+                          }
+
                           const { product: p } = cell
                           const price      = parseFloat(p.price ?? '0') || 0
                           const qty        = pending[p.id] ?? 0
@@ -973,25 +1073,16 @@ function Booking2Inner() {
                           const hasPending = (pending[p.id] ?? 0) > 0
 
                           if (FOY_GROUP_NAMES.has(p.group_name)) {
-                            const foyData = foyPending[p.product_name]
+                            // Catalog FOY rows are replaced by foy_cat/foy_item via injectFoyRows.
+                            // This branch only fires when foyPending is empty (no rows injected).
                             const bg = sec.is_vat_included ? 'bg-gray-200 text-gray-500' : 'bg-orange-50 text-gray-500'
-                            const qtyBg = foyData ? 'bg-yellow-50 font-semibold' : (sec.is_vat_included ? 'bg-gray-200' : 'bg-orange-50')
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             return [
-                              <td key={`${si}-pn`} onClick={foyClick} className={`border border-gray-300 px-1 py-px ${bg} overflow-hidden cursor-pointer`}>
-                                <div className="flex items-center justify-between w-full">
+                              <td key={`${si}-pn`} onClick={foyClick} colSpan={4} className={`border border-gray-300 px-1 py-px ${bg} overflow-hidden cursor-pointer`}>
+                                <div className="flex items-center gap-1">
                                   <span className="truncate">{p.product_name}</span>
-                                  {!foyData && <span className="text-[9px] text-teal-700 ml-2 shrink-0">→</span>}
+                                  <span className="text-[9px] text-teal-700 ml-2 shrink-0">→</span>
                                 </div>
-                              </td>,
-                              <td key={`${si}-pp`} onClick={foyClick} className={`border border-gray-300 px-1 py-px text-right ${bg} cursor-pointer`}>
-                                {price ? price.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '–'}
-                              </td>,
-                              <td key={`${si}-pq`} onClick={foyClick} className={`border border-gray-300 px-1 py-px text-right ${qtyBg} cursor-pointer`}>
-                                {foyData ? foyData.qty : ''}
-                              </td>,
-                              <td key={`${si}-pt`} onClick={foyClick} className={`border border-gray-300 px-1 py-px text-right ${bg} cursor-pointer`}>
-                                {foyData ? fmt2(foyData.amount) : ''}
                               </td>,
                             ]
                           }

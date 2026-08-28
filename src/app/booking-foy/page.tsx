@@ -217,14 +217,14 @@ export default function BookingFoyPage() {
         )
       }
 
-      // คำนวณยอดรวมต่อรุ่น
+      // คำนวณยอดรวมต่อรุ่น (key = "category|model_name")
       const modelTotals: Record<string, { qty: number; amount: number }> = {}
       const itemQty: Record<number, number> = {}
       for (const [idStr, qty] of entries) {
         const item = items.find(it => it.id === Number(idStr))
         if (!item) continue
-        const price = parseFloat(item.warehouse_price) || 0
-        const m = item.model_name
+        const price = getItemPrice(item)
+        const m = `${item.category}|${item.model_name}`
         if (!modelTotals[m]) modelTotals[m] = { qty: 0, amount: 0 }
         modelTotals[m].qty += qty
         modelTotals[m].amount += qty * price
@@ -270,15 +270,13 @@ export default function BookingFoyPage() {
   // ── Derived ────────────────────────────────────────────────────────────────
 
   // ── Branch price helper ────────────────────────────────────────────────────
-  // orange → retail_price, yellow → +9%, red → +9%+7%, null → warehouse_price
+  // orange → warehouse_price, yellow → +9%, red → +9%+7%, null → warehouse_price
 
   const getItemPrice = (item: StockItem): number => {
     const wp = parseFloat(item.warehouse_price) || 0
-    const rp = parseFloat(item.retail_price)    || 0
-    if (branchColorGroup === 'orange') return rp || wp
     if (branchColorGroup === 'yellow') return Math.round(wp * 1.09 * 100) / 100
     if (branchColorGroup === 'red')    return Math.round(wp * 1.09 * 1.07 * 100) / 100
-    return wp
+    return wp  // orange or null → warehouse_price
   }
 
   // Group items: category → model_name, filtered by visibility
