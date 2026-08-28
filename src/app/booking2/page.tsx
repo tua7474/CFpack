@@ -1019,7 +1019,6 @@ function Booking2Inner() {
                                 className={`border px-2 py-px text-[11px] font-bold ${SUBGROUP_BG[cell.color]}${isFoy ? ' cursor-pointer' : ''}`}>
                                 {isFoy ? (
                                   <div className="flex items-center justify-between gap-1 w-full">
-                                    <span>{cell.name}</span>
                                     <span className="text-[9px] font-normal opacity-90">→ ใบจองกระดาษฝอย</span>
                                   </div>
                                 ) : (
