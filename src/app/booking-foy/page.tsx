@@ -292,10 +292,15 @@ export default function BookingFoyPage() {
     ...CATEGORIES_ORDER.filter(c => catMap.has(c)),
     ...[...catMap.keys()].filter(c => !CATEGORIES_ORDER.includes(c)),
   ]
-  const catGroups: CatGroup[] = orderedCats.map(cat => ({
-    name: cat,
-    models: [...catMap.get(cat)!.entries()].map(([name, its]) => ({ name, items: its })),
-  }))
+  const MODEL_ORDER = ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ครีเอท']
+  const catGroups: CatGroup[] = orderedCats.map(cat => {
+    const mm = catMap.get(cat)!
+    const orderedModels = [
+      ...MODEL_ORDER.filter(m => mm.has(m)),
+      ...[...mm.keys()].filter(m => !MODEL_ORDER.includes(m)),
+    ]
+    return { name: cat, models: orderedModels.map(name => ({ name, items: mm.get(name)! })) }
+  })
 
   // Grand total (auto-calc from pending)
   let grandTotal = 0
