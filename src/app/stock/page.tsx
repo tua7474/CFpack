@@ -36,7 +36,7 @@ const CATEGORY_MODELS: Record<string, string[]> = {
 
 const CATEGORY_BG: Record<string, string> = {
   '2 มิล':   'bg-[#F1C40F] text-gray-700',
-  '4 มิล':   'bg-[#c4bcac] text-gray-700',
+  '4 มิล':   'bg-[#E67E22] text-gray-700',
   '1.5 มิล': 'bg-[#C5D6BA] text-gray-700',
   'ฝอยหยัก': 'bg-[#ece4d4] text-gray-700',
 }
@@ -478,7 +478,7 @@ export default function StockPage() {
                       const modelItems = byModel.get(modelName)!
                       const modelShown = modelVis[modelName] !== false
                       catRows.push(
-                        <tr key={`model-${cat}-${modelName}`} className={cat === '2 มิล' ? 'bg-[#F7DC6F]' : 'bg-gray-200'}>
+                        <tr key={`model-${cat}-${modelName}`} className={cat === '2 มิล' ? 'bg-[#F7DC6F]' : cat === '4 มิล' ? 'bg-[#F0B27A]' : 'bg-gray-200'}>
                           <td colSpan={8} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
                             {modelName}
                           </td>
@@ -493,7 +493,7 @@ export default function StockPage() {
                         </tr>
                       )
                       for (const item of modelItems) {
-                        const rowBg = cat === '2 มิล' ? 'bg-[#FCF3CF]' : (rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50')
+                        const rowBg = cat === '2 มิล' ? 'bg-[#FCF3CF]' : cat === '4 มิล' ? 'bg-[#FAE5D3]' : (rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50')
                         rowIdx++
                   const hasPending = !!rowEdits[item.id] && Object.keys(rowEdits[item.id]!).length > 0
                   const stock      = parseFloat(item.stock_qty)
