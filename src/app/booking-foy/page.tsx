@@ -455,27 +455,28 @@ export default function BookingFoyPage() {
             </span>
           )}
 
-          {/* ปุ่มกลับ — เมื่อเปิดจาก booking2 และยังไม่มีรายการ */}
-          {cameFromBooking && pendingCount === 0 && !editFoyMode ? (
+          {/* ปุ่มกลับใบจองสินค้า — เมื่อไม่มีรายการ */}
+          {pendingCount === 0 && !editFoyMode && (
             <button
               onClick={() => router.push(editOrderNo ? `/booking2?edit=${editOrderNo}` : '/booking2')}
               className="px-4 py-1.5 text-sm rounded font-semibold bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors">
               ← กลับใบจองสินค้า
             </button>
-          ) : (
-            <button
-              onClick={handleBook}
-              disabled={saving || (pendingCount === 0 && !editFoyMode)}
-              className={`px-4 py-1.5 text-sm rounded font-semibold transition-colors disabled:opacity-40 ${
-                pendingCount > 0
-                  ? 'bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b]'
-                  : editFoyMode
-                    ? 'bg-red-500 hover:bg-red-400 text-white'
-                    : 'bg-white/20 text-white border border-white/30 cursor-not-allowed'
-              }`}>
-              {saving ? 'กำลังจอง...' : pendingCount > 0 ? `📦 จอง (${pendingCount})` : editFoyMode ? '🗑️ ยกเลิกกระดาษฝอย' : '📦 จอง'}
-            </button>
           )}
+
+          {/* ปุ่มจอง / ยกเลิก */}
+          <button
+            onClick={handleBook}
+            disabled={saving || (pendingCount === 0 && !editFoyMode)}
+            className={`px-4 py-1.5 text-sm rounded font-semibold transition-colors disabled:opacity-40 ${
+              pendingCount > 0
+                ? 'bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b]'
+                : editFoyMode
+                  ? 'bg-red-500 hover:bg-red-400 text-white'
+                  : 'bg-white/20 text-white border border-white/30 cursor-not-allowed'
+            }`}>
+            {saving ? 'กำลังจอง...' : pendingCount > 0 ? `📦 จอง (${pendingCount})` : editFoyMode ? '🗑️ ยกเลิกกระดาษฝอย' : '📦 จอง'}
+          </button>
 
           {/* ปุ่มพิมพ์ — admin only */}
           {isAdmin && (
