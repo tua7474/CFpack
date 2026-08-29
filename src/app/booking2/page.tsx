@@ -71,10 +71,17 @@ const FOY_GROUP_NAMES    = new Set(['กระดาษฝอย'])
 
 const FOY_CATS_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
 const FOY_CAT_BG: Record<string, string> = {
-  '2 มิล':   'bg-[#d4ccc4] text-gray-700',
-  '4 มิล':   'bg-[#c4bcac] text-gray-700',
-  '1.5 มิล': 'bg-[#C5D6BA] text-gray-700',
-  'ฝอยหยัก': 'bg-[#ece4d4] text-gray-700',
+  '2 มิล':   '#F1C40F',
+  '4 มิล':   '#E67E22',
+  '1.5 มิล': '#E74C3C',
+  'ฝอยหยัก': '#9B59B6',
+}
+
+const FOY_ITEM_BG: Record<string, string> = {
+  '2 มิล':   '#FCF3CF',
+  '4 มิล':   '#FAE5D3',
+  '1.5 มิล': '#FADBD8',
+  'ฝอยหยัก': '#FBDEF0',
 }
 
 // ── Column widths ─────────────────────────────────────────────────────────────
@@ -1044,12 +1051,13 @@ function Booking2Inner() {
                           }
 
                           if (cell.type === 'foy_cat') {
-                            const catBg = FOY_CAT_BG[cell.category] ?? 'bg-gray-200 text-gray-700'
+                            const catBg = FOY_CAT_BG[cell.category] ?? '#e5e7eb'
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             return [
                               <td key={`${si}-fc`} colSpan={4}
                                 onClick={foyClick}
-                                className={`border px-2 py-px text-[10px] font-bold ${catBg} cursor-pointer`}>
+                                style={{ backgroundColor: catBg }}
+                                className="border px-2 py-px text-[10px] font-bold text-gray-700 cursor-pointer">
                                 <div className="flex items-center justify-between gap-1 w-full">
                                   <span>กระดาษฝอย {cell.category}</span>
                                   <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
@@ -1059,17 +1067,18 @@ function Booking2Inner() {
                           }
 
                           if (cell.type === 'foy_item') {
+                            const itemBg = FOY_ITEM_BG[cell.category] ?? '#fefce8'
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             return [
-                              <td key={`${si}-fin`} onClick={foyClick} className="border border-gray-300 px-1 py-px bg-yellow-50 text-gray-700 overflow-hidden cursor-pointer">
+                              <td key={`${si}-fin`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
                                 <span className="truncate block">{cell.model_name}</span>
                               </td>,
-                              <td key={`${si}-fip`} onClick={foyClick} className="border border-gray-300 px-1 py-px text-right bg-yellow-50 text-gray-400 cursor-pointer">
+                              <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer">
                               </td>,
-                              <td key={`${si}-fiq`} onClick={foyClick} className="border border-gray-300 px-1 py-px text-right bg-yellow-50 font-semibold text-gray-700 cursor-pointer">
+                              <td key={`${si}-fiq`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right font-semibold text-gray-700 cursor-pointer">
                                 {cell.qty}
                               </td>,
-                              <td key={`${si}-fit`} onClick={foyClick} className="border border-gray-300 px-1 py-px text-right bg-yellow-50 text-gray-700 cursor-pointer">
+                              <td key={`${si}-fit`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer">
                                 {fmt2(cell.amount)}
                               </td>,
                             ]
