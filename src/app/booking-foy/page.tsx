@@ -410,7 +410,7 @@ export default function BookingFoyPage() {
     <div className="min-h-screen bg-gray-100 print:bg-white">
       <style>{`
         @media print {
-          @page { size: A4 portrait; margin: 0; }
+          @page { size: A4 portrait; margin: 6mm; }
           html, body { margin: 0 !important; padding: 0 !important; }
           .no-print { display: none !important; }
 
@@ -420,22 +420,22 @@ export default function BookingFoyPage() {
             display: block !important;
           }
 
-          /* A4 portrait: 210×297mm, 4mm padding */
+          /* A4 portrait: 2 หน้า — ปล่อย content ไหลตามธรรมชาติ */
           .a4-frame {
-            width: 210mm !important;
-            height: 297mm !important;
+            width: 100% !important;
+            height: auto !important;
             min-height: unset !important;
-            padding: 4mm !important;
+            padding: 0 !important;
             margin: 0 !important;
             box-shadow: none !important;
-            overflow: hidden !important;
+            overflow: visible !important;
           }
 
           .a4-content {
-            zoom: ${PRINT_ZOOM} !important;
+            zoom: 0.82 !important;
           }
 
-          * { -webkit-print-color-adjust: economy !important; print-color-adjust: economy !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .a4-frame { filter: grayscale(100%) !important; }
         }
       `}</style>
