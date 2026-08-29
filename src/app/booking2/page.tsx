@@ -243,7 +243,6 @@ function Booking2Inner() {
   const [foyCategoryVis, setFoyCategoryVis] = useState<Record<string, boolean>>({})
   const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
   const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string }[]>([])
-  const [compactPrint, setCompactPrint]     = useState(false)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState<string>('')
@@ -691,7 +690,7 @@ function Booking2Inner() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className={`min-h-screen bg-gray-100 print:bg-white${compactPrint ? ' compact-mode' : ''}`}>
+    <div className="min-h-screen bg-gray-100 print:bg-white">
       <style>{`
         @media print {
           @page { size: A4 landscape; margin: 0; }
@@ -734,10 +733,10 @@ function Booking2Inner() {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
           /* Compact print: hide empty rows, shrink table */
-          .compact-mode .compact-hide { display: none !important; }
-          .compact-mode .a4-frame { height: auto !important; min-height: unset !important; }
-          .compact-mode .a4-content { height: auto !important; }
-          .compact-mode .a4-content table { height: auto !important; }
+          html.compact-mode .compact-hide { display: none !important; }
+          html.compact-mode .a4-frame { height: auto !important; min-height: unset !important; }
+          html.compact-mode .a4-content { height: auto !important; }
+          html.compact-mode .a4-content table { height: auto !important; }
         }
       `}</style>
 
@@ -772,7 +771,11 @@ function Booking2Inner() {
               🖨️ พิมพ์ทั้งหมด
             </button>
             <button
-              onClick={() => { setCompactPrint(true); setTimeout(() => { window.print(); setCompactPrint(false) }, 150) }}
+              onClick={() => {
+                document.documentElement.classList.add('compact-mode')
+                window.print()
+                document.documentElement.classList.remove('compact-mode')
+              }}
               className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
               🖨️ พิมพ์ย่อ
             </button>
