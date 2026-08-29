@@ -96,7 +96,7 @@ export default function BookingFoyPage() {
   const [editOrderNo, setEditOrderNo]         = useState<string | null>(null)
   const [originalItems, setOriginalItems]     = useState<Record<number, number>>({})
   const [zoom, setZoom]           = useState(1)
-  const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
+  const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState('')
   const [branchInfo, setBranchInfo]       = useState<{ name: string; phone: string } | null>(null)
@@ -163,7 +163,7 @@ export default function BookingFoyPage() {
     try {
       const st = localStorage.getItem('cf_source_type')
       const vt = localStorage.getItem('cf_vehicle_type')
-      if (st) setSourceType(st as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
+      if (st === 'โกดัง' || st === 'หน้าร้าน') setSourceType(st)
       if (vt) setVehicleType(vt as 'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน')
     } catch { /* ignore */ }
   }, [])
@@ -602,17 +602,14 @@ export default function BookingFoyPage() {
                     <select
                       value={sourceType}
                       onChange={e => {
-                        const val = e.target.value as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล'
+                        const val = e.target.value as 'โกดัง' | 'หน้าร้าน'
                         setSourceType(val)
-                        if ((val === 'โรงกล่อง' || val === 'โรงบับเบิล') && vehicleType !== 'รับเอง' && vehicleType !== 'รถโรงงาน') setVehicleType('')
                       }}
                       className={`w-full border-2 rounded font-bold text-[10px] px-0.5 bg-white focus:outline-none ${sourceType === '' ? 'border-red-400 text-red-500' : 'border-gray-400 text-gray-500'}`}
                     >
                       <option value="" disabled>— เลือก —</option>
                       <option value="โกดัง">โกดัง</option>
                       <option value="หน้าร้าน">หน้าร้าน</option>
-                      <option value="โรงกล่อง">โรงกล่อง</option>
-                      <option value="โรงบับเบิล">โรงบับเบิล</option>
                     </select>
                     {sourceType === '' && <div className="text-[7px] text-red-500 leading-none mt-0.5">กรุณาเลือก</div>}
                   </div>
