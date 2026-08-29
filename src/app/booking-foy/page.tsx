@@ -476,7 +476,7 @@ export default function BookingFoyPage() {
                   ? 'bg-red-500 hover:bg-red-400 text-white'
                   : 'bg-white/20 text-white border border-white/30 cursor-not-allowed'
             }`}>
-            {saving ? 'กำลังจอง...' : pendingCount > 0 ? `📦 จอง (${pendingCount} รายการ · ${pendingTotalQty} กก.)` : editFoyMode ? '🗑️ ยกเลิกกระดาษฝอย' : '📦 จอง'}
+            {saving ? 'กำลังจอง...' : pendingCount > 0 ? `จอง (${pendingCount} รายการ ${pendingTotalQty} กิโล)` : editFoyMode ? '🗑️ ยกเลิกกระดาษฝอย' : 'จอง'}
           </button>
 
           {/* ปุ่มพิมพ์ — admin only */}
