@@ -168,6 +168,8 @@ function injectFoyRows(
     const newRows: SectionRow[] = []
     let foyInjected = false
     for (const row of sec.rows) {
+      // Skip FOY subgroup header row (no gap before foy_cat rows)
+      if (row.type === 'subgroup' && FOY_SUBGROUP_NAMES.has(row.name)) continue
       if (row.type === 'product' && FOY_GROUP_NAMES.has(row.product.group_name)) {
         if (!foyInjected) {
           foyInjected = true
