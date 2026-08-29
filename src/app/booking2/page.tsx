@@ -243,6 +243,7 @@ function Booking2Inner() {
   const [foyCategoryVis, setFoyCategoryVis] = useState<Record<string, boolean>>({})
   const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
   const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string }[]>([])
+  const [compactPrint, setCompactPrint]     = useState(false)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState<string>('')
@@ -690,7 +691,7 @@ function Booking2Inner() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-100 print:bg-white">
+    <div className={`min-h-screen bg-gray-100 print:bg-white${compactPrint ? ' compact-mode' : ''}`}>
       <style>{`
         @media print {
           @page { size: A4 landscape; margin: 0; }
@@ -733,6 +734,12 @@ function Booking2Inner() {
 
           /* Ensure colors print correctly */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+          /* Compact print: hide empty rows, shrink table */
+          .compact-mode .compact-hide { display: none !important; }
+          .compact-mode .a4-frame { height: auto !important; min-height: unset !important; }
+          .compact-mode .a4-content { height: auto !important; }
+          .compact-mode .a4-content table { height: auto !important; }
         }
       `}</style>
 
@@ -760,11 +767,18 @@ function Booking2Inner() {
         </Link>
 
         {isAdmin && (
-          <button
-            onClick={() => window.print()}
-            className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
-            🖨️ พิมพ์
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.print()}
+              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
+              🖨️ พิมพ์ทั้งหมด
+            </button>
+            <button
+              onClick={() => { setCompactPrint(true); setTimeout(() => { window.print(); setCompactPrint(false) }, 150) }}
+              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
+              🖨️ พิมพ์ย่อ
+            </button>
+          </div>
         )}
 
         <div className="flex items-center gap-3">
@@ -892,8 +906,18 @@ function Booking2Inner() {
 
                   {/* Body */}
                   <tbody>
-                    {Array.from({ length: maxRows }, (_, rowIdx) => (
-                      <tr key={rowIdx} className="hover:bg-yellow-50/30 transition-colors">
+                    {Array.from({ length: maxRows }, (_, rowIdx) => {
+                      const rowHasOrder = sections.some(sec => {
+                        const cell = sec.rows[rowIdx]
+                        if (!cell) return false
+                        if (cell.type === 'subgroup') return true
+                        if (cell.type === 'foy_cat') return true
+                        if (cell.type === 'foy_item') return cell.qty > 0
+                        if (cell.type === 'product') return (pending[cell.product.id] ?? 0) > 0
+                        return false
+                      })
+                      return (
+                      <tr key={rowIdx} className={`hover:bg-yellow-50/30 transition-colors${!rowHasOrder ? ' compact-hide' : ''}`}>
                         <td className="border border-gray-300 text-center text-[9px] text-gray-400 py-0.5 select-none">
                           {rowIdx + 1}
                         </td>
@@ -1169,7 +1193,8 @@ function Booking2Inner() {
                           ]
                         })}
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
