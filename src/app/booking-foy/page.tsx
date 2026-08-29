@@ -325,6 +325,7 @@ export default function BookingFoyPage() {
   const displayTotal = manualTotal !== '' ? manualTotal : grandTotal.toFixed(2)
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const pendingCount = Object.values(pending).filter(q => q > 0).length
+  const pendingTotalQty = Object.values(pending).reduce((s, q) => s + (q > 0 ? q : 0), 0)
 
   // ── Model section renderer ─────────────────────────────────────────────────
 
@@ -475,7 +476,7 @@ export default function BookingFoyPage() {
                   ? 'bg-red-500 hover:bg-red-400 text-white'
                   : 'bg-white/20 text-white border border-white/30 cursor-not-allowed'
             }`}>
-            {saving ? 'กำลังจอง...' : pendingCount > 0 ? `📦 จอง (${pendingCount} รายการ)` : editFoyMode ? '🗑️ ยกเลิกกระดาษฝอย' : '📦 จอง'}
+            {saving ? 'กำลังจอง...' : pendingCount > 0 ? `📦 จอง (${pendingCount} รายการ · ${pendingTotalQty} กก.)` : editFoyMode ? '🗑️ ยกเลิกกระดาษฝอย' : '📦 จอง'}
           </button>
 
           {/* ปุ่มพิมพ์ — admin only */}
