@@ -609,7 +609,7 @@ export default function StockPage() {
 
                       {/* 12. จัดการ */}
                       <td className="px-2 py-1.5 text-center">
-                        <button onClick={() => handleDelete(item.id, item.model_name)}
+                        <button onClick={() => handleDelete(item.id, item.color_name || item.model_name)}
                           className="px-2 py-1 text-xs rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors">
                           ลบ
                         </button>
