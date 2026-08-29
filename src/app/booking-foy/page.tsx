@@ -642,18 +642,9 @@ export default function BookingFoyPage() {
                       className={`w-full border-2 rounded font-bold text-[10px] px-0.5 bg-white focus:outline-none ${vehicleType === '' ? 'border-red-400 text-red-500' : 'border-gray-400 text-gray-500'}`}
                     >
                       <option value="" disabled>— เลือก —</option>
-                      {(sourceType === 'โรงกล่อง' || sourceType === 'โรงบับเบิล') ? (
-                        <>
-                          <option value="รถโรงงาน">รถโรงงาน</option>
-                          <option value="รับเอง">รับเอง</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="จองรถ60000">เต็มคัน 25k</option>
-                          <option value="รอพ่วง">รอพ่วง</option>
-                          <option value="รับเอง">รับเอง</option>
-                        </>
-                      )}
+                      <option value="จองรถ60000">เต็มคัน 25k</option>
+                      <option value="รอพ่วง">รอพ่วง</option>
+                      <option value="รับเอง">รับเอง</option>
                     </select>
                     {vehicleType === '' && <div className="text-[7px] text-red-500 leading-none mt-0.5">กรุณาเลือก</div>}
                   </div>
