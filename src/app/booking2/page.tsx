@@ -747,9 +747,9 @@ function Booking2Inner() {
 
           /* Ensure colors print correctly */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          /* Force all content to grayscale, then override subgroup grays precisely */
-          .a4-frame { filter: grayscale(100%) !important; }
-          /* Subgroup header gray shades (rotate 3 levels) — applied before filter so result is correct gray */
+          /* Force all backgrounds to white except subgroup headers */
+          .a4-frame * { background-color: white !important; }
+          /* Subgroup header gray shades (rotate 3 levels) */
           .sg-gray-0 { background-color: #D7DBDD !important; color: black !important; }
           .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
           .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
