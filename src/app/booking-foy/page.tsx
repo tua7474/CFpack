@@ -31,10 +31,24 @@ interface CatGroup {
 const CATEGORIES_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
 
 const CATEGORY_BG: Record<string, string> = {
-  '2 มิล':   'bg-[#d4ccc4] text-gray-700',
-  '4 มิล':   'bg-[#c4bcac] text-gray-700',
-  '1.5 มิล': 'bg-[#C5D6BA] text-gray-700',
-  'ฝอยหยัก': 'bg-[#ece4d4] text-gray-700',
+  '2 มิล':   'bg-[#F1C40F] text-gray-700',
+  '4 มิล':   'bg-[#E67E22] text-gray-700',
+  '1.5 มิล': 'bg-[#E74C3C] text-gray-700',
+  'ฝอยหยัก': 'bg-[#9B59B6] text-gray-700',
+}
+
+const CATEGORY_MODEL_BG: Record<string, string> = {
+  '2 มิล':   '#F7DC6F',
+  '4 มิล':   '#F0B27A',
+  '1.5 มิล': '#F1948A',
+  'ฝอยหยัก': '#C39BD3',
+}
+
+const CATEGORY_ROW_BG: Record<string, string> = {
+  '2 มิล':   '#FCF3CF',
+  '4 มิล':   '#FAE5D3',
+  '1.5 มิล': '#FADBD8',
+  'ฝอยหยัก': '#FBDEF0',
 }
 
 // ── Layout constants (A4 portrait) ────────────────────────────────────────────
@@ -314,7 +328,9 @@ export default function BookingFoyPage() {
 
   // ── Model section renderer ─────────────────────────────────────────────────
 
-  const renderModelSection = (g: ModelGroup, ci: number, mi: number) => {
+  const renderModelSection = (g: ModelGroup, ci: number, mi: number, catName = '') => {
+    const modelHdr = CATEGORY_MODEL_BG[catName] ?? '#9b9484'
+    const rowBg    = CATEGORY_ROW_BG[catName]   ?? ''
     return (
     <div key={`c${ci}m${mi}`} className="mb-1.5">
       <table className="border-collapse" style={{ tableLayout: 'fixed', width: COL_W }}>
@@ -326,17 +342,17 @@ export default function BookingFoyPage() {
         </colgroup>
         <thead>
           {/* รุ่น header */}
-          <tr className="bg-[#9b9484] text-white">
-            <th colSpan={4} className="border border-gray-500 px-1 py-0.5 font-bold overflow-hidden text-[10px] text-left truncate">
+          <tr style={{ backgroundColor: modelHdr, color: 'rgb(55 65 81)' }}>
+            <th colSpan={4} className="border border-gray-400 px-1 py-0.5 font-bold overflow-hidden text-[10px] text-left truncate">
               {g.name}
             </th>
           </tr>
           {/* sub-column header */}
-          <tr className="bg-[#9b9484] text-white text-[9px]">
-            <th className="border border-gray-500 px-1 py-0.5 text-left font-medium">ชื่อสี</th>
-            <th className="border border-gray-500 px-1 py-0.5 text-right font-medium">ราคา</th>
-            <th className="border border-gray-500 px-1 py-0.5 text-right font-medium">จำนวน</th>
-            <th className="border border-gray-500 px-1 py-0.5 text-right font-medium">รวม</th>
+          <tr style={{ backgroundColor: modelHdr, color: 'rgb(55 65 81)' }} className="text-[9px]">
+            <th className="border border-gray-400 px-1 py-0.5 text-left font-medium">ชื่อสี</th>
+            <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">ราคา</th>
+            <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">จำนวน</th>
+            <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">รวม</th>
           </tr>
         </thead>
         <tbody>
@@ -346,7 +362,7 @@ export default function BookingFoyPage() {
             const total      = qty * price
             const hasPending = qty > 0
             return (
-              <tr key={item.id} className="hover:bg-yellow-50/30 transition-colors">
+              <tr key={item.id} style={rowBg ? { backgroundColor: rowBg } : undefined} className="hover:brightness-95 transition-all">
                 {/* ชื่อสี */}
                 <td className={`border border-gray-300 px-1 py-px bg-gray-100 overflow-hidden ${hasPending ? 'ring-1 ring-inset ring-yellow-400' : ''}`}>
                   <div className="flex items-start justify-between gap-0.5">
@@ -494,13 +510,13 @@ export default function BookingFoyPage() {
                 {(() => {
                   type Seg =
                     | { kind: 'cat'; name: string }
-                    | { kind: 'model'; group: ModelGroup; idx: number }
+                    | { kind: 'model'; group: ModelGroup; idx: number; catName: string }
 
                   const segments: Seg[] = []
                   catGroups.forEach(cg => {
                     segments.push({ kind: 'cat', name: cg.name })
                     cg.models.forEach((g, mi) => {
-                      segments.push({ kind: 'model', group: g, idx: mi })
+                      segments.push({ kind: 'model', group: g, idx: mi, catName: cg.name })
                     })
                   })
 
@@ -523,7 +539,7 @@ export default function BookingFoyPage() {
                                 </div>
                               )
                             }
-                            return renderModelSection(seg.group, ci, seg.idx)
+                            return renderModelSection(seg.group, ci, seg.idx, seg.catName)
                           })}
                         </div>
                       ))}
