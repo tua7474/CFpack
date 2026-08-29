@@ -753,6 +753,8 @@ function Booking2Inner() {
           .sg-gray-0 { background-color: #D7DBDD !important; color: black !important; }
           .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
           .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
+          /* Price and total columns — gray text */
+          .price-col { color: #787D7D !important; }
 
           /* Compact print: hide empty rows, shrink table */
           html.compact-mode .compact-hide { display: none !important; }
@@ -1141,12 +1143,12 @@ function Booking2Inner() {
                               <td key={`${si}-fin`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
                                 <span className="truncate block">{cell.model_name}</span>
                               </td>,
-                              <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer">
+                              <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer price-col">
                               </td>,
                               <td key={`${si}-fiq`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right font-semibold text-gray-700 cursor-pointer">
                                 {cell.qty}
                               </td>,
-                              <td key={`${si}-fit`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer">
+                              <td key={`${si}-fit`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer price-col">
                                 {fmt2(cell.amount)}
                               </td>,
                             ]
@@ -1191,7 +1193,7 @@ function Booking2Inner() {
                             </td>,
 
                             // ราคา/หน่วย
-                            <td key={`${si}-pp`} className={`border border-gray-300 px-1 py-px text-right ${nameBg}`}>
+                            <td key={`${si}-pp`} className={`border border-gray-300 px-1 py-px text-right price-col ${nameBg}`}>
                               {p.price ? price.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '–'}
                             </td>,
 
@@ -1211,7 +1213,7 @@ function Booking2Inner() {
                             </td>,
 
                             // รวม
-                            <td key={`${si}-pt`} className={`border border-gray-300 px-1 py-px text-right ${nameBg}`}>
+                            <td key={`${si}-pt`} className={`border border-gray-300 px-1 py-px text-right price-col ${nameBg}`}>
                               {total > 0 ? fmt2(total) : ''}
                             </td>,
                           ]
