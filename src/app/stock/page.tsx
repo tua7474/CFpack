@@ -25,11 +25,13 @@ interface StockItem {
 
 const CATEGORIES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
 
+const MODEL_ORDER = ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ครีเอท']
+
 const CATEGORY_MODELS: Record<string, string[]> = {
-  '2 มิล':   ['สีอ่อน', 'พิเศษ A', 'พิเศษ B', 'ปุยนุ่น', 'ครีเอท'],
-  '4 มิล':   ['สีอ่อน', 'พิเศษ A', 'พิเศษ B', 'ครีเอท'],
-  '1.5 มิล': ['สีอ่อน', 'พิเศษ A', 'พิเศษ B', 'ครีเอท'],
-  'ฝอยหยัก': ['สีอ่อน', 'พิเศษ A', 'พิเศษ B', 'ครีเอท'],
+  '2 มิล':   ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ปุยนุ่น', 'ครีเอท'],
+  '4 มิล':   ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ครีเอท'],
+  '1.5 มิล': ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ครีเอท'],
+  'ฝอยหยัก': ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ครีเอท'],
 }
 
 const CATEGORY_BG: Record<string, string> = {
@@ -468,7 +470,12 @@ export default function StockPage() {
                         <td className="px-2 py-1" />
                       </tr>,
                     ]
-                    for (const [modelName, modelItems] of byModel) {
+                    const orderedModels = [
+                      ...MODEL_ORDER.filter(m => byModel.has(m)),
+                      ...[...byModel.keys()].filter(m => !MODEL_ORDER.includes(m)),
+                    ]
+                    for (const modelName of orderedModels) {
+                      const modelItems = byModel.get(modelName)!
                       const modelShown = modelVis[modelName] !== false
                       catRows.push(
                         <tr key={`model-${cat}-${modelName}`} className="bg-gray-200">
