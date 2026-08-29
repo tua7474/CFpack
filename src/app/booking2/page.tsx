@@ -141,24 +141,42 @@ function buildSections(products: CatalogProduct[]): Section[] {
 // Replaces catalog กระดาษฝอย product rows with foy_cat/foy_item rows derived
 // from foyPending (keys = "category|model_name").
 
+const FOY_MODEL_ORDER = ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ครีเอท']
+
 function injectFoyRows(
   sections: Section[],
   foyPending: Record<string, { qty: number; amount: number }>,
   categoryVis: Record<string, boolean>,
-  modelVis: Record<string, boolean>
+  modelVis: Record<string, boolean>,
+  foyStockItems: { category: string; model_name: string }[]
 ): Section[] {
   // Group foyPending by category, filtered by visibility
-  const byCat = new Map<string, { model: string; qty: number; amount: number }[]>()
+  const byCat = new Map<string, Map<string, { qty: number; amount: number }>>()
   for (const [key, data] of Object.entries(foyPending)) {
     if (data.qty <= 0) continue
     const idx = key.indexOf('|')
-    if (idx === -1) continue  // legacy key — skip
+    if (idx === -1) continue
     const cat   = key.slice(0, idx)
     const model = key.slice(idx + 1)
     if (categoryVis[cat] === false) continue
     if (modelVis[model] === false) continue
-    if (!byCat.has(cat)) byCat.set(cat, [])
-    byCat.get(cat)!.push({ model, qty: data.qty, amount: data.amount })
+    if (!byCat.has(cat)) byCat.set(cat, new Map())
+    byCat.get(cat)!.set(model, data)
+  }
+
+  // Build all visible categories+models from stock items
+  const allCatModels = new Map<string, string[]>()
+  for (const cat of FOY_CATS_ORDER) {
+    if (categoryVis[cat] === false) continue
+    const models = foyStockItems
+      .filter(it => it.category === cat && modelVis[it.model_name] !== false)
+      .map(it => it.model_name)
+    const unique = [...new Set(models)]
+    const ordered = [
+      ...FOY_MODEL_ORDER.filter(m => unique.includes(m)),
+      ...unique.filter(m => !FOY_MODEL_ORDER.includes(m)),
+    ]
+    if (ordered.length > 0) allCatModels.set(cat, ordered)
   }
 
   return sections.map(sec => {
@@ -173,18 +191,16 @@ function injectFoyRows(
       if (row.type === 'product' && FOY_GROUP_NAMES.has(row.product.group_name)) {
         if (!foyInjected) {
           foyInjected = true
-          if (byCat.size > 0) {
-            for (const cat of FOY_CATS_ORDER) {
-              const its = byCat.get(cat)
-              if (!its?.length) continue
-              newRows.push({ type: 'foy_cat', category: cat })
-              for (const it of its) {
-                newRows.push({ type: 'foy_item', category: cat, model_name: it.model, qty: it.qty, amount: it.amount })
-              }
+          // Always inject all visible categories/models; show booked data if available
+          for (const [cat, models] of allCatModels) {
+            newRows.push({ type: 'foy_cat', category: cat })
+            for (const model of models) {
+              const data = byCat.get(cat)?.get(model)
+              newRows.push({ type: 'foy_item', category: cat, model_name: model, qty: data?.qty ?? 0, amount: data?.amount ?? 0 })
             }
           }
         }
-        continue  // always skip original catalog FOY rows
+        continue
       }
       newRows.push(row)
     }
@@ -226,6 +242,7 @@ function Booking2Inner() {
   const [foyItemPending, setFoyItemPending] = useState<Record<number, number>>({})
   const [foyCategoryVis, setFoyCategoryVis] = useState<Record<string, boolean>>({})
   const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
+  const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string }[]>([])
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState<string>('')
@@ -340,9 +357,10 @@ function Booking2Inner() {
   useEffect(() => {
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: { categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
+      .then((data: { items: { category: string; model_name: string }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
         setFoyCategoryVis(data.categoryVis ?? {})
         setFoyModelVis(data.modelVis ?? {})
+        setFoyStockItems(data.items ?? [])
       })
       .catch(() => {})
   }, [])
@@ -556,7 +574,7 @@ function Booking2Inner() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis)
+  const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
   const lastSec     = sections[sections.length - 1]
   const lastSecRows = lastSec?.rows.length ?? 0
   const maxRows     = sections.length
