@@ -754,7 +754,7 @@ function Booking2Inner() {
           .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
           .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
           /* Price and total columns — gray text */
-          .price-col { color: #787D7D !important; }
+          .price-col { color: #979A9A !important; }
 
           /* Compact print: hide empty rows, shrink table */
           html.compact-mode .compact-hide { display: none !important; }
