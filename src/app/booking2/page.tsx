@@ -575,6 +575,22 @@ function Booking2Inner() {
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
+
+  // Precompute print gray index for each subgroup (cycles through 0→1→2)
+  const subgroupPrintGray = new Map<string, number>()
+  let grayCounter = 0
+  for (const sec of sections) {
+    for (const row of sec.rows) {
+      if (row.type === 'subgroup' && !FOY_SUBGROUP_NAMES.has(row.name)) {
+        const key = `${sec.order}-${row.name}`
+        if (!subgroupPrintGray.has(key)) {
+          subgroupPrintGray.set(key, grayCounter % 3)
+          grayCounter++
+        }
+      }
+    }
+  }
+
   const lastSec     = sections[sections.length - 1]
   const lastSecRows = lastSec?.rows.length ?? 0
   const maxRows     = sections.length
@@ -732,6 +748,10 @@ function Booking2Inner() {
           /* Ensure colors print correctly */
           * { -webkit-print-color-adjust: economy !important; print-color-adjust: economy !important; }
           .a4-frame { filter: grayscale(100%) !important; }
+          /* Subgroup header gray shades (rotate 3 levels) */
+          .sg-gray-0 { background-color: #D7DBDD !important; color: black !important; }
+          .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
+          .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
 
           /* Compact print: hide empty rows, shrink table */
           html.compact-mode .compact-hide { display: none !important; }
@@ -1083,9 +1103,10 @@ function Booking2Inner() {
                               <td key={`${si}-sg`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />,
                             ]
                             const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
+                            const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             return [
                               <td key={`${si}-sg`} colSpan={4}
-                                className={`border px-2 py-px text-[11px] font-bold ${SUBGROUP_BG[cell.color]}`}>
+                                className={`border px-2 py-px text-[11px] font-bold ${SUBGROUP_BG[cell.color]} sg-gray-${sgGray}`}>
                                 <div className="flex items-center justify-between gap-1">
                                   <span>{cell.name}</span>
                                   {sgTotal > 0 && (
