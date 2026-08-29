@@ -490,31 +490,46 @@ export default function BookingFoyPage() {
                   ใบจองกระดาษฝอย
                 </div>
 
-                {/* ── Categories with 3-column model grid per category ── */}
-                {catGroups.map(cg => {
-                  const perCol = Math.ceil(cg.models.length / NUM_COLS)
-                  const cols: ModelGroup[][] = Array.from({ length: NUM_COLS }, (_, ci) =>
-                    cg.models.slice(ci * perCol, (ci + 1) * perCol)
+                {/* ── Global 3-column vertical layout ── */}
+                {(() => {
+                  type Seg =
+                    | { kind: 'cat'; name: string }
+                    | { kind: 'model'; group: ModelGroup; idx: number }
+
+                  const segments: Seg[] = []
+                  catGroups.forEach(cg => {
+                    segments.push({ kind: 'cat', name: cg.name })
+                    cg.models.forEach((g, mi) => {
+                      segments.push({ kind: 'model', group: g, idx: mi })
+                    })
+                  })
+
+                  const perCol = Math.ceil(segments.length / NUM_COLS)
+                  const cols: Seg[][] = Array.from({ length: NUM_COLS }, (_, ci) =>
+                    segments.slice(ci * perCol, (ci + 1) * perCol)
                   )
-                  const catCls = CATEGORY_BG[cg.name] ?? 'bg-gray-700 text-white'
+
                   return (
-                    <div key={cg.name} className="mb-2">
-                      {/* Category header */}
-                      <div className={`${catCls} px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-sm mb-1`}
-                        style={{ width: TOTAL_W }}>
-                        กระดาษฝอย {cg.name}
-                      </div>
-                      {/* Models in 3 columns */}
-                      <div className="flex" style={{ gap: COL_GAP, width: TOTAL_W }}>
-                        {cols.map((colGroups, ci) => (
-                          <div key={ci} style={{ width: COL_W, flexShrink: 0 }}>
-                            {colGroups.map((g, mi) => renderModelSection(g, ci, mi))}
-                          </div>
-                        ))}
-                      </div>
+                    <div className="flex" style={{ gap: COL_GAP, width: TOTAL_W }}>
+                      {cols.map((segs, ci) => (
+                        <div key={ci} style={{ width: COL_W, flexShrink: 0 }}>
+                          {segs.map((seg, si) => {
+                            if (seg.kind === 'cat') {
+                              const catCls = CATEGORY_BG[seg.name] ?? 'bg-gray-700 text-white'
+                              return (
+                                <div key={`cat-${seg.name}`}
+                                  className={`${catCls} px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-sm mb-1${si > 0 ? ' mt-2' : ''}`}>
+                                  กระดาษฝอย {seg.name}
+                                </div>
+                              )
+                            }
+                            return renderModelSection(seg.group, ci, seg.idx)
+                          })}
+                        </div>
+                      ))}
                     </div>
                   )
-                })}
+                })()}
 
                 {/* ── Info panel ── */}
                 <div className="flex gap-1 mt-2" style={{ width: TOTAL_W }}>
