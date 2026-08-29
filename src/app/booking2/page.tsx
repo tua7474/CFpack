@@ -749,10 +749,10 @@ function Booking2Inner() {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           /* Force all backgrounds to white except subgroup headers */
           .a4-frame * { background-color: white !important; }
-          /* Subgroup header gray shades (rotate 3 levels) */
-          .sg-gray-0 { background-color: #D7DBDD !important; color: black !important; }
-          .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
-          .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
+          /* Subgroup header gray shades — higher specificity (.a4-frame .sg-gray-N) to override .a4-frame * */
+          .a4-frame .sg-gray-0 { background-color: #D7DBDD !important; color: black !important; }
+          .a4-frame .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
+          .a4-frame .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
           /* Price and total columns — gray text */
           .price-col { color: #979A9A !important; }
 
