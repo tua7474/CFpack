@@ -730,7 +730,8 @@ function Booking2Inner() {
           .a4-content table { height: 100% !important; }
 
           /* Ensure colors print correctly */
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          * { -webkit-print-color-adjust: economy !important; print-color-adjust: economy !important; }
+          .a4-frame { filter: grayscale(100%) !important; }
 
           /* Compact print: hide empty rows, shrink table */
           html.compact-mode .compact-hide { display: none !important; }

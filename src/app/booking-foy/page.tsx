@@ -435,7 +435,8 @@ export default function BookingFoyPage() {
             zoom: ${PRINT_ZOOM} !important;
           }
 
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          * { -webkit-print-color-adjust: economy !important; print-color-adjust: economy !important; }
+          .a4-frame { filter: grayscale(100%) !important; }
         }
       `}</style>
 
