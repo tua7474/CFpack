@@ -488,20 +488,20 @@ export default function StockPage() {
                           <td colSpan={4} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
                             {modelName}
                           </td>
-                          {/* ราคาโกดัง */}
-                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-600 w-14">
+                          {/* ราคาโกดัง — ส้ม */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-orange-500 w-14">
                             {mWp > 0 ? fmtMoney(mWp) : ''}
                           </td>
-                          {/* ราคาลูกค้า */}
-                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-600 w-14">
+                          {/* ราคาลูกค้า — ดำ */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-800 w-14">
                             {mRp > 0 ? fmtMoney(mRp) : ''}
                           </td>
-                          {/* +9% */}
-                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-500 w-14">
+                          {/* +9% — เหลืองเข้ม */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-yellow-600 w-14">
                             {mP9 !== null ? fmtMoney(mP9) : ''}
                           </td>
-                          {/* +9%+7% */}
-                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-500 w-14">
+                          {/* +9%+7% — แดง */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-red-600 w-14">
                             {mP9p7 !== null ? fmtMoney(mP9p7) : ''}
                           </td>
                           <td className="px-2 py-0.5 text-center whitespace-nowrap">
