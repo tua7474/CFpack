@@ -477,10 +477,32 @@ export default function StockPage() {
                     for (const modelName of orderedModels) {
                       const modelItems = byModel.get(modelName)!
                       const modelShown = modelVis[modelName] !== false
+                      const fi = modelItems[0]
+                      const mWp   = fi ? (parseFloat(fi.warehouse_price) || 0) : 0
+                      const mRp   = fi ? (parseFloat(fi.retail_price) || 0) : 0
+                      const mP9   = mWp > 0 ? mWp * 1.09 : null
+                      const mP9p7 = mWp > 0 ? mWp * 1.09 * 1.07 : null
+                      const modelRowCls = cat === '2 มิล' ? 'bg-[#F7DC6F]' : cat === '4 มิล' ? 'bg-[#F0B27A]' : cat === '1.5 มิล' ? 'bg-[#F1948A]' : cat === 'ฝอยหยัก' ? 'bg-[#C39BD3]' : 'bg-gray-200'
                       catRows.push(
-                        <tr key={`model-${cat}-${modelName}`} className={cat === '2 มิล' ? 'bg-[#F7DC6F]' : cat === '4 มิล' ? 'bg-[#F0B27A]' : cat === '1.5 มิล' ? 'bg-[#F1948A]' : cat === 'ฝอยหยัก' ? 'bg-[#C39BD3]' : 'bg-gray-200'}>
-                          <td colSpan={8} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
+                        <tr key={`model-${cat}-${modelName}`} className={modelRowCls}>
+                          <td colSpan={4} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
                             {modelName}
+                          </td>
+                          {/* ราคาโกดัง */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-600 w-14">
+                            {mWp > 0 ? fmtMoney(mWp) : ''}
+                          </td>
+                          {/* ราคาลูกค้า */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-600 w-14">
+                            {mRp > 0 ? fmtMoney(mRp) : ''}
+                          </td>
+                          {/* +9% */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-500 w-14">
+                            {mP9 !== null ? fmtMoney(mP9) : ''}
+                          </td>
+                          {/* +9%+7% */}
+                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-500 w-14">
+                            {mP9p7 !== null ? fmtMoney(mP9p7) : ''}
                           </td>
                           <td className="px-2 py-0.5 text-center whitespace-nowrap">
                             <button
