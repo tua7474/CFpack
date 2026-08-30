@@ -860,29 +860,6 @@ function Booking2Inner() {
           📋 ประวัติใบจอง
         </Link>
 
-        {isAdmin && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => window.print()}
-              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
-              🖨️ พิมพ์ทั้งหมด
-            </button>
-            <button
-              onClick={() => {
-                document.documentElement.classList.add('compact-mode')
-                window.print()
-                document.documentElement.classList.remove('compact-mode')
-              }}
-              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
-              🖨️ พิมพ์ย่อ
-            </button>
-            <button
-              onClick={handleStockPrint}
-              className="px-3 py-1.5 text-sm rounded bg-blue-400/80 hover:bg-blue-400 text-white transition-colors border border-blue-300/50">
-              📦 พิมพ์สต็อค
-            </button>
-          </div>
-        )}
 
         <div className="flex items-center gap-3">
           {saveMsg && (
