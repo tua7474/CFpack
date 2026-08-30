@@ -242,7 +242,7 @@ function Booking2Inner() {
   const [foyItemPending, setFoyItemPending] = useState<Record<number, number>>({})
   const [foyCategoryVis, setFoyCategoryVis] = useState<Record<string, boolean>>({})
   const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
-  const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string; warehouse_price: string; retail_price: string }[]>([])
+  const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string; warehouse_price: string; retail_price: string; stock_qty: string }[]>([])
   const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
@@ -358,7 +358,7 @@ function Booking2Inner() {
   useEffect(() => {
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: { items: { category: string; model_name: string; warehouse_price: string; retail_price: string }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
+      .then((data: { items: { category: string; model_name: string; warehouse_price: string; retail_price: string; stock_qty: string }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
         setFoyCategoryVis(data.categoryVis ?? {})
         setFoyModelVis(data.modelVis ?? {})
         setFoyStockItems(data.items ?? [])
@@ -603,6 +603,12 @@ function Booking2Inner() {
     if (branchColorGroup === 'red')    return Math.round(wp * 1.09 * 1.07 * 100) / 100
     return wp  // orange or null → warehouse_price
   }
+
+  // สต็อครวมต่อรุ่น (ผลรวมทุกสี)
+  const getFoyModelStock = (category: string, modelName: string): number =>
+    foyStockItems
+      .filter(it => it.category === category && it.model_name === modelName)
+      .reduce((s, it) => s + (parseInt(it.stock_qty) || 0), 0)
 
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
@@ -1170,9 +1176,13 @@ function Booking2Inner() {
                             const itemBg = FOY_ITEM_BG[cell.category] ?? '#fefce8'
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             const foyPrice = getFoyModelPrice(cell.category, cell.model_name)
+                            const foyStock = getFoyModelStock(cell.category, cell.model_name)
                             return [
                               <td key={`${si}-fin`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
-                                <span className="truncate block">{cell.model_name}</span>
+                                <div className="flex items-center justify-between gap-0.5">
+                                  <span className="truncate">{cell.model_name}</span>
+                                  {foyStock > 0 && <span className="text-[8px] text-blue-400 font-semibold shrink-0 whitespace-nowrap">{foyStock.toLocaleString('th-TH')}</span>}
+                                </div>
                               </td>,
                               <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer price-col">
                                 {foyPrice > 0 ? foyPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : ''}
