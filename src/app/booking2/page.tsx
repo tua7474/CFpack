@@ -662,16 +662,6 @@ function Booking2Inner() {
     sectionTotals.set(sec.order, secTotal)
   }
   const foyTotal = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
-
-  // ยอดรวมกระดาษฝอยแยกตามหมวด (category)
-  const foyCatTotals = new Map<string, number>()
-  for (const [key, data] of Object.entries(foyPending)) {
-    if (data.qty <= 0) continue
-    const idx = key.indexOf('|')
-    if (idx === -1) continue
-    const cat = key.slice(0, idx)
-    foyCatTotals.set(cat, (foyCatTotals.get(cat) ?? 0) + data.amount)
-  }
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (grayTotal + orangeTotal + foyTotal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
 
@@ -1163,7 +1153,6 @@ function Booking2Inner() {
                           if (cell.type === 'foy_cat') {
                             const catBg = FOY_CAT_BG[cell.category] ?? '#e5e7eb'
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
-                            const catTotal = foyCatTotals.get(cell.category) ?? 0
                             return [
                               <td key={`${si}-fc`} colSpan={4}
                                 onClick={foyClick}
@@ -1171,12 +1160,7 @@ function Booking2Inner() {
                                 className="border px-2 py-px text-[10px] font-bold text-gray-700 cursor-pointer">
                                 <div className="flex items-center justify-between gap-1 w-full">
                                   <span>กระดาษฝอย {cell.category}</span>
-                                  <div className="flex items-center gap-1.5">
-                                    {catTotal > 0 && (
-                                      <span className="text-[9px] font-semibold text-blue-600 whitespace-nowrap">฿{fmt2(catTotal)}</span>
-                                    )}
-                                    <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
-                                  </div>
+                                  <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
                                 </div>
                               </td>,
                             ]
