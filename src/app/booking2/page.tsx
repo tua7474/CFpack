@@ -618,10 +618,17 @@ function Booking2Inner() {
     return fi ? (parseFloat(fi.warehouse_price) || 0) : 0
   }
 
-  // มูลค่าสต็อครวมทั้งหมด (สำหรับพิมพ์สต็อค)
+  // มูลค่าสต็อครวมทั้งหมด (สำหรับพิมพ์สต็อค) — catalog products + FOY
   const stockPrintTotal = (() => {
-    const seen = new Set<string>()
     let total = 0
+    // Catalog products
+    for (const p of products) {
+      const stockQty = parseFloat(p.stock_qty ?? '0') || 0
+      const price    = parseFloat(p.price ?? '0') || 0
+      total += stockQty * price
+    }
+    // FOY models
+    const seen = new Set<string>()
     for (const it of foyStockItems) {
       if (foyCategoryVis[it.category] === false) continue
       if (foyModelVis[it.model_name] === false) continue
@@ -1009,7 +1016,7 @@ function Booking2Inner() {
                         if (cell.type === 'subgroup') return true
                         if (cell.type === 'foy_cat') return true
                         if (cell.type === 'foy_item') return stockPrintMode ? getFoyModelStock(cell.category, cell.model_name) > 0 : cell.qty > 0
-                        if (cell.type === 'product') return (pending[cell.product.id] ?? 0) > 0
+                        if (cell.type === 'product') return stockPrintMode ? (parseFloat(cell.product.stock_qty ?? '0') || 0) > 0 : (pending[cell.product.id] ?? 0) > 0
                         return false
                       })
                       return (
@@ -1260,9 +1267,10 @@ function Booking2Inner() {
 
                           const { product: p } = cell
                           const price      = parseFloat(p.price ?? '0') || 0
-                          const qty        = pending[p.id] ?? 0
+                          const stockQty   = parseFloat(p.stock_qty ?? '0') || 0
+                          const qty        = stockPrintMode ? stockQty : (pending[p.id] ?? 0)
                           const total      = qty * price
-                          const hasPending = (pending[p.id] ?? 0) > 0
+                          const hasPending = stockPrintMode ? stockQty > 0 : (pending[p.id] ?? 0) > 0
 
                           if (FOY_GROUP_NAMES.has(p.group_name)) {
                             // Catalog FOY rows are replaced by foy_cat/foy_item via injectFoyRows.
@@ -1304,15 +1312,21 @@ function Booking2Inner() {
                             // จำนวน
                             <td key={`${si}-pq`} className={`border border-gray-300 p-0 ${qtyBg}`}>
                               {p.price && (
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
-                                  defaultValue={qty || ''}
-                                  key={`qty-${p.id}-${resetKey}`}
-                                  onChange={e => handleQtyChange(p.id, e.target.value)}
-                                  className={`w-full px-1 py-px text-[13px] text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400 ${hasPending ? 'font-semibold' : ''}`}
-                                />
+                                stockPrintMode ? (
+                                  <div className={`w-full px-1 py-px text-[13px] text-right ${qty > 0 ? 'font-semibold' : ''}`}>
+                                    {qty > 0 ? qty.toLocaleString('th-TH', { maximumFractionDigits: 2 }) : ''}
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    defaultValue={qty || ''}
+                                    key={`qty-${p.id}-${resetKey}`}
+                                    onChange={e => handleQtyChange(p.id, e.target.value)}
+                                    className={`w-full px-1 py-px text-[13px] text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400 ${hasPending ? 'font-semibold' : ''}`}
+                                  />
+                                )
                               )}
                             </td>,
 
