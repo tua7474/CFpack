@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useState, useEffect, useCallback, Suspense } from 'react'
+import { flushSync } from 'react-dom'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 
@@ -244,6 +245,7 @@ function Booking2Inner() {
   const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
   const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string; warehouse_price: string; retail_price: string; stock_qty: string }[]>([])
   const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
+  const [stockPrintMode, setStockPrintMode]     = useState(false)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState<string>('')
@@ -610,6 +612,34 @@ function Booking2Inner() {
       .filter(it => it.category === category && it.model_name === modelName)
       .reduce((s, it) => s + (parseInt(it.stock_qty) || 0), 0)
 
+  // ราคาโกดัง (ไม่ปรับตาม color group) สำหรับคำนวณมูลค่าสต็อค
+  const getFoyModelWp = (category: string, modelName: string): number => {
+    const fi = foyStockItems.find(it => it.category === category && it.model_name === modelName)
+    return fi ? (parseFloat(fi.warehouse_price) || 0) : 0
+  }
+
+  // มูลค่าสต็อครวมทั้งหมด (สำหรับพิมพ์สต็อค)
+  const stockPrintTotal = (() => {
+    const seen = new Set<string>()
+    let total = 0
+    for (const it of foyStockItems) {
+      if (foyCategoryVis[it.category] === false) continue
+      if (foyModelVis[it.model_name] === false) continue
+      const key = `${it.category}|${it.model_name}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        total += getFoyModelStock(it.category, it.model_name) * (parseFloat(it.warehouse_price) || 0)
+      }
+    }
+    return total
+  })()
+
+  const handleStockPrint = () => {
+    flushSync(() => setStockPrintMode(true))
+    window.print()
+    setStockPrintMode(false)
+  }
+
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
   // Precompute print gray index for each subgroup (cycles through 0→1→2)
@@ -839,6 +869,11 @@ function Booking2Inner() {
               className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
               🖨️ พิมพ์ย่อ
             </button>
+            <button
+              onClick={handleStockPrint}
+              className="px-3 py-1.5 text-sm rounded bg-blue-400/80 hover:bg-blue-400 text-white transition-colors border border-blue-300/50">
+              📦 พิมพ์สต็อค
+            </button>
           </div>
         )}
 
@@ -973,7 +1008,7 @@ function Booking2Inner() {
                         if (!cell) return false
                         if (cell.type === 'subgroup') return true
                         if (cell.type === 'foy_cat') return true
-                        if (cell.type === 'foy_item') return cell.qty > 0
+                        if (cell.type === 'foy_item') return stockPrintMode ? getFoyModelStock(cell.category, cell.model_name) > 0 : cell.qty > 0
                         if (cell.type === 'product') return (pending[cell.product.id] ?? 0) > 0
                         return false
                       })
@@ -989,7 +1024,9 @@ function Booking2Inner() {
                             const pr = rowIdx - panelStart
                             const base = 'border border-gray-300'
                             // pr 0-2: ผู้ส่ง | ผู้รับ — rowSpan=3
-                            if (pr === 0) return [
+                            if (pr === 0) return stockPrintMode ? [
+                              <td key={`${si}-ip0`} colSpan={4} rowSpan={3} className={`${base} bg-gray-50`} />,
+                            ] : [
                               <td key={`${si}-ip0`} colSpan={4} rowSpan={3} className={`${base} p-1 align-top`}>
                                 <div className="flex h-full text-[9px]">
                                   <div className="flex-1 border-r border-gray-300 pr-1">
@@ -1005,6 +1042,14 @@ function Booking2Inner() {
 
                             // pr 3-4: ยอดรวม — rowSpan=2, large editable
                             if (pr === 3) {
+                              if (stockPrintMode) return [
+                                <td key={`${si}-ip3`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-blue-50 align-middle`}>
+                                  <div className="flex flex-col items-center justify-center h-full px-1 py-0.5">
+                                    <div className="text-[8px] font-semibold text-blue-400 self-start">มูลค่าสต็อค (฿)</div>
+                                    <div className="w-full text-xl font-bold text-blue-500 text-right">{fmt2(stockPrintTotal)}</div>
+                                  </div>
+                                </td>,
+                              ]
                               const autoVal = grayTotal + orangeTotal + foyTotal
                               const displayVal = manualTotal !== '' ? manualTotal : autoVal.toFixed(2)
                               return [
@@ -1026,7 +1071,17 @@ function Booking2Inner() {
                             if (pr === 4) return []
 
                             // pr 5-7: วันที่ (left colSpan=2 rowSpan=3) + เบิกของ (right colSpan=2 rowSpan=3)
-                            if (pr === 5) return [
+                            if (pr === 5) return stockPrintMode ? [
+                              <td key={`${si}-ip5a`} colSpan={4} rowSpan={3}
+                                className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
+                                <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                  <div className="text-[7px] text-gray-400 leading-none">วันที่</div>
+                                  <div className="text-[20px] font-extrabold text-gray-500 leading-none text-center truncate w-full">
+                                    {today}
+                                  </div>
+                                </div>
+                              </td>,
+                            ] : [
                               <td key={`${si}-ip5a`} colSpan={2} rowSpan={3}
                                 className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
                                 <div className="flex flex-col items-center justify-center h-full gap-0.5">
@@ -1071,6 +1126,9 @@ function Booking2Inner() {
                             if (pr === 6 || pr === 7) return []
 
                             // pr 8-10: สาขา (left colSpan=2 rowSpan=3) + รถ (right colSpan=2 rowSpan=3)
+                            if (pr === 8 && stockPrintMode) return [
+                              <td key={`${si}-ip8s`} colSpan={4} rowSpan={3} className={`${base} bg-gray-50`} />,
+                            ]
                             if (pr === 8) return [
                               <td key={`${si}-ip8a`} colSpan={2} rowSpan={3}
                                 className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
@@ -1177,6 +1235,10 @@ function Booking2Inner() {
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             const foyPrice = getFoyModelPrice(cell.category, cell.model_name)
                             const foyStock = getFoyModelStock(cell.category, cell.model_name)
+                            const foyWp    = getFoyModelWp(cell.category, cell.model_name)
+                            const displayQty    = stockPrintMode ? foyStock : cell.qty
+                            const displayPrice  = stockPrintMode ? foyWp : foyPrice
+                            const displayAmount = stockPrintMode ? foyStock * foyWp : cell.amount
                             return [
                               <td key={`${si}-fin`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
                                 <div className="flex items-center justify-between gap-0.5">
@@ -1185,13 +1247,13 @@ function Booking2Inner() {
                                 </div>
                               </td>,
                               <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer price-col">
-                                {foyPrice > 0 ? foyPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : ''}
+                                {displayPrice > 0 ? displayPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : ''}
                               </td>,
                               <td key={`${si}-fiq`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right font-semibold text-gray-700 cursor-pointer">
-                                {cell.qty > 0 ? cell.qty : ''}
+                                {displayQty > 0 ? displayQty : ''}
                               </td>,
                               <td key={`${si}-fit`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer price-col">
-                                {fmt2(cell.amount)}
+                                {fmt2(displayAmount)}
                               </td>,
                             ]
                           }
