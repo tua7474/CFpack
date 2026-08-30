@@ -335,6 +335,7 @@ export default function BookingFoyPage() {
     // ราคาบนแถบรุ่น — คำนวณตาม branchColorGroup ของสาขา
     const firstItem    = g.items[0]
     const modelPrice   = firstItem ? getItemPrice(firstItem) : 0
+    const totalStock   = g.items.reduce((s, it) => s + (parseInt(it.stock_qty) || 0), 0)
     return (
     <div key={`c${ci}m${mi}`} className="mb-1.5">
       <table className="border-collapse" style={{ tableLayout: 'fixed', width: COL_W }}>
@@ -347,8 +348,13 @@ export default function BookingFoyPage() {
         <thead>
           {/* รุ่น header */}
           <tr style={{ backgroundColor: modelHdr, color: 'rgb(55 65 81)' }}>
-            <th colSpan={3} className="border border-gray-400 px-1 py-0.5 font-bold overflow-hidden text-[10px] text-left truncate">
-              {g.name}
+            <th colSpan={3} className="border border-gray-400 px-1 py-0.5 font-bold overflow-hidden text-[10px] text-left">
+              <div className="flex items-center gap-1">
+                <span className="truncate">{g.name}</span>
+                {totalStock > 0 && (
+                  <span className="text-[8px] font-semibold text-blue-300 whitespace-nowrap shrink-0">{totalStock.toLocaleString('th-TH')}</span>
+                )}
+              </div>
             </th>
             <th className="border border-gray-400 px-1 py-0.5 text-right text-[10px] font-bold whitespace-nowrap">
               {modelPrice > 0 ? fmt2(modelPrice) : ''}
