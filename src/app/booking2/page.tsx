@@ -242,7 +242,8 @@ function Booking2Inner() {
   const [foyItemPending, setFoyItemPending] = useState<Record<number, number>>({})
   const [foyCategoryVis, setFoyCategoryVis] = useState<Record<string, boolean>>({})
   const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
-  const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string }[]>([])
+  const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string; warehouse_price: string; retail_price: string }[]>([])
+  const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState<string>('')
@@ -353,16 +354,35 @@ function Booking2Inner() {
       .catch(() => setLoading(false))
   }, [])
 
-  // Fetch FOY visibility settings
+  // Fetch FOY visibility settings + prices
   useEffect(() => {
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: { items: { category: string; model_name: string }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
+      .then((data: { items: { category: string; model_name: string; warehouse_price: string; retail_price: string }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
         setFoyCategoryVis(data.categoryVis ?? {})
         setFoyModelVis(data.modelVis ?? {})
         setFoyStockItems(data.items ?? [])
       })
       .catch(() => {})
+  }, [])
+
+  // Load branchColorGroup from branch_session
+  useEffect(() => {
+    try {
+      const bs = localStorage.getItem('branch_session')
+      if (bs) {
+        const s = JSON.parse(bs)
+        if (s?.branch_id) {
+          fetch('/api/branches')
+            .then(r => r.json())
+            .then((branches: { id: number; color_group: string | null }[]) => {
+              const b = branches.find(br => br.id === s.branch_id)
+              if (b?.color_group) setBranchColorGroup(b.color_group as 'orange' | 'yellow' | 'red')
+            })
+            .catch(() => {})
+        }
+      }
+    } catch { /* ignore */ }
   }, [])
 
   // Load persisted source/vehicle from localStorage (new order only; edit mode uses order values)
@@ -573,6 +593,16 @@ function Booking2Inner() {
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────
+
+  // ราคากระดาษฝอยต่อรุ่น ตาม color group ของสาขา
+  const getFoyModelPrice = (category: string, modelName: string): number => {
+    const fi = foyStockItems.find(it => it.category === category && it.model_name === modelName)
+    if (!fi) return 0
+    const wp = parseFloat(fi.warehouse_price) || 0
+    if (branchColorGroup === 'yellow') return Math.round(wp * 1.09 * 100) / 100
+    if (branchColorGroup === 'red')    return Math.round(wp * 1.09 * 1.07 * 100) / 100
+    return wp  // orange or null → warehouse_price
+  }
 
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
@@ -1139,14 +1169,16 @@ function Booking2Inner() {
                           if (cell.type === 'foy_item') {
                             const itemBg = FOY_ITEM_BG[cell.category] ?? '#fefce8'
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
+                            const foyPrice = getFoyModelPrice(cell.category, cell.model_name)
                             return [
                               <td key={`${si}-fin`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
                                 <span className="truncate block">{cell.model_name}</span>
                               </td>,
                               <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer price-col">
+                                {foyPrice > 0 ? foyPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : ''}
                               </td>,
                               <td key={`${si}-fiq`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right font-semibold text-gray-700 cursor-pointer">
-                                {cell.qty}
+                                {cell.qty > 0 ? cell.qty : ''}
                               </td>,
                               <td key={`${si}-fit`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer price-col">
                                 {fmt2(cell.amount)}
