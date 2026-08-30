@@ -63,7 +63,7 @@ function fmtDate(iso: string | null): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', warehouse_price: '', retail_price: '', category: '' }
+const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', category: '' }
 
 export default function StockPage() {
   const [items, setItems]               = useState<StockItem[]>([])
@@ -72,10 +72,11 @@ export default function StockPage() {
   const [loading, setLoading]           = useState(true)
   const [modelOptions, setModelOptions] = useState<string[]>([])
   const [newRow, setNewRow]             = useState(EMPTY_NEW)
-  const [addInputs, setAddInputs]       = useState<Record<number, string>>({})
-  const [bookInputs, setBookInputs]     = useState<Record<number, string>>({})
-  const [rowEdits, setRowEdits]         = useState<Record<number, Partial<StockItem>>>({})
-  const [busy, setBusy]                 = useState<Record<number | string, boolean>>({})
+  const [addInputs, setAddInputs]         = useState<Record<number, string>>({})
+  const [bookInputs, setBookInputs]       = useState<Record<number, string>>({})
+  const [rowEdits, setRowEdits]           = useState<Record<number, Partial<StockItem>>>({})
+  const [modelPriceEdits, setModelPriceEdits] = useState<Record<string, { warehouse_price?: string; retail_price?: string }>>({})
+  const [busy, setBusy]                   = useState<Record<number | string, boolean>>({})
   const [msg, setMsg]                   = useState<string | null>(null)
   const [now, setNow]                   = useState<Date | null>(null)
 
@@ -131,19 +132,48 @@ export default function StockPage() {
       showMsg('❌ ชื่อรุ่น + ชื่อสี ซ้ำกับที่มีอยู่แล้ว (ในหมวดเดียวกัน)')
       return
     }
+    // Inherit prices from existing items in the same category + model
+    const sibling = items.find(it => it.category === newRow.category && it.model_name === newRow.model_name)
+    const warehouse_price = sibling ? (parseFloat(sibling.warehouse_price) || 0) : 0
+    const retail_price    = sibling ? (parseFloat(sibling.retail_price) || 0) : 0
     setBusy(b => ({ ...b, new: true }))
     const res = await fetch('/api/stock', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...newRow,
-        warehouse_price: parseFloat(newRow.warehouse_price) || 0,
-        retail_price:    parseFloat(newRow.retail_price)    || 0,
-        category: newRow.category,
+        model_name: newRow.model_name,
+        color_code: newRow.color_code,
+        color_name: newRow.color_name,
+        category:   newRow.category,
+        warehouse_price,
+        retail_price,
       }),
     })
     setBusy(b => ({ ...b, new: false }))
     if (res.ok) { setNewRow(EMPTY_NEW); load(); showMsg('เพิ่มรุ่นสำเร็จ') }
+  }
+
+  // ── Save model-level price (updates all items in the model) ─────────────────
+
+  const handleSaveModelPrice = async (cat: string, modelName: string, modelItems: StockItem[]) => {
+    const key = `${cat}__${modelName}`
+    const edits = modelPriceEdits[key]
+    if (!edits || Object.keys(edits).length === 0) return
+    setBusy(b => ({ ...b, [`model-${key}`]: true }))
+    await Promise.all(modelItems.map(item => {
+      const payload: Record<string, unknown> = { id: item.id }
+      if (edits.warehouse_price !== undefined) payload.warehouse_price = parseFloat(edits.warehouse_price) || 0
+      if (edits.retail_price    !== undefined) payload.retail_price    = parseFloat(edits.retail_price) || 0
+      return fetch('/api/stock', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+    }))
+    setBusy(b => ({ ...b, [`model-${key}`]: false }))
+    setModelPriceEdits(p => { const n = { ...p }; delete n[key]; return n })
+    load()
+    showMsg(`อัพเดทราคา ${modelName} (${modelItems.length} รายการ) สำเร็จ`)
   }
 
   // ── Stock operations (add / book) ────────────────────────────────────────────
@@ -394,12 +424,6 @@ export default function StockPage() {
                   <option key={n} value={n} />
                 ))}
               </datalist>
-              <input type="text" inputMode="numeric" placeholder="ราคาโกดัง" value={newRow.warehouse_price}
-                onChange={e => setNewRow(p => ({ ...p, warehouse_price: e.target.value }))}
-                className="w-24 px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
-              <input type="text" inputMode="numeric" placeholder="ราคาลูกค้า" value={newRow.retail_price}
-                onChange={e => setNewRow(p => ({ ...p, retail_price: e.target.value }))}
-                className="w-24 px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
               <button onClick={handleAddRow} disabled={!!busy.new || addDup}
                 className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors disabled:opacity-50 whitespace-nowrap">
                 + เพิ่ม
@@ -483,26 +507,45 @@ export default function StockPage() {
                       const mP9   = mWp > 0 ? mWp * 1.09 : null
                       const mP9p7 = mWp > 0 ? mWp * 1.09 * 1.07 : null
                       const modelRowCls = cat === '2 มิล' ? 'bg-[#F7DC6F]' : cat === '4 มิล' ? 'bg-[#F0B27A]' : cat === '1.5 มิล' ? 'bg-[#F1948A]' : cat === 'ฝอยหยัก' ? 'bg-[#C39BD3]' : 'bg-gray-200'
+                      const mKey = `${cat}__${modelName}`
+                      const mpedit = modelPriceEdits[mKey]
+                      const mWpDisplay = mpedit?.warehouse_price ?? (mWp > 0 ? String(mWp) : '')
+                      const mRpDisplay = mpedit?.retail_price    ?? (mRp > 0 ? String(mRp) : '')
+                      const mHasPending = !!(mpedit && Object.keys(mpedit).length > 0)
+                      // Recompute preview prices from edited value
+                      const mWpPreview = mpedit?.warehouse_price !== undefined ? (parseFloat(mpedit.warehouse_price) || 0) : mWp
+                      const mP9preview   = mWpPreview > 0 ? mWpPreview * 1.09 : null
+                      const mP9p7preview = mWpPreview > 0 ? mWpPreview * 1.09 * 1.07 : null
                       catRows.push(
                         <tr key={`model-${cat}-${modelName}`} className={modelRowCls}>
                           <td colSpan={4} className="px-4 py-0.5 text-[11px] font-semibold text-gray-600 tracking-wide">
                             {modelName}
                           </td>
-                          {/* ราคาโกดัง — ส้ม */}
-                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-orange-500 w-14">
-                            {mWp > 0 ? fmtMoney(mWp) : ''}
+                          {/* ราคาโกดัง — editable ส้ม */}
+                          <td className="px-1 py-0.5 w-14">
+                            <input
+                              type="text" inputMode="numeric"
+                              value={mWpDisplay}
+                              onChange={e => setModelPriceEdits(p => ({ ...p, [mKey]: { ...p[mKey], warehouse_price: e.target.value } }))}
+                              className={`w-full px-1 py-0.5 text-[11px] rounded border text-right font-semibold text-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-400 ${mpedit?.warehouse_price !== undefined ? 'border-orange-400 bg-orange-50' : 'border-transparent bg-transparent'}`}
+                            />
                           </td>
-                          {/* ราคาลูกค้า — ดำ */}
-                          <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-gray-800 w-14">
-                            {mRp > 0 ? fmtMoney(mRp) : ''}
+                          {/* ราคาลูกค้า — editable ดำ */}
+                          <td className="px-1 py-0.5 w-14">
+                            <input
+                              type="text" inputMode="numeric"
+                              value={mRpDisplay}
+                              onChange={e => setModelPriceEdits(p => ({ ...p, [mKey]: { ...p[mKey], retail_price: e.target.value } }))}
+                              className={`w-full px-1 py-0.5 text-[11px] rounded border text-right font-semibold text-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400 ${mpedit?.retail_price !== undefined ? 'border-gray-400 bg-gray-50' : 'border-transparent bg-transparent'}`}
+                            />
                           </td>
-                          {/* +9% — เหลืองเข้ม */}
+                          {/* +9% — เหลืองเข้ม (preview) */}
                           <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-yellow-600 w-14">
-                            {mP9 !== null ? fmtMoney(mP9) : ''}
+                            {mP9preview !== null ? fmtMoney(mP9preview) : ''}
                           </td>
-                          {/* +9%+7% — แดง */}
+                          {/* +9%+7% — แดง (preview) */}
                           <td className="px-2 py-0.5 text-right text-[11px] font-semibold text-red-600 w-14">
-                            {mP9p7 !== null ? fmtMoney(mP9p7) : ''}
+                            {mP9p7preview !== null ? fmtMoney(mP9p7preview) : ''}
                           </td>
                           <td className="px-2 py-0.5 text-center whitespace-nowrap">
                             <button
@@ -511,7 +554,16 @@ export default function StockPage() {
                               {modelShown ? '● โชว์' : '● ซ่อน'}
                             </button>
                           </td>
-                          <td className="px-2 py-0.5" />
+                          <td className="px-2 py-0.5 text-center">
+                            {mHasPending && (
+                              <button
+                                onClick={() => handleSaveModelPrice(cat, modelName, modelItems)}
+                                disabled={!!busy[`model-${mKey}`]}
+                                className="px-2 py-0.5 text-[10px] rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold whitespace-nowrap disabled:opacity-50">
+                                {busy[`model-${mKey}`] ? '...' : '💾'}
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       )
                       for (const item of modelItems) {
