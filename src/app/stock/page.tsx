@@ -379,6 +379,10 @@ export default function StockPage() {
             className="px-4 py-1.5 text-sm rounded bg-white hover:bg-gray-100 text-green-400 font-semibold transition-colors border border-white/50 whitespace-nowrap">
             🖨️ พิมพ์
           </button>
+          <Link href="/catalog"
+            className="px-4 py-1.5 text-sm rounded bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold transition-colors">
+            🗂️ Catalog
+          </Link>
           <Link href="/booking-foy"
             className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors">
             📋 ใบจองกระดาษฝอย
