@@ -53,8 +53,8 @@ const SUBGROUP_COLOR: Record<string, SubgroupColor> = {
   '5-1': 'gray',   '5-2': 'gray',   '5-3': 'gray',   '5-4': 'light',  '5-5': 'teal',
   '5-6': 'gray',   '5-7': 'gray',   '5-8': 'orange', '5-9': 'teal',
   // S6 — AIRBAG แผ่น/เมตร, MINI AIR BAG ม้วนเปล่า, MINI AIR เครื่องเป่า, กระดาษพิมพ์สลิป, ปากกาเขียน PP, สติกเกอร์ระวังแตก, เครื่อง/สติกเกอร์/เคส
-  '6-1': 'gray',   '6-2': 'orange', '6-3': 'orange', '6-4': 'orange', '6-5': 'gray',
-  '6-6': 'orange', '6-7': 'orange',
+  '6-1': 'gray',   '6-2': 'orange', '6-3': 'orange', '6-4': 'orange', '6-5': 'orange',
+  '6-6': 'gray',   '6-7': 'orange', '6-8': 'orange',
 }
 
 const SUBGROUP_BG: Record<SubgroupColor, string> = {

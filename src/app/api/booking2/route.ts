@@ -40,7 +40,7 @@ const GROUP_MAP: Record<string, SectionInfo> = {
   'เทปThankYou':                  { section_order: 4, section_name: 'บับเบิล',         is_vat_included: false, subgroup_order: 9,  subgroup_name: 'เทป Thank You' },
   'ถุงหิ้วบริการ':                 { section_order: 4, section_name: 'บับเบิล',         is_vat_included: false, subgroup_order: 10, subgroup_name: 'ถุงหิ้วบริการ' },
   'ลาเบล 10x15':                  { section_order: 4, section_name: 'บับเบิล',         is_vat_included: false, subgroup_order: 11, subgroup_name: 'ลาเบล 10x15' },
-  'สติกเกอร์ระวังแตกม้วน':        { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 6,  subgroup_name: 'สติกเกอร์ระวังแตก' },
+  'สติกเกอร์ระวังแตกม้วน':        { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 7,  subgroup_name: 'สติกเกอร์ระวังแตก' },
   // S5 — ถุงแก้วฝากาว 60M/100P, ถุงซิปรูด, ซองใสปะหน้า, กระบอก, ฝาปิดกระบอก, สายรัด PP, กระดาษห่อ, เชือก, เบิกฟรี
   'ถุงแก้วฝากาว 60M/100P':        { section_order: 5, section_name: 'เบ็ดเตล็ด',       is_vat_included: false, subgroup_order: 1,  subgroup_name: 'ถุงแก้วฝากาว 60M/100P' },
   'ถุงซิปรูด':                    { section_order: 5, section_name: 'เบ็ดเตล็ด',       is_vat_included: false, subgroup_order: 2,  subgroup_name: 'ถุงซิปรูด' },
@@ -51,13 +51,14 @@ const GROUP_MAP: Record<string, SectionInfo> = {
   'กระดาษห่อ':                    { section_order: 5, section_name: 'เบ็ดเตล็ด',       is_vat_included: false, subgroup_order: 7,  subgroup_name: 'กระดาษห่อ' },
   'เชือก':                        { section_order: 5, section_name: 'เบ็ดเตล็ด',       is_vat_included: false, subgroup_order: 8,  subgroup_name: 'เชือก' },
   'เบิกฟรี':                      { section_order: 5, section_name: 'เบ็ดเตล็ด',       is_vat_included: false, subgroup_order: 9,  subgroup_name: 'เบิกฟรี' },
-  'เครื่อง/สติกเกอร์/เคส':        { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 7,  subgroup_name: 'เครื่อง/สติกเกอร์/เคส' },
-  // S6 — AIRBAG แผ่น/เมตร, MINI AIR BAG ม้วนเปล่า, MINI AIR, กระดาษพิมพ์สลิป, ปากกาเขียน PP
+  'เครื่อง/สติกเกอร์/เคส':        { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 8,  subgroup_name: 'เครื่อง/สติกเกอร์/เคส' },
+  // S6 — AIRBAG แผ่น/เมตร, MINI AIR BAG ม้วนเปล่า, AIRLOCK, MINI AIR, กระดาษพิมพ์สลิป, ปากกาเขียน PP
   'ซองกันกระแทก':                 { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 1,  subgroup_name: 'ซองกันกระแทก' },
   'MINI AIR BAG ม้วนเปล่า':       { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 2,  subgroup_name: 'MINI AIR BAG ม้วนเปล่า' },
-  'MINI AIR เครื่องเป่า':         { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 3,  subgroup_name: 'MINI AIR เครื่องเป่า' },
-  'กระดาษพิมพ์สลิป':              { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 4,  subgroup_name: 'กระดาษพิมพ์สลิป' },
-  'ปากกาเขียน PP':                { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 5,  subgroup_name: 'ปากกาเขียน PP' },
+  'AIRLOCK':                       { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 3,  subgroup_name: 'AIRLOCK' },
+  'MINI AIR เครื่องเป่า':         { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 4,  subgroup_name: 'MINI AIR เครื่องเป่า' },
+  'กระดาษพิมพ์สลิป':              { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 5,  subgroup_name: 'กระดาษพิมพ์สลิป' },
+  'ปากกาเขียน PP':                { section_order: 6, section_name: 'ซองกันกระแทก',   is_vat_included: false, subgroup_order: 6,  subgroup_name: 'ปากกาเขียน PP' },
 }
 
 export async function GET() {
