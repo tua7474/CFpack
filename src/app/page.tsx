@@ -3,6 +3,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
+// ── Known booking2 group names (for datalist autocomplete) ────────────────────
+const BOOKING2_GROUPS = [
+  'กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่องเอกสาร', 'กล่อง 5 ชั้น',
+  'ถุงใส่กระดาษฝอย',
+  'ซอง PP', 'ซองเมทาลิค', 'ซอง PP สี', 'ซองน้ำตาล', 'ซองขยายข้าง', 'ซองจ่าหน้า',
+  'ซองบับเบิล', 'ซองPPกันกระแทก', 'ฟิล์มยืด',
+  'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g', 'โฟมบาง 2 มิล', 'ตัวตัดเทป',
+  'เทปOPPแกนดำ', 'เทประวังแตก', 'เทปOPPแกนส้ม', 'เทปThankYou', 'ถุงหิ้วบริการ', 'ลาเบล 10x15',
+  'ถุงแก้วฝากาว 60M/100P', 'ถุงซิปรูด', 'ซองใสปะหน้า', 'กระบอก', 'ฝาปิดกระบอก',
+  'สายรัด PP', 'กระดาษห่อ', 'เชือก', 'เบิกฟรี',
+  'ซองกันกระแทก', 'MINI AIR BAG ม้วนเปล่า', 'AIRLOCK', 'MINI AIR เครื่องเป่า',
+  'กระดาษพิมพ์สลิป', 'ปากกาเขียน PP', 'สติกเกอร์ระวังแตกม้วน', 'เครื่อง/สติกเกอร์/เคส',
+]
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Product {
@@ -325,7 +339,10 @@ export default function Home() {
                 {/* ── Add new product row (sticky) ── */}
                 <tr className="bg-blue-50 border-b-2 border-blue-300">
                   <td className="px-2 py-1.5 border-r border-gray-200">
-                    <input type="text" placeholder="หมวดสินค้า" value={newRow.group_name}
+                    <datalist id="group-suggestions">
+                      {BOOKING2_GROUPS.map(g => <option key={g} value={g} />)}
+                    </datalist>
+                    <input type="text" list="group-suggestions" placeholder="หมวดสินค้า" value={newRow.group_name}
                       onChange={e => setNewRow(p => ({ ...p, group_name: e.target.value }))}
                       className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   </td>

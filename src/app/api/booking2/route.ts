@@ -63,10 +63,15 @@ const GROUP_MAP: Record<string, SectionInfo> = {
 
 export async function GET() {
   try {
-    // One-time migration: rename old group key to match current GROUP_MAP
+    // One-time migrations: rename old group keys to match current GROUP_MAP
     await pool.query(
       `UPDATE products_catalog SET group_name = 'เบิกฟรี', updated_at = NOW()
        WHERE group_name = 'เบิกของ ฟรี'`
+    )
+    await pool.query(
+      `UPDATE products_catalog SET group_name = 'AIRLOCK', updated_at = NOW()
+       WHERE REPLACE(LOWER(group_name), ' ', '') = 'airlock'
+         AND group_name != 'AIRLOCK'`
     )
 
     const groupNames = Object.keys(GROUP_MAP)
