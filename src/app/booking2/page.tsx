@@ -126,6 +126,10 @@ function buildSections(products: CatalogProduct[]): Section[] {
       })
     }
     const sec = map.get(p.section_order)!
+    // Section 1 (กล่อง) has no subgroup — prepend its section name as first subgroup header
+    if (p.section_order === 1 && sec.rows.length === 0) {
+      sec.rows.push({ type: 'subgroup', name: p.section_name, color: 'gray' })
+    }
     if (p.subgroup_order > 0) {
       const prev = [...sec.rows].reverse().find(r => r.type === 'subgroup') as { type: 'subgroup'; name: string; color: SubgroupColor } | undefined
       if (!prev || prev.name !== p.subgroup_name) {
@@ -970,19 +974,6 @@ function Booking2Inner() {
                       <col key={`${sec.order}-ct`} style={{ width: COL_TOTAL }} />,
                     ])}
                   </colgroup>
-
-                  {/* Header — section names */}
-                  <thead>
-                    <tr>
-                      <th className="border border-gray-300 bg-[#9b9484]" />
-                      {sections.flatMap(sec => (
-                        <th key={sec.order} colSpan={4}
-                          className="border border-gray-300 bg-[#9b9484] text-white text-center text-[11px] font-bold py-0.5 px-1">
-                          {sec.name}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
 
                   {/* Body */}
                   <tbody>
