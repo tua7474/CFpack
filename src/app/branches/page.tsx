@@ -14,31 +14,34 @@ const GREEN_BRANCHES  = ['โกดัง', 'โกดังCF']
 const YELLOW_BRANCHES = ['ท่าฉลอม', 'หนองแขม', 'ไทรม้า', 'อ้อมน้อย', 'นครชัยศรี', 'ศรีนครินทร์']
 const RED_BRANCHES    = ['สนามบินน้ำ', 'ตลาดรังสิต']
 
-type ColorGroup = 'green' | 'yellow' | 'red' | 'orange'
+type ColorGroup = 'black' | 'green' | 'yellow' | 'red' | 'orange'
 
 function getBranchColor(name: string, colorGroup?: string | null): ColorGroup {
-  if (colorGroup === 'yellow' || colorGroup === 'red' || colorGroup === 'orange') return colorGroup
+  if (colorGroup === 'black' || colorGroup === 'yellow' || colorGroup === 'red' || colorGroup === 'orange') return colorGroup
   if (GREEN_BRANCHES.some(n => name.includes(n)))  return 'green'
   if (YELLOW_BRANCHES.some(n => name.includes(n))) return 'yellow'
   if (RED_BRANCHES.some(n => name.includes(n)))    return 'red'
   return 'orange'
 }
 
-const GROUP_ORDER: ColorGroup[] = ['green', 'yellow', 'red', 'orange']
+const GROUP_ORDER: ColorGroup[] = ['black', 'green', 'yellow', 'red', 'orange']
 
 const ROW_BG: Record<ColorGroup, string> = {
+  black:  'bg-gray-900   hover:bg-gray-800',
   green:  'bg-green-50   hover:bg-green-100/70',
   yellow: 'bg-yellow-50  hover:bg-yellow-100/70',
   red:    'bg-red-50     hover:bg-red-100/70',
   orange: 'bg-orange-50  hover:bg-orange-100/70',
 }
 const GROUP_HEADER_BG: Record<ColorGroup, string> = {
+  black:  'bg-black      text-white',
   green:  'bg-green-200  text-green-400',
   yellow: 'bg-yellow-200 text-yellow-900',
   red:    'bg-red-200    text-red-900',
   orange: 'bg-orange-200 text-orange-900',
 }
 const GROUP_LABEL: Record<ColorGroup, string> = {
+  black:  'กลุ่มแอดมิน',
   green:  'โกดังCF',
   yellow: 'กลุ่มสีเหลือง',
   red:    'กลุ่มสีแดง',
@@ -46,7 +49,7 @@ const GROUP_LABEL: Record<ColorGroup, string> = {
 }
 
 function sortAndGroup(branches: Branch[]): { color: ColorGroup; items: Branch[] }[] {
-  const grouped: Record<ColorGroup, Branch[]> = { green: [], yellow: [], red: [], orange: [] }
+  const grouped: Record<ColorGroup, Branch[]> = { black: [], green: [], yellow: [], red: [], orange: [] }
   for (const b of branches) {
     grouped[getBranchColor(b.name, b.color_group)].push(b)
   }
@@ -187,22 +190,22 @@ function BranchRow({
     <tr className={`${ROW_BG[colorGroup]} align-top border-b border-gray-200 transition-colors`}>
 
       {/* 1. ชื่อสาขา */}
-      <td className="px-3 py-2 border-r border-gray-200 font-semibold text-green-400 whitespace-nowrap">
+      <td className={`px-3 py-2 border-r border-gray-600 font-semibold whitespace-nowrap ${colorGroup === 'black' ? 'text-white border-gray-600' : 'text-green-400 border-gray-200'}`}>
         <div>{branch.name}</div>
         {session?.is_admin && (
           <button onClick={() => onManage(branch)}
-            className="mt-1 text-[10px] text-gray-400 hover:text-green-400 underline">
+            className={`mt-1 text-[10px] underline ${colorGroup === 'black' ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-green-400'}`}>
             จัดการ
           </button>
         )}
       </td>
 
       {/* 2. เบอร์โทร */}
-      <td className="px-3 py-2 border-r border-gray-200">
+      <td className={`px-3 py-2 border-r ${colorGroup === 'black' ? 'border-gray-600 text-gray-300' : 'border-gray-200 text-gray-700'}`}>
         {branch.phones.map(p => (
           <div key={p.id} className="text-xs whitespace-nowrap">
             {p.phone}
-            {p.is_admin && <span className="ml-1 text-[10px] text-green-400">(admin)</span>}
+            {p.is_admin && <span className={`ml-1 text-[10px] ${colorGroup === 'black' ? 'text-yellow-400' : 'text-green-400'}`}>(admin)</span>}
           </div>
         ))}
       </td>
@@ -457,7 +460,7 @@ export default function BranchesPage() {
   const [manageBranch, setManageBranch] = useState<Branch | null>(null)
   const [showAddBranch, setShowAddBranch] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
-  const [newBranchColor, setNewBranchColor] = useState<'yellow' | 'red' | 'orange'>('orange')
+  const [newBranchColor, setNewBranchColor] = useState<'black' | 'yellow' | 'red' | 'orange'>('orange')
 
   // Load session from localStorage
   useEffect(() => {
@@ -573,8 +576,13 @@ export default function BranchesPage() {
               placeholder="ชื่อสาขา" className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400 mb-3" />
             <div className="mb-3">
               <div className="text-xs text-gray-500 mb-1.5">กลุ่มสี</div>
-              <div className="flex gap-2">
-                {([['yellow', 'สีเหลือง', 'bg-yellow-200 text-yellow-900'], ['red', 'สีแดง', 'bg-red-200 text-red-900'], ['orange', 'สีส้ม', 'bg-orange-200 text-orange-900']] as const).map(([val, label, cls]) => (
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  ['black',  'แอดมิน',   'bg-black text-white'],
+                  ['yellow', 'สีเหลือง', 'bg-yellow-200 text-yellow-900'],
+                  ['red',    'สีแดง',    'bg-red-200 text-red-900'],
+                  ['orange', 'สีส้ม',    'bg-orange-200 text-orange-900'],
+                ] as const).map(([val, label, cls]) => (
                   <button key={val} type="button"
                     onClick={() => setNewBranchColor(val)}
                     className={`flex-1 py-1.5 text-xs rounded font-semibold border-2 transition-colors ${newBranchColor === val ? `${cls} border-current` : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>
