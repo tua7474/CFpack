@@ -93,7 +93,7 @@ const COL_QTY   = 44
 const COL_TOTAL = 62
 const ROW_NUM_W = 24
 const TABLE_W        = ROW_NUM_W + 6 * (COL_NAME + COL_PRICE + COL_QTY + COL_TOTAL)
-const INFO_PANEL_ROWS = 11  // 3 sig + 2 total + 3 date/source + 3 branch/vehicle
+const INFO_PANEL_ROWS = 12  // 3 sig + 1 coupon + 2 total + 3 date/source + 3 branch/vehicle
 
 // ── A4 landscape dimensions ───────────────────────────────────────────────────
 // 1 CSS mm = 96/25.4 px (CSS reference pixel)
@@ -252,7 +252,8 @@ function Booking2Inner() {
   const [stockPrintMode, setStockPrintMode]     = useState(false)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
-  const [manualTotal, setManualTotal] = useState<string>('')
+  const [manualTotal, setManualTotal]   = useState<string>('')
+  const [couponAmount, setCouponAmount] = useState<string>('')
   const [branchInfo, setBranchInfo] = useState<{ name: string; phone: string } | null>(null)
   const [isAdmin, setIsAdmin]       = useState(true)   // false = non-admin branch (LINE group)
   const [branchReady, setBranchReady] = useState<boolean | null>(null) // null=loading, false=ไม่มีสาขา, true=เข้าได้
@@ -709,7 +710,8 @@ function Booking2Inner() {
     sectionTotals.set(sec.order, secTotal)
   }
   const foyTotal = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
-  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (grayTotal + orangeTotal + foyTotal)
+  const couponVal       = parseFloat(couponAmount) || 0
+  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (grayTotal + orangeTotal + foyTotal - couponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
 
   const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น'])
@@ -1015,20 +1017,38 @@ function Booking2Inner() {
                             ]
                             if (pr === 1 || pr === 2) return []
 
-                            // pr 3-4: ยอดรวม — rowSpan=2, large editable
-                            if (pr === 3) {
+                            // pr 3: คูปองส่วนลด — rowSpan=1, red
+                            if (pr === 3) return [
+                              <td key={`${si}-ipc`} colSpan={4} className={`${base} p-0.5 bg-red-50 align-middle`}>
+                                <div className="flex items-center gap-1 px-0.5">
+                                  <div className="text-[8px] font-semibold text-red-500 whitespace-nowrap shrink-0">คูปองส่วนลด (฿)</div>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={couponAmount}
+                                    onChange={e => { setCouponAmount(e.target.value); setManualTotal('') }}
+                                    placeholder="0"
+                                    className="flex-1 min-w-0 text-sm font-bold text-red-600 text-right bg-transparent focus:outline-none border-b border-red-300 focus:border-red-500"
+                                  />
+                                </div>
+                              </td>,
+                            ]
+
+                            // pr 4-5: ยอดรวม — rowSpan=2, large editable
+                            if (pr === 4) {
                               if (stockPrintMode) return [
-                                <td key={`${si}-ip3`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-blue-50 align-middle`}>
+                                <td key={`${si}-ip4`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-blue-50 align-middle`}>
                                   <div className="flex flex-col items-center justify-center h-full px-1 py-0.5">
                                     <div className="text-[8px] font-semibold text-blue-400 self-start">มูลค่าสต็อค (฿)</div>
                                     <div className="w-full text-xl font-bold text-blue-500 text-right">{fmt2(stockPrintTotal)}</div>
                                   </div>
                                 </td>,
                               ]
-                              const autoVal = grayTotal + orangeTotal + foyTotal
+                              const autoVal = grayTotal + orangeTotal + foyTotal - couponVal
                               const displayVal = manualTotal !== '' ? manualTotal : autoVal.toFixed(2)
                               return [
-                                <td key={`${si}-ip3`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-green-50 align-middle`}>
+                                <td key={`${si}-ip4`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-green-50 align-middle`}>
                                   <div className="flex flex-col items-center justify-center h-full px-1 py-0.5">
                                     <div className="text-[8px] font-semibold text-gray-500 self-start">ยอดเงินรวม (฿)</div>
                                     <input
@@ -1043,11 +1063,11 @@ function Booking2Inner() {
                                 </td>,
                               ]
                             }
-                            if (pr === 4) return []
+                            if (pr === 5) return []
 
-                            // pr 5-7: วันที่ (left colSpan=2 rowSpan=3) + เบิกของ (right colSpan=2 rowSpan=3)
-                            if (pr === 5) return stockPrintMode ? [
-                              <td key={`${si}-ip5a`} colSpan={4} rowSpan={3}
+                            // pr 6-8: วันที่ (left colSpan=2 rowSpan=3) + เบิกของ (right colSpan=2 rowSpan=3)
+                            if (pr === 6) return stockPrintMode ? [
+                              <td key={`${si}-ip6a`} colSpan={4} rowSpan={3}
                                 className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
                                 <div className="flex flex-col items-center justify-center h-full gap-0.5">
                                   <div className="text-[7px] text-gray-400 leading-none">วันที่</div>
@@ -1098,13 +1118,13 @@ function Booking2Inner() {
                                 </div>
                               </td>,
                             ]
-                            if (pr === 6 || pr === 7) return []
+                            if (pr === 7 || pr === 8) return []
 
-                            // pr 8-10: สาขา (left colSpan=2 rowSpan=3) + รถ (right colSpan=2 rowSpan=3)
-                            if (pr === 8 && stockPrintMode) return [
-                              <td key={`${si}-ip8s`} colSpan={4} rowSpan={3} className={`${base} bg-gray-50`} />,
+                            // pr 9-11: สาขา (left colSpan=2 rowSpan=3) + รถ (right colSpan=2 rowSpan=3)
+                            if (pr === 9 && stockPrintMode) return [
+                              <td key={`${si}-ip9s`} colSpan={4} rowSpan={3} className={`${base} bg-gray-50`} />,
                             ]
-                            if (pr === 8) return [
+                            if (pr === 9) return [
                               <td key={`${si}-ip8a`} colSpan={2} rowSpan={3}
                                 className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
                                 {branchInfo ? (
@@ -1156,7 +1176,7 @@ function Booking2Inner() {
                                 </div>
                               </td>,
                             ]
-                            if (pr === 9 || pr === 10) return []
+                            if (pr === 10 || pr === 11) return []
                             return [<td key={`${si}-ipx`} colSpan={4} className="border border-gray-200 bg-gray-50" />]
                           }
 
