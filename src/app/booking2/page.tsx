@@ -1005,12 +1005,12 @@ function Booking2Inner() {
                               <td key={`${si}-ip0`} colSpan={4} rowSpan={3} className={`${base} bg-gray-50`} />,
                             ] : [
                               <td key={`${si}-ip0`} colSpan={4} rowSpan={3} className={`${base} p-1 align-top`}>
-                                <div className="flex h-full text-[9px]">
+                                <div className="flex h-full">
                                   <div className="flex-1 border-r border-gray-300 pr-1">
-                                    <div className="font-semibold text-gray-500 mb-0.5">ผู้ส่งสินค้า</div>
+                                    <div className="text-[11px] font-extrabold text-gray-500 mb-0.5">ผู้ส่งสินค้า</div>
                                   </div>
                                   <div className="flex-1 pl-1">
-                                    <div className="font-semibold text-gray-500 mb-0.5">ผู้รับสินค้า</div>
+                                    <div className="text-[11px] font-extrabold text-gray-500 mb-0.5">ผู้รับสินค้า</div>
                                   </div>
                                 </div>
                               </td>,
@@ -1051,14 +1051,14 @@ function Booking2Inner() {
                               return [
                                 <td key={`${si}-ip4`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-green-50 align-middle`}>
                                   <div className="flex flex-col items-center justify-center h-full px-1 py-0.5">
-                                    <div className="text-[8px] font-semibold text-gray-500 self-start">ยอดเงินรวม (฿)</div>
+                                    <div className="text-[11px] font-extrabold text-gray-500 self-start">ยอดเงินรวม (฿)</div>
                                     <input
                                       type="number"
                                       step="0.01"
                                       max="999999.99"
                                       value={displayVal}
                                       onChange={e => setManualTotal(e.target.value)}
-                                      className="w-full text-xl font-bold text-green-400 text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                                      className="w-full text-2xl font-extrabold text-green-500 text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
                                     />
                                   </div>
                                 </td>,
@@ -1130,8 +1130,8 @@ function Booking2Inner() {
                                 className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
                                 {branchInfo ? (
                                   <div className="flex flex-col justify-center h-full gap-0.5">
-                                    <div className="text-[7px] text-gray-400 leading-none">สาขา/ตัวแทน</div>
-                                    <div className="text-[16px] font-extrabold text-gray-500 leading-tight truncate">
+                                    <div className="text-[11px] font-extrabold text-gray-500 leading-none">สาขา/ตัวแทน</div>
+                                    <div className="text-2xl font-extrabold text-gray-500 leading-tight truncate">
                                       {branchInfo.name}
                                     </div>
                                     <div className="text-[8px] text-gray-500 leading-none truncate">{branchInfo.phone}</div>
