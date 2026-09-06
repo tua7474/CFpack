@@ -1021,7 +1021,7 @@ function Booking2Inner() {
                             if (pr === 3) return [
                               <td key={`${si}-ipc`} colSpan={4} rowSpan={2} className={`${base} p-1 bg-red-100 align-middle`}>
                                 <div className="flex flex-col items-center justify-center h-full gap-0 px-1">
-                                  <div className="text-[11px] font-extrabold text-red-600 self-start whitespace-nowrap leading-none mb-0.5">คูปองส่วนลด (฿)</div>
+                                  <div className="text-[10px] font-extrabold text-red-600 self-start whitespace-nowrap leading-none mb-0.5">คูปองส่วนลด (฿)</div>
                                   <input
                                     type="number"
                                     step="0.01"
@@ -1029,7 +1029,7 @@ function Booking2Inner() {
                                     value={couponAmount}
                                     onChange={e => { setCouponAmount(e.target.value); setManualTotal('') }}
                                     placeholder="0"
-                                    className="w-full text-2xl font-extrabold text-red-600 text-right bg-transparent focus:outline-none border-b-2 border-red-300 focus:border-red-500 placeholder-red-300 leading-none"
+                                    className="w-full text-xl font-extrabold text-red-600 text-right bg-transparent focus:outline-none border-b-2 border-red-300 focus:border-red-500 placeholder-red-300 leading-none"
                                   />
                                 </div>
                               </td>,
