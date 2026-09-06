@@ -1020,8 +1020,8 @@ function Booking2Inner() {
                             // pr 3-4: คูปองส่วนลด — rowSpan=2, light red
                             if (pr === 3) return [
                               <td key={`${si}-ipc`} colSpan={4} rowSpan={2} className={`${base} p-1 bg-red-100 align-middle`}>
-                                <div className="flex flex-col items-center justify-center h-full gap-0.5 px-1">
-                                  <div className="text-[11px] font-extrabold text-red-600 self-start whitespace-nowrap">คูปองส่วนลด (฿)</div>
+                                <div className="flex flex-col items-center justify-center h-full gap-0 px-1">
+                                  <div className="text-[11px] font-extrabold text-red-600 self-start whitespace-nowrap leading-none mb-0.5">คูปองส่วนลด (฿)</div>
                                   <input
                                     type="number"
                                     step="0.01"
@@ -1029,7 +1029,7 @@ function Booking2Inner() {
                                     value={couponAmount}
                                     onChange={e => { setCouponAmount(e.target.value); setManualTotal('') }}
                                     placeholder="0"
-                                    className="w-full text-2xl font-extrabold text-red-600 text-right bg-transparent focus:outline-none border-b-2 border-red-300 focus:border-red-500 placeholder-red-300"
+                                    className="w-full text-2xl font-extrabold text-red-600 text-right bg-transparent focus:outline-none border-b-2 border-red-300 focus:border-red-500 placeholder-red-300 leading-none"
                                   />
                                 </div>
                               </td>,
@@ -1050,15 +1050,15 @@ function Booking2Inner() {
                               const displayVal = manualTotal !== '' ? manualTotal : autoVal.toFixed(2)
                               return [
                                 <td key={`${si}-ip4`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-green-50 align-middle`}>
-                                  <div className="flex flex-col items-center justify-center h-full px-1 py-0.5">
-                                    <div className="text-[11px] font-extrabold text-gray-500 self-start">ยอดเงินรวม (฿)</div>
+                                  <div className="flex flex-col items-center justify-center h-full px-1 py-0">
+                                    <div className="text-[11px] font-extrabold text-gray-500 self-start leading-none mb-0.5">ยอดเงินรวม (฿)</div>
                                     <input
                                       type="number"
                                       step="0.01"
                                       max="999999.99"
                                       value={displayVal}
                                       onChange={e => setManualTotal(e.target.value)}
-                                      className="w-full text-2xl font-extrabold text-green-500 text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                                      className="w-full text-2xl font-extrabold text-green-500 text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-gray-400 rounded leading-none"
                                     />
                                   </div>
                                 </td>,
