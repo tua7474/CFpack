@@ -826,16 +826,17 @@ function Booking2Inner() {
           /* Table itself: stretch rows to fill */
           .a4-content table { height: 100% !important; }
 
-          /* Ensure colors print correctly */
+          /* Black & white print */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .a4-frame { filter: grayscale(100%) !important; }
           /* Force all backgrounds to white except subgroup headers */
-          .a4-frame * { background-color: white !important; }
-          /* Subgroup header gray shades — higher specificity (.a4-frame .sg-gray-N) to override .a4-frame * */
+          .a4-frame * { background-color: white !important; color: black !important; }
+          /* Subgroup header gray shades */
           .a4-frame .sg-gray-0 { background-color: #D7DBDD !important; color: black !important; }
           .a4-frame .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
           .a4-frame .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
-          /* Price and total columns — gray text */
-          .price-col { color: #979A9A !important; }
+          /* Price and total columns */
+          .price-col { color: #666 !important; }
 
           /* Compact print: hide empty rows, shrink table */
           html.compact-mode .compact-hide { display: none !important; }
@@ -867,6 +868,13 @@ function Booking2Inner() {
           className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
           📋 ประวัติใบจอง
         </Link>
+
+        <button
+          onClick={() => window.print()}
+          className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
+        >
+          🖨️ พิมพ์
+        </button>
 
 
         <div className="flex items-center gap-3">
