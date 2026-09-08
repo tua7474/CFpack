@@ -294,9 +294,11 @@ function Booking2Inner() {
         if (bs) {
           const s = JSON.parse(bs)
           if (s?.branch_name) {
+            // Check page access: admin/manager = full access; others must have 'booking2' in allowed_pages
+            const hasAccess = s?.is_admin || s?.is_manager || (s?.allowed_pages ?? []).includes('booking2')
             setBranchInfo({ name: s.branch_name, phone: s.phone ?? '' })
             setIsAdmin(s?.is_admin !== false)
-            setBranchReady(true)
+            setBranchReady(hasAccess ? true : false)
           } else {
             setBranchReady(false)
           }

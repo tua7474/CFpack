@@ -79,7 +79,17 @@ export default function StockPage() {
   const [busy, setBusy]                   = useState<Record<number | string, boolean>>({})
   const [msg, setMsg]                   = useState<string | null>(null)
   const [now, setNow]                   = useState<Date | null>(null)
+  const [pageAllowed, setPageAllowed]   = useState<boolean | null>(null)
 
+  // Check page access via branch_session
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('branch_session') ?? 'null')
+      if (!s) { setPageAllowed(true); return }  // no session = public/admin mode
+      if (s.is_admin || s.is_manager) { setPageAllowed(true); return }
+      setPageAllowed((s.allowed_pages ?? []).includes('stock-paper'))
+    } catch { setPageAllowed(true) }
+  }, [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -351,6 +361,14 @@ export default function StockPage() {
     const pr  = parseFloat(it.warehouse_price)
     return sum + (isNaN(qty) || isNaN(pr) ? 0 : qty * pr)
   }, 0)
+
+  if (pageAllowed === false) return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 gap-4 text-center px-6">
+      <div className="text-5xl select-none">🔒</div>
+      <div className="text-lg font-bold text-gray-500">ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
+      <div className="text-sm text-gray-400">กรุณาติดต่อผู้ดูแลระบบ</div>
+    </div>
+  )
 
   return (
     <>

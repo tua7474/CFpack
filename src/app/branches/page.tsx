@@ -3,9 +3,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
+// ── Page access config — เพิ่มหน้าใหม่ที่นี่เพื่อให้ขึ้น UI อัตโนมัติ ────────
+
+export const PAGE_LIST = [
+  { key: 'booking2',    label: 'ใบจองสินค้า' },
+  { key: 'stock',       label: 'สต็อคสินค้า' },
+  { key: 'stock-paper', label: 'สต็อคกระดาษฝอย' },
+] as const
+
+export type PageKey = typeof PAGE_LIST[number]['key']
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface BranchPhone { id: number; phone: string; is_admin: boolean; line_user_id: string | null }
+interface BranchPhone { id: number; phone: string; is_admin: boolean; is_manager: boolean; allowed_pages: string[]; line_user_id: string | null }
 interface Branch { id: number; name: string; color_group: string | null; phones: BranchPhone[]; pending_count: number }
 
 // ── Color groups ──────────────────────────────────────────────────────────────
@@ -69,7 +79,8 @@ interface BranchOrder {
   status: string; payment_status: string; created_at: string; updated_at: string
 }
 interface BranchSession {
-  branch_id: number; branch_name: string; phone: string; is_admin: boolean
+  branch_id: number; branch_name: string; phone: string
+  is_admin: boolean; is_manager: boolean; allowed_pages: string[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -209,6 +220,12 @@ function BranchRow({
           <div key={p.id} className="text-xs whitespace-nowrap">
             {p.phone}
             {p.is_admin && <span className={`ml-1 text-[10px] ${colorGroup === 'black' ? 'text-yellow-400' : 'text-green-400'}`}>(admin)</span>}
+            {!p.is_admin && p.is_manager && <span className={`ml-1 text-[10px] ${colorGroup === 'black' ? 'text-blue-300' : 'text-blue-500'}`}>(ผู้จัดการ)</span>}
+            {!p.is_admin && !p.is_manager && p.allowed_pages.length > 0 && (
+              <span className="ml-1 text-[9px] text-gray-400">
+                [{p.allowed_pages.map(k => PAGE_LIST.find(pg => pg.key === k)?.label ?? k).join(', ')}]
+              </span>
+            )}
           </div>
         ))}
       </td>
@@ -236,13 +253,13 @@ function BranchRow({
               รอชำระเงิน
             </span>
             {payMsg && <div className="text-xs text-green-400">{payMsg}</div>}
-            {session?.is_admin && !showOtp && (
+            {(session?.is_admin || session?.is_manager) && !showOtp && (
               <button onClick={() => { setShowOtp(true); setOtpSent(false); setOtpCode(''); setOtpError('') }}
                 className="block text-xs px-2 py-1 rounded bg-[#9b9484] hover:bg-[#9b9484] text-white mt-1 whitespace-nowrap">
                 ✓ ชำระเงินแล้ว
               </button>
             )}
-            {session?.is_admin && showOtp && (
+            {(session?.is_admin || session?.is_manager) && showOtp && (
               <div className="mt-1 space-y-1">
                 {!otpSent ? (
                   <button onClick={handleSendOtp}
@@ -342,6 +359,8 @@ function BranchRow({
 function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; onClose: () => void; onSaved: () => void; onDeleted: (id: number) => void }) {
   const [newPhone, setNewPhone] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isManager, setIsManager] = useState(false)
+  const [allowedPages, setAllowedPages] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -361,9 +380,9 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
     await fetch('/api/branches', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add_phone', branch_id: branch.id, phone: p, is_admin: isAdmin }),
+      body: JSON.stringify({ action: 'add_phone', branch_id: branch.id, phone: p, is_admin: isAdmin, is_manager: isManager, allowed_pages: allowedPages }),
     })
-    setNewPhone(''); setIsAdmin(false); setSaving(false)
+    setNewPhone(''); setIsAdmin(false); setIsManager(false); setAllowedPages([]); setSaving(false)
     onSaved()
   }
 
@@ -390,6 +409,7 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
               <div className="text-sm">
                 {p.phone}
                 {p.is_admin && <span className="ml-1 text-[10px] text-green-400 font-medium">(admin)</span>}
+                {!p.is_admin && p.is_manager && <span className="ml-1 text-[10px] text-blue-500 font-medium">(ผู้จัดการ)</span>}
                 {p.line_user_id && <span className="ml-1 text-[10px] text-green-400">✓LINE</span>}
               </div>
               <button onClick={() => removePhone(p.id)}
@@ -405,10 +425,34 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
             placeholder="0812345678" type="text" inputMode="numeric"
             className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400" />
           <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)}
+            <input type="checkbox" checked={isAdmin} onChange={e => { setIsAdmin(e.target.checked); if (e.target.checked) setIsManager(false) }}
               className="rounded" />
             เป็น Admin (กดชำระเงินได้)
           </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={isManager} onChange={e => { setIsManager(e.target.checked); if (e.target.checked) setIsAdmin(false) }}
+              className="rounded" />
+            เป็นผู้จัดการ (กดชำระเงินได้)
+          </label>
+          {/* หน้าที่เข้าถึงได้ — driven by PAGE_LIST */}
+          <div className="border-t border-gray-100 pt-2">
+            <div className="text-xs text-gray-500 mb-1.5">หน้าที่เข้าถึงได้</div>
+            <div className="space-y-1">
+              {PAGE_LIST.map(pg => (
+                <label key={pg.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowedPages.includes(pg.key)}
+                    onChange={e => setAllowedPages(prev =>
+                      e.target.checked ? [...prev, pg.key] : prev.filter(k => k !== pg.key)
+                    )}
+                    className="rounded"
+                  />
+                  {pg.label}
+                </label>
+              ))}
+            </div>
+          </div>
           <button onClick={addPhone} disabled={saving}
             className="w-full py-1.5 text-sm rounded bg-[#9b9484] hover:bg-[#9b9484] text-white font-medium disabled:opacity-50">
             + เพิ่มเบอร์
@@ -494,7 +538,7 @@ export default function BranchesPage() {
     setLoginLoading(false)
     if (!res.ok) { setLoginError('ไม่พบเบอร์โทรนี้ในระบบ กรุณาติดต่อผู้ดูแล'); return }
     const data = await res.json()
-    const s: BranchSession = { branch_id: data.branch_id, branch_name: data.branch_name, phone: clean, is_admin: data.is_admin }
+    const s: BranchSession = { branch_id: data.branch_id, branch_name: data.branch_name, phone: clean, is_admin: data.is_admin, is_manager: data.is_manager ?? false, allowed_pages: data.allowed_pages ?? [] }
     localStorage.setItem('branch_session', JSON.stringify(s))
     setSession(s)
   }
@@ -516,8 +560,8 @@ export default function BranchesPage() {
     loadBranches()
   }
 
-  // Filter branches: non-admin sees only their branch
-  const visibleBranches = session?.is_admin
+  // Filter branches: admin + manager see all; others see only their branch
+  const visibleBranches = (session?.is_admin || session?.is_manager)
     ? branches
     : branches.filter(b => b.id === session?.branch_id)
 

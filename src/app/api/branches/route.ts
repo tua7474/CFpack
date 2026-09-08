@@ -22,6 +22,8 @@ export async function ensureTables() {
       UNIQUE(phone)
     )
   `)
+  await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS is_manager BOOLEAN NOT NULL DEFAULT FALSE`)
+  await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS allowed_pages TEXT[] NOT NULL DEFAULT '{}'`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS branch_otps (
       id         SERIAL PRIMARY KEY,
@@ -52,7 +54,7 @@ export async function GET() {
   try {
     await ensureTables()
     const { rows: branches } = await pool.query(`SELECT id, name, color_group, created_at FROM branches ORDER BY name`)
-    const { rows: phones }   = await pool.query(`SELECT id, branch_id, phone, is_admin, line_user_id FROM branch_phones ORDER BY branch_id, id`)
+    const { rows: phones }   = await pool.query(`SELECT id, branch_id, phone, is_admin, is_manager, allowed_pages, line_user_id FROM branch_phones ORDER BY branch_id, id`)
     const { rows: counts }   = await pool.query(`
       SELECT branch_id, COUNT(*)::int AS pending_count
       FROM booking_orders
@@ -99,13 +101,13 @@ export async function PATCH(req: NextRequest) {
 
     // Add phone to branch
     if (body.action === 'add_phone') {
-      const { branch_id, phone, is_admin } = body
+      const { branch_id, phone, is_admin, is_manager, allowed_pages } = body
       const { rows } = await pool.query(
-        `INSERT INTO branch_phones (branch_id, phone, is_admin)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (phone) DO UPDATE SET branch_id=$1, is_admin=$3
+        `INSERT INTO branch_phones (branch_id, phone, is_admin, is_manager, allowed_pages)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (phone) DO UPDATE SET branch_id=$1, is_admin=$3, is_manager=$4, allowed_pages=$5
          RETURNING *`,
-        [branch_id, phone, is_admin ?? false]
+        [branch_id, phone, is_admin ?? false, is_manager ?? false, allowed_pages ?? []]
       )
       return NextResponse.json(rows[0])
     }
