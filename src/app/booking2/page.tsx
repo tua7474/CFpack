@@ -250,6 +250,7 @@ function Booking2Inner() {
   const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string; warehouse_price: string; retail_price: string; stock_qty: string }[]>([])
   const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
   const [stockPrintMode, setStockPrintMode]     = useState(false)
+  const [compactPrintMode, setCompactPrintMode] = useState(false)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal]   = useState<string>('')
@@ -654,6 +655,14 @@ function Booking2Inner() {
     setStockPrintMode(false)
   }
 
+  const handleCompactPrint = () => {
+    flushSync(() => setCompactPrintMode(true))
+    document.documentElement.classList.add('compact-mode')
+    window.print()
+    document.documentElement.classList.remove('compact-mode')
+    setCompactPrintMode(false)
+  }
+
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
   // Precompute print gray index for each subgroup (cycles through 0→1→2)
@@ -677,6 +686,33 @@ function Booking2Inner() {
     ? Math.max(...sections.map(s => s.rows.length), lastSecRows + INFO_PANEL_ROWS)
     : 0
   const panelStart  = Math.max(lastSecRows, maxRows - INFO_PANEL_ROWS)
+
+  // Compact print: precompute which subgroup/foy_cat rows have active items per section
+  const compactActiveSubgroups: Set<number>[] = sections.map(sec => {
+    const active = new Set<number>()
+    let sgIdx = -1; let hasActive = false
+    sec.rows.forEach((row, idx) => {
+      if (row.type === 'subgroup') {
+        if (sgIdx >= 0 && hasActive) active.add(sgIdx)
+        sgIdx = idx; hasActive = false
+      } else if (row.type === 'product' && (pending[row.product.id] ?? 0) > 0) { hasActive = true }
+        else if (row.type === 'foy_item' && row.qty > 0) { hasActive = true }
+    })
+    if (sgIdx >= 0 && hasActive) active.add(sgIdx)
+    return active
+  })
+  const compactActiveFoyCats: Set<number>[] = sections.map(sec => {
+    const active = new Set<number>()
+    let catIdx = -1; let hasActive = false
+    sec.rows.forEach((row, idx) => {
+      if (row.type === 'foy_cat') {
+        if (catIdx >= 0 && hasActive) active.add(catIdx)
+        catIdx = idx; hasActive = false
+      } else if (row.type === 'foy_item' && row.qty > 0) { hasActive = true }
+    })
+    if (catIdx >= 0 && hasActive) active.add(catIdx)
+    return active
+  })
 
   let grayTotal = 0, orangeTotal = 0
   const sectionTotals  = new Map<number, number>()
@@ -873,6 +909,13 @@ function Booking2Inner() {
           🖨️ พิมพ์
         </button>
 
+        <button
+          onClick={handleCompactPrint}
+          className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
+        >
+          🖨️ พิมพ์อย่างย่อ
+        </button>
+
 
         <div className="flex items-center gap-3">
           {saveMsg && (
@@ -987,15 +1030,17 @@ function Booking2Inner() {
                   {/* Body */}
                   <tbody>
                     {Array.from({ length: maxRows }, (_, rowIdx) => {
-                      const rowHasOrder = sections.some(sec => {
-                        const cell = sec.rows[rowIdx]
-                        if (!cell) return false
-                        if (cell.type === 'subgroup') return true
-                        if (cell.type === 'foy_cat') return true
-                        if (cell.type === 'foy_item') return stockPrintMode ? getFoyModelStock(cell.category, cell.model_name) > 0 : cell.qty > 0
-                        if (cell.type === 'product') return stockPrintMode ? (parseFloat(cell.product.stock_qty ?? '0') || 0) > 0 : (pending[cell.product.id] ?? 0) > 0
-                        return false
-                      })
+                      const rowHasOrder = rowIdx >= panelStart
+                        ? true  // info panel rows always visible
+                        : sections.some((sec, si) => {
+                          const cell = sec.rows[rowIdx]
+                          if (!cell) return false
+                          if (cell.type === 'subgroup') return compactPrintMode ? compactActiveSubgroups[si].has(rowIdx) : true
+                          if (cell.type === 'foy_cat') return compactPrintMode ? compactActiveFoyCats[si].has(rowIdx) : true
+                          if (cell.type === 'foy_item') return stockPrintMode ? getFoyModelStock(cell.category, cell.model_name) > 0 : cell.qty > 0
+                          if (cell.type === 'product') return stockPrintMode ? (parseFloat(cell.product.stock_qty ?? '0') || 0) > 0 : (pending[cell.product.id] ?? 0) > 0
+                          return false
+                        })
                       return (
                       <tr key={rowIdx} className={`hover:bg-yellow-50/30 transition-colors${!rowHasOrder ? ' compact-hide' : ''}`}>
                         <td className="border border-gray-300 text-center text-[9px] text-gray-400 py-0.5 select-none">
