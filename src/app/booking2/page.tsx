@@ -826,11 +826,14 @@ function Booking2Inner() {
           /* Table itself: stretch rows to fill */
           .a4-content table { height: 100% !important; }
 
-          /* Black & white print — grayscale filter converts all colors to gray shades */
+          /* Black & white print */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          .a4-frame { filter: grayscale(100%) !important; }
-          /* All text black */
-          .a4-frame * { color: black !important; }
+          /* All text black, all backgrounds white */
+          .a4-frame * { color: black !important; background-color: white !important; }
+          /* Subgroup header rows: uniform light gray */
+          .a4-frame .print-sg { background-color: #CCCCCC !important; }
+          /* Inputs: white */
+          .a4-frame input { background-color: white !important; }
 
           /* Compact print: hide empty rows, shrink table */
           html.compact-mode .compact-hide { display: none !important; }
@@ -1203,7 +1206,7 @@ function Booking2Inner() {
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             return [
                               <td key={`${si}-sg`} colSpan={4}
-                                className={`border px-2 py-px text-[11px] font-bold ${SUBGROUP_BG[cell.color]} sg-gray-${sgGray}`}>
+                                className={`border px-2 py-px text-[11px] font-bold print-sg ${SUBGROUP_BG[cell.color]} sg-gray-${sgGray}`}>
                                 <div className="flex items-center justify-between gap-1">
                                   <span>{cell.name}</span>
                                   {sgTotal > 0 && (
@@ -1221,7 +1224,7 @@ function Booking2Inner() {
                               <td key={`${si}-fc`} colSpan={4}
                                 onClick={foyClick}
                                 style={{ backgroundColor: catBg }}
-                                className="border px-2 py-px text-[10px] font-bold text-gray-700 cursor-pointer">
+                                className="border px-2 py-px text-[10px] font-bold text-gray-700 cursor-pointer print-sg">
                                 <div className="flex items-center justify-between gap-1 w-full">
                                   <span>กระดาษฝอย {cell.category}</span>
                                   <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
