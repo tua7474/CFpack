@@ -826,16 +826,14 @@ function Booking2Inner() {
           /* Table itself: stretch rows to fill */
           .a4-content table { height: 100% !important; }
 
-          /* Ensure colors print correctly */
+          /* Grayscale print: filter converts all colors → gray shades */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          /* Force all backgrounds to white except subgroup headers */
-          .a4-frame * { background-color: white !important; }
-          /* Subgroup header gray shades — higher specificity to override .a4-frame * */
-          .a4-frame .sg-gray-0 { background-color: #D7DBDD !important; color: black !important; }
-          .a4-frame .sg-gray-1 { background-color: #979A9A !important; color: black !important; }
-          .a4-frame .sg-gray-2 { background-color: #787D7D !important; color: black !important; }
-          /* Price and total columns — gray text */
-          .price-col { color: #979A9A !important; }
+          .a4-frame { filter: grayscale(100%) !important; }
+          /* Data cells → white */
+          .a4-frame td:not(.print-sg) { background-color: white !important; }
+          .a4-frame input { background-color: white !important; }
+          /* All text → black */
+          .a4-frame * { color: black !important; }
 
           /* Compact print: hide empty rows, shrink table */
           html.compact-mode .compact-hide { display: none !important; }
@@ -1208,7 +1206,7 @@ function Booking2Inner() {
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             return [
                               <td key={`${si}-sg`} colSpan={4}
-                                className={`border px-2 py-px text-[11px] font-bold ${SUBGROUP_BG[cell.color]} sg-gray-${sgGray}`}>
+                                className={`border px-2 py-px text-[11px] font-bold print-sg ${SUBGROUP_BG[cell.color]} sg-gray-${sgGray}`}>
                                 <div className="flex items-center justify-between gap-1">
                                   <span>{cell.name}</span>
                                   {sgTotal > 0 && (
@@ -1226,7 +1224,7 @@ function Booking2Inner() {
                               <td key={`${si}-fc`} colSpan={4}
                                 onClick={foyClick}
                                 style={{ backgroundColor: catBg }}
-                                className="border px-2 py-px text-[10px] font-bold text-gray-700 cursor-pointer">
+                                className="border px-2 py-px text-[10px] font-bold text-gray-700 cursor-pointer print-sg">
                                 <div className="flex items-center justify-between gap-1 w-full">
                                   <span>กระดาษฝอย {cell.category}</span>
                                   <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
