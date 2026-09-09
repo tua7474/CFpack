@@ -71,6 +71,44 @@ export default function Home() {
   const [now, setNow] = useState<Date | null>(null)
   const [pageAllowed, setPageAllowed] = useState<boolean | null>(null)
 
+  // ── Delivery methods ─────────────────────────────────────────────────────────
+  const [deliveries, setDeliveries]       = useState<{ id: number; name: string }[]>([])
+  const [newDelivery, setNewDelivery]     = useState('')
+  const [editDelivery, setEditDelivery]   = useState<{ id: number; name: string } | null>(null)
+  const [deliveryBusy, setDeliveryBusy]   = useState(false)
+  const [confirmDelDelivery, setConfirmDelDelivery] = useState<number | null>(null)
+
+  const loadDeliveries = useCallback(async () => {
+    const r = await fetch('/api/delivery')
+    if (r.ok) setDeliveries(await r.json())
+  }, [])
+
+  useEffect(() => { loadDeliveries() }, [loadDeliveries])
+
+  const addDelivery = async () => {
+    if (!newDelivery.trim()) return
+    setDeliveryBusy(true)
+    await fetch('/api/delivery', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newDelivery.trim() }) })
+    setNewDelivery('')
+    setDeliveryBusy(false)
+    loadDeliveries()
+  }
+
+  const saveDelivery = async () => {
+    if (!editDelivery || !editDelivery.name.trim()) return
+    setDeliveryBusy(true)
+    await fetch('/api/delivery', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editDelivery.id, name: editDelivery.name.trim() }) })
+    setEditDelivery(null)
+    setDeliveryBusy(false)
+    loadDeliveries()
+  }
+
+  const deleteDelivery = async (id: number) => {
+    await fetch('/api/delivery', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    setConfirmDelDelivery(null)
+    loadDeliveries()
+  }
+
   // Check page access via branch_session
   useEffect(() => {
     try {
@@ -555,6 +593,85 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* ── จัดส่ง ── */}
+        <div className="mt-6 rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-[#9b9484] text-white px-4 py-2 flex items-center justify-between">
+            <h2 className="text-sm font-bold">🚚 จัดส่ง</h2>
+          </div>
+          <div className="bg-white">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                  <th className="px-4 py-2 w-8">#</th>
+                  <th className="px-4 py-2">รูปแบบการจัดส่ง</th>
+                  <th className="px-4 py-2 w-40"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveries.map((d, i) => (
+                  <tr key={d.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                    <td className="px-4 py-2">
+                      {editDelivery?.id === d.id ? (
+                        <input
+                          value={editDelivery.name}
+                          onChange={e => setEditDelivery({ ...editDelivery, name: e.target.value })}
+                          onKeyDown={e => e.key === 'Enter' && saveDelivery()}
+                          className="w-full px-2 py-0.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="font-medium text-gray-700">{d.name}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      {confirmDelDelivery === d.id ? (
+                        <div className="flex gap-1 items-center">
+                          <span className="text-[10px] text-red-500">ยืนยันลบ?</span>
+                          <button onClick={() => deleteDelivery(d.id)}
+                            className="px-2 py-0.5 text-xs rounded bg-red-500 hover:bg-red-600 text-white">ลบ</button>
+                          <button onClick={() => setConfirmDelDelivery(null)}
+                            className="px-2 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 text-gray-500">ยกเลิก</button>
+                        </div>
+                      ) : editDelivery?.id === d.id ? (
+                        <div className="flex gap-1">
+                          <button onClick={saveDelivery} disabled={deliveryBusy}
+                            className="px-2 py-0.5 text-xs rounded bg-green-500 hover:bg-green-600 text-white disabled:opacity-50">บันทึก</button>
+                          <button onClick={() => setEditDelivery(null)}
+                            className="px-2 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 text-gray-500">ยกเลิก</button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1">
+                          <button onClick={() => setEditDelivery({ id: d.id, name: d.name })}
+                            className="px-2 py-0.5 text-xs rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200">แก้ไข</button>
+                          <button onClick={() => setConfirmDelDelivery(d.id)}
+                            className="px-2 py-0.5 text-xs rounded bg-red-50 hover:bg-red-100 text-red-600 border border-red-200">ลบ</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Add new */}
+            <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-2">
+              <input
+                value={newDelivery}
+                onChange={e => setNewDelivery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addDelivery()}
+                placeholder="ชื่อรูปแบบการจัดส่งใหม่..."
+                className="flex-1 px-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400"
+              />
+              <button onClick={addDelivery} disabled={deliveryBusy || !newDelivery.trim()}
+                className="px-3 py-1.5 text-xs rounded bg-[#9b9484] hover:bg-[#857e72] text-white font-medium disabled:opacity-50 whitespace-nowrap">
+                + เพิ่ม
+              </button>
+            </div>
+          </div>
+        </div>
+
       </main>
     </div>
 
