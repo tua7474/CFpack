@@ -893,6 +893,8 @@ function Booking2Inner() {
             filter: grayscale(100%) !important;
           }
           .foy-print-frame * { color: black !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          /* Data cells → white; th (headers) keep grayscale color */
+          .foy-print-frame td { background-color: white !important; }
         }
       `}</style>
 
