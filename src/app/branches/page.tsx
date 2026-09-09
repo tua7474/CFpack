@@ -595,6 +595,29 @@ export default function BranchesPage() {
         </div>
       </header>
 
+      {/* Tab bar */}
+      <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex">
+        <Link href="/"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          📦 สต็อคสินค้า
+        </Link>
+        <Link href="/stock"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          🌿 สต็อคกระดาษฝอย
+        </Link>
+        <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50">
+          🏪 สาขาและตัวแทน
+        </span>
+        <Link href="/delivery"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          🚚 จัดส่ง
+        </Link>
+        <Link href="/withdrawal"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          📤 เบิกของ
+        </Link>
+      </div>
+
       {/* Login Modal */}
       {!session && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">

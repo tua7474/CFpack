@@ -404,6 +404,29 @@ export default function StockPage() {
         </div>
       </header>
 
+      {/* Tab bar */}
+      <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex">
+        <Link href="/"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          📦 สต็อคสินค้า
+        </Link>
+        <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50">
+          🌿 สต็อคกระดาษฝอย
+        </span>
+        <Link href="/branches"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          🏪 สาขาและตัวแทน
+        </Link>
+        <Link href="/delivery"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          🚚 จัดส่ง
+        </Link>
+        <Link href="/withdrawal"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          📤 เบิกของ
+        </Link>
+      </div>
+
       {/* Main */}
       <main className="p-4">
         {/* ── Add new item card ── */}
