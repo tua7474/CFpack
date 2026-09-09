@@ -247,7 +247,7 @@ function Booking2Inner() {
   const [foyItemPending, setFoyItemPending] = useState<Record<number, number>>({})
   const [foyCategoryVis, setFoyCategoryVis] = useState<Record<string, boolean>>({})
   const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
-  const [foyStockItems, setFoyStockItems]   = useState<{ category: string; model_name: string; warehouse_price: string; retail_price: string; stock_qty: string }[]>([])
+  const [foyStockItems, setFoyStockItems]   = useState<{ id: number; category: string; model_name: string; color_code: string; color_name: string; warehouse_price: string; retail_price: string; stock_qty: string; show_in_booking: boolean }[]>([])
   const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
   const [stockPrintMode, setStockPrintMode]     = useState(false)
   const [compactPrintMode, setCompactPrintMode] = useState(false)
@@ -368,7 +368,7 @@ function Booking2Inner() {
   useEffect(() => {
     fetch('/api/stock')
       .then(r => r.json())
-      .then((data: { items: { category: string; model_name: string; warehouse_price: string; retail_price: string; stock_qty: string }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
+      .then((data: { items: { id: number; category: string; model_name: string; color_code: string; color_name: string; warehouse_price: string; retail_price: string; stock_qty: string; show_in_booking: boolean }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
         setFoyCategoryVis(data.categoryVis ?? {})
         setFoyModelVis(data.modelVis ?? {})
         setFoyStockItems(data.items ?? [])
@@ -825,13 +825,14 @@ function Booking2Inner() {
   return (
     <div className="min-h-screen bg-gray-100 print:bg-white">
       <style>{`
+        .foy-print-frame { display: none; }
+
         @media print {
-          @page { size: A4 landscape; margin: 0; }
-          html, body {
-            margin: 0 !important; padding: 0 !important;
-            height: 210mm !important; max-height: 210mm !important;
-            overflow: hidden !important;
-          }
+          @page            { margin: 0; }
+          @page landscape-p { size: A4 landscape; }
+          @page portrait-p  { size: A4 portrait;  }
+
+          html, body { margin: 0 !important; padding: 0 !important; }
           .no-print   { display: none !important; }
 
           /* Remove screen-only zoom on outer wrapper */
@@ -841,8 +842,9 @@ function Booking2Inner() {
             display: block !important;
           }
 
-          /* A4 frame fills exactly one page */
+          /* A4 frame (page 1 — landscape) */
           .a4-frame {
+            page: landscape-p;
             width: 297mm !important;
             height: 210mm !important;
             min-height: unset !important;
@@ -871,11 +873,26 @@ function Booking2Inner() {
           /* All text → black */
           .a4-frame * { color: black !important; }
 
-          /* Compact print: hide empty rows, shrink table */
+          /* Compact print: hide empty rows, shrink table; also hide page 2 */
           html.compact-mode .compact-hide { display: none !important; }
           html.compact-mode .a4-frame { height: auto !important; min-height: unset !important; }
           html.compact-mode .a4-content { height: auto !important; }
           html.compact-mode .a4-content table { height: auto !important; }
+          html.compact-mode .foy-print-frame { display: none !important; }
+
+          /* Foy page (page 2 — portrait) */
+          .foy-print-frame {
+            display: block !important;
+            page: portrait-p;
+            break-before: page;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            padding: 6mm !important;
+            box-sizing: border-box !important;
+            background: white !important;
+            filter: grayscale(100%) !important;
+          }
+          .foy-print-frame * { color: black !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
 
@@ -1007,7 +1024,7 @@ function Booking2Inner() {
           ) : loading ? (
             <div className="flex items-center justify-center h-40 text-gray-400">กำลังโหลดข้อมูล...</div>
           ) : (
-            <div className="a4-frame bg-white shadow-xl"
+            <><div className="a4-frame bg-white shadow-xl"
               style={{ width: '297mm', minHeight: '210mm', padding: '8mm', boxSizing: 'border-box' }}>
               <div className="a4-content" style={{ zoom: CONTENT_SCALE, transformOrigin: 'top left' }}>
 
@@ -1386,6 +1403,158 @@ function Booking2Inner() {
 
               </div>
             </div>
+
+            {/* ── Page 2: ใบจองกระดาษฝอย ──────────────────────────────────── */}
+            <div className="foy-print-frame bg-white">
+              {(() => {
+                const FOY_CATS  = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
+                const CAT_BG:   Record<string, string> = { '2 มิล': '#F1C40F', '4 มิล': '#E67E22', '1.5 มิล': '#E74C3C', 'ฝอยหยัก': '#9B59B6' }
+                const MODEL_BG: Record<string, string> = { '2 มิล': '#F7DC6F', '4 มิล': '#F0B27A', '1.5 มิล': '#F1948A', 'ฝอยหยัก': '#C39BD3' }
+                const ROW_BG:   Record<string, string> = { '2 มิล': '#FCF3CF', '4 มิล': '#FAE5D3', '1.5 มิล': '#FADBD8', 'ฝอยหยัก': '#FBDEF0' }
+
+                type FoySeg =
+                  | { kind: 'cat'; name: string }
+                  | { kind: 'model'; catName: string; modelName: string; items: typeof foyStockItems }
+
+                const segs: FoySeg[] = []
+                for (const cat of FOY_CATS) {
+                  if (foyCategoryVis[cat] === false) continue
+                  const catItems = foyStockItems.filter(it => it.category === cat && foyModelVis[it.model_name] !== false)
+                  if (catItems.length === 0) continue
+                  segs.push({ kind: 'cat', name: cat })
+                  const models = [...new Set(catItems.map(it => it.model_name))]
+                  for (const mn of models) segs.push({ kind: 'model', catName: cat, modelName: mn, items: catItems.filter(it => it.model_name === mn) })
+                }
+
+                const NUM_COLS = 3
+                const CW_COLOR = 96, CW_PRICE = 48, CW_QTY = 42, CW_TOTAL = 55
+                const COL_W = CW_COLOR + CW_PRICE + CW_QTY + CW_TOTAL  // 241
+                const GAP   = 4
+                const TOTAL_W = NUM_COLS * COL_W + (NUM_COLS - 1) * GAP
+
+                const perCol = Math.ceil(segs.length / NUM_COLS)
+                const cols   = Array.from({ length: NUM_COLS }, (_, ci) => segs.slice(ci * perCol, (ci + 1) * perCol))
+
+                const fmtP = (n: string | number) => {
+                  const v = parseFloat(String(n))
+                  return isNaN(v) || v === 0 ? '' : v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                }
+
+                return (
+                  <div style={{ zoom: 0.82 }}>
+                    <div className="text-center text-sm font-bold text-gray-500 mb-2 tracking-wide">ใบจองกระดาษฝอย</div>
+                    <div className="flex" style={{ gap: GAP, width: TOTAL_W }}>
+                      {cols.map((col, ci) => (
+                        <div key={ci} style={{ width: COL_W, flexShrink: 0 }}>
+                          {col.map((seg, si) => {
+                            if (seg.kind === 'cat') {
+                              return (
+                                <div key={`cat-${seg.name}`}
+                                  style={{ backgroundColor: CAT_BG[seg.name] ?? '#9b9484', color: 'rgb(55,65,81)' }}
+                                  className={`px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-sm mb-1${si > 0 ? ' mt-2' : ''}`}>
+                                  กระดาษฝอย {seg.name}
+                                </div>
+                              )
+                            }
+                            const mBg = MODEL_BG[seg.catName] ?? '#ccc'
+                            const rBg = ROW_BG[seg.catName]   ?? '#f3f4f6'
+                            const totalStock = seg.items.reduce((s, it) => s + (parseInt(it.stock_qty) || 0), 0)
+                            const modelPrice = parseFloat(seg.items[0]?.warehouse_price ?? '0') || 0
+                            return (
+                              <div key={`m-${ci}-${si}`} className="mb-1.5">
+                                <table className="border-collapse" style={{ tableLayout: 'fixed', width: COL_W }}>
+                                  <colgroup>
+                                    <col style={{ width: CW_COLOR }} /><col style={{ width: CW_PRICE }} />
+                                    <col style={{ width: CW_QTY }} /><col style={{ width: CW_TOTAL }} />
+                                  </colgroup>
+                                  <thead>
+                                    <tr style={{ backgroundColor: mBg, color: 'rgb(55,65,81)' }}>
+                                      <th colSpan={3} className="border border-gray-400 px-1 py-0.5 font-bold text-[10px] text-left overflow-hidden">
+                                        <div className="flex items-center gap-1">
+                                          <span className="truncate">{seg.modelName}</span>
+                                          {totalStock > 0 && <span className="text-[8px] font-semibold text-blue-300 whitespace-nowrap shrink-0">{totalStock.toLocaleString('th-TH')}</span>}
+                                        </div>
+                                      </th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right text-[10px] font-bold whitespace-nowrap">
+                                        {fmtP(modelPrice)}
+                                      </th>
+                                    </tr>
+                                    <tr style={{ backgroundColor: mBg, color: 'rgb(55,65,81)' }} className="text-[9px]">
+                                      <th className="border border-gray-400 px-1 py-0.5 text-left font-medium">ชื่อสี</th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">ราคา</th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">จำนวน</th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">รวม</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {seg.items.map(item => (
+                                      <tr key={item.id}>
+                                        <td className="border border-gray-300 px-1 py-px text-[9px] overflow-hidden"
+                                          style={{ backgroundColor: rBg }}>
+                                          <div className="flex items-start justify-between gap-0.5">
+                                            <span className="truncate text-gray-500">{item.color_name || item.color_code || '–'}</span>
+                                            <span className="text-[7px] text-gray-400 leading-tight shrink-0">{parseInt(item.stock_qty) || 0}</span>
+                                          </div>
+                                        </td>
+                                        <td className="border border-gray-300 px-1 py-px text-right text-[9px] text-gray-500"
+                                          style={{ backgroundColor: rBg }}>
+                                          {fmtP(item.warehouse_price)}
+                                        </td>
+                                        <td className="border border-gray-300 p-0" style={{ backgroundColor: '#ffffff' }}></td>
+                                        <td className="border border-gray-300 px-1 py-px" style={{ backgroundColor: rBg }}></td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Info panel */}
+                    <div className="flex gap-1 mt-2" style={{ width: TOTAL_W }}>
+                      <div className="flex-1 border border-gray-400 rounded overflow-hidden">
+                        <div className="flex h-14">
+                          <div className="flex-1 border-r border-gray-300 p-1">
+                            <div className="text-[8px] font-semibold text-gray-500">ผู้ส่งสินค้า</div>
+                          </div>
+                          <div className="flex-1 p-1">
+                            <div className="text-[8px] font-semibold text-gray-500">ผู้รับสินค้า</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-green-50 flex flex-col justify-center" style={{ width: 130 }}>
+                        <div className="text-[8px] font-semibold text-gray-500">ยอดเงินรวม (฿)</div>
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-gray-50 flex flex-col items-center justify-center" style={{ width: 84 }}>
+                        <div className="text-[7px] text-gray-400 leading-none">วันที่</div>
+                        <div className="text-[12px] font-extrabold text-gray-500 leading-tight text-center">{today}</div>
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-gray-50 flex flex-col justify-center" style={{ width: 80 }}>
+                        <div className="text-[7px] font-semibold text-gray-500 leading-none">เบิกของ</div>
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-gray-50 flex flex-col justify-center overflow-hidden" style={{ width: 100 }}>
+                        {branchInfo ? (
+                          <>
+                            <div className="text-[7px] text-gray-400 leading-none">สาขา/ตัวแทน</div>
+                            <div className="text-[13px] font-extrabold text-gray-500 leading-tight truncate">{branchInfo.name}</div>
+                            <div className="text-[8px] text-gray-500 truncate">{branchInfo.phone}</div>
+                          </>
+                        ) : (
+                          <div className="text-[8px] text-gray-400">สาขา/ตัวแทน</div>
+                        )}
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-gray-50 flex flex-col justify-center" style={{ width: 90 }}>
+                        <div className="text-[7px] font-semibold text-gray-500 leading-none">รถ</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+            </>
           )}
         </div>
       </main>
