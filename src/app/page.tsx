@@ -296,7 +296,7 @@ export default function Home() {
       {/* Header */}
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold">กระดาษฝอยไทย — ระบบจัดการข้อมูล</h1>
+          <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
           <p className="text-orange-200 text-xs mt-0.5">ข้อมูลจาก Railway PostgreSQL</p>
         </div>
         <div className="flex items-center gap-3">
