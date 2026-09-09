@@ -62,8 +62,7 @@ export default function DeliveryPage() {
     <div className="min-h-screen bg-gray-100">
 
       {/* Header */}
-      <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center gap-4">
-        <Link href="/" className="text-orange-200 hover:text-white text-sm transition-colors">← กลับ</Link>
+      <header className="bg-[#9b9484] text-white px-6 py-3 shadow">
         <div>
           <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
           <p className="text-orange-200 text-xs mt-0.5">ข้อมูลจาก Railway PostgreSQL</p>

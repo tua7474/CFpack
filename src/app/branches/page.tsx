@@ -570,12 +570,9 @@ export default function BranchesPage() {
 
       {/* Header */}
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-orange-200 hover:text-white text-sm transition-colors">← กลับ</Link>
-          <div>
-            <h1 className="text-xl font-bold">สาขาและตัวแทน</h1>
-            {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
-          </div>
+        <div>
+          <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
+          {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
         </div>
         <div className="flex items-center gap-2">
           {session?.is_admin && (

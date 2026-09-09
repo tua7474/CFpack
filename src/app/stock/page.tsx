@@ -376,14 +376,9 @@ export default function StockPage() {
 
       {/* Header */}
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-orange-200 hover:text-white text-sm transition-colors">
-            ← กลับหน้าหลัก
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold">สต็อคกระดาษฝอย</h1>
-            <p className="text-orange-200 text-xs mt-0.5">จัดการสต็อคและราคาสินค้า</p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
+          <p className="text-orange-200 text-xs mt-0.5">ข้อมูลจาก Railway PostgreSQL</p>
         </div>
         {msg && (
           <span className={`text-sm px-3 py-1 rounded-full text-white ${msg.startsWith('❌') ? 'bg-red-500' : 'bg-green-500'}`}>{msg}</span>
