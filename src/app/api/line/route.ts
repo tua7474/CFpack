@@ -37,6 +37,20 @@ async function ensureTable() {
       input_state JSONB,
       updated_at  TIMESTAMP    NOT NULL DEFAULT NOW()
     )`)
+  // slips table (shared with /api/slips)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS slips (
+      id            SERIAL PRIMARY KEY,
+      branch_id     INT REFERENCES branches(id) ON DELETE SET NULL,
+      category      VARCHAR(20) NOT NULL,
+      amount        DECIMAL(12,2) NOT NULL,
+      account_name  VARCHAR(200),
+      slip_date     DATE NOT NULL,
+      status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+      line_image_id TEXT,
+      created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `)
   // Add input_state column if upgrading from older schema
   await pool.query(`
     ALTER TABLE line_sessions ADD COLUMN IF NOT EXISTS input_state JSONB
@@ -986,6 +1000,109 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
 }
 
+// ── Slip scanning via Claude Vision ──────────────────────────────────────────
+
+function categorizeByAccount(name: string): string | null {
+  const n = name.toLowerCase()
+  if (name.includes('วรวุฒิ'))                              return 'วรวุฒิ'
+  if (name.includes('พริ้นติ้ง') || n.includes('printing')) return 'print'
+  if (name.includes('แพ็ค')      || n.includes('pack'))     return 'pack'
+  if (name.includes('ลักกี้')    || n.includes('lucky'))    return 'bb'
+  if (name.includes('เจ วี อาร์') || n.includes('jvr'))    return 'กล่อง'
+  return null
+}
+
+const SLIP_LABEL: Record<string, string> = {
+  'วรวุฒิ': 'สลิปวรวุฒิ', 'print': 'สลิปPRINT',
+  'pack': 'สลิปPACK', 'bb': 'สลิปBB', 'กล่อง': 'สลิปกล่อง',
+}
+
+async function handleImage(messageId: string, userId: string, replyToken: string, source?: Record<string, string>) {
+  // Download image from LINE Content API
+  const imgRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  })
+  if (!imgRes.ok) return // ไม่ reply ถ้าไม่ใช่สลิป (อาจเป็นรูปทั่วไป)
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return reply(replyToken, [{ type: 'text', text: '⚠️ ไม่สามารถสแกนสลิปได้ (ไม่มี ANTHROPIC_API_KEY)' }])
+  }
+
+  const buffer  = await imgRes.arrayBuffer()
+  const base64  = Buffer.from(buffer).toString('base64')
+  const mimeType = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0]
+
+  // Scan with Claude Vision
+  let scanResult: { amount?: number; account_name?: string; date?: string; error?: string } = {}
+  try {
+    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+            { type: 'text', text: 'นี่คือสลิปโอนเงิน กรุณาอ่านและตอบเป็น JSON เท่านั้น ไม่ต้องอธิบาย:\n{"amount": ตัวเลขยอดโอน (ไม่มีสัญลักษณ์), "account_name": "ชื่อบัญชีผู้รับ", "date": "YYYY-MM-DD"}\nถ้าไม่ใช่สลิปโอนเงินหรืออ่านไม่ได้ให้ตอบ: {"error": "not a slip"}' }
+          ]
+        }]
+      })
+    })
+    const apiData = await apiRes.json()
+    const text = apiData?.content?.[0]?.text ?? ''
+    const jsonMatch = text.match(/\{[\s\S]*?\}/)
+    if (jsonMatch) scanResult = JSON.parse(jsonMatch[0])
+  } catch {
+    return // scan error — ไม่ reply ถ้าอ่านไม่ออก
+  }
+
+  if (scanResult.error || !scanResult.amount) return // ไม่ใช่สลิปโอนเงิน
+
+  // Determine category
+  const category = scanResult.account_name ? categorizeByAccount(scanResult.account_name) : null
+
+  // Find branch from group name or user
+  let branchId: number | null = null
+  if (source?.type === 'group' && source.groupId) {
+    const groupName = await getGroupName(source.groupId)
+    if (groupName) {
+      const branch = await findBranchByGroupName(groupName)
+      if (branch) branchId = branch.id
+    }
+  }
+  if (!branchId) {
+    const ub = await getBranchFromLineUser(userId)
+    if (ub) branchId = ub.branch_id
+  }
+
+  // Save slip as pending
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  await pool.query(`
+    INSERT INTO slips (branch_id, category, amount, account_name, slip_date, line_image_id)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `, [
+    branchId,
+    category ?? 'other',
+    scanResult.amount,
+    scanResult.account_name ?? null,
+    scanResult.date ?? today,
+    messageId,
+  ])
+
+  const catLabel  = category ? (SLIP_LABEL[category] ?? category) : '❓ ไม่ระบุหมวด'
+  const fmtAmount = Number(scanResult.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return reply(replyToken, [{
+    type: 'text',
+    text: `✅ รับสลิปแล้วครับ\n💰 ฿${fmtAmount}\n🏦 ${scanResult.account_name ?? '-'}\n📅 ${scanResult.date ?? today}\n📂 ${catLabel}\n\n⚠️ กรุณายืนยันข้อมูลในเว็บ สาขาและตัวแทน ด้วยครับ`,
+  }])
+}
+
 // ── Webhook entry ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -1005,7 +1122,8 @@ export async function POST(req: NextRequest) {
       await handlePostback(data, userId, replyToken)
     } else if (ev.type === 'message') {
       const msg = ev.message as Record<string, unknown>
-      if (msg?.type === 'text') await handleText(msg.text as string, userId, replyToken, ev.source as Record<string, string>)
+      if (msg?.type === 'text')  await handleText(msg.text as string, userId, replyToken, ev.source as Record<string, string>)
+      if (msg?.type === 'image') await handleImage(msg.id as string, userId, replyToken, ev.source as Record<string, string>)
     }
   }))
 

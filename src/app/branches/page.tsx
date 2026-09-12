@@ -78,6 +78,23 @@ interface BranchOrder {
   id: number; order_no: string; total_amount: string
   status: string; payment_status: string; created_at: string; updated_at: string
 }
+
+// ── Slip types ────────────────────────────────────────────────────────────────
+
+interface Slip {
+  id: number; branch_id: number | null; category: string; amount: number
+  account_name: string | null; slip_date: string; status: string
+  line_image_id: string | null; created_at: string
+}
+
+const SLIP_CATS = [
+  { key: 'วรวุฒิ', label: 'สลิปวรวุฒิ' },
+  { key: 'print',  label: 'สลิปPRINT'  },
+  { key: 'pack',   label: 'สลิปPACK'   },
+  { key: 'bb',     label: 'สลิปBB'     },
+  { key: 'กล่อง', label: 'สลิปกล่อง' },
+] as const
+
 interface BranchSession {
   branch_id: number; branch_name: string; phone: string
   is_admin: boolean; is_manager: boolean; allowed_pages: string[]
@@ -105,6 +122,203 @@ function fmtDateShort(iso: string | null) {
 }
 
 const MONTH_NAMES = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+
+// ── Slip Confirm Modal ────────────────────────────────────────────────────────
+
+function SlipConfirmModal({ slip, onClose, onSaved }: {
+  slip: Slip; onClose: () => void; onSaved: () => void
+}) {
+  const [slipDate,     setSlipDate]     = useState(slip.slip_date)
+  const [accountName,  setAccountName]  = useState(slip.account_name ?? '')
+  const [category,     setCategory]     = useState(slip.category)
+  const [saving,       setSaving]       = useState(false)
+  const [confirmDel,   setConfirmDel]   = useState(false)
+
+  const handleConfirm = async () => {
+    setSaving(true)
+    await fetch('/api/slips', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: slip.id, slip_date: slipDate, account_name: accountName, category, status: 'confirmed' }),
+    })
+    setSaving(false)
+    onSaved()
+  }
+
+  const handleDelete = async () => {
+    await fetch('/api/slips', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: slip.id }),
+    })
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-5 w-full max-w-sm">
+        <h3 className="text-base font-bold text-green-400 mb-4">ยืนยันสลิปโอนเงิน</h3>
+
+        {/* Amount — read only */}
+        <div className="mb-3">
+          <div className="text-xs text-gray-500 mb-1">ยอดเงิน</div>
+          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-lg font-bold text-green-500">
+            ฿{slip.amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+
+        {/* วันที่ — editable */}
+        <div className="mb-3">
+          <div className="text-xs text-gray-500 mb-1">วันที่</div>
+          <input type="date" value={slipDate} onChange={e => setSlipDate(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400" />
+        </div>
+
+        {/* บัญชีที่โอนเข้า — editable */}
+        <div className="mb-3">
+          <div className="text-xs text-gray-500 mb-1">บัญชีที่โอนเข้า</div>
+          <input value={accountName} onChange={e => setAccountName(e.target.value)}
+            placeholder="ชื่อบัญชีผู้รับ"
+            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400" />
+        </div>
+
+        {/* หมวดสลิป — editable */}
+        <div className="mb-4">
+          <div className="text-xs text-gray-500 mb-1">หมวดสลิป</div>
+          <select value={category} onChange={e => setCategory(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white">
+            {SLIP_CATS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+            <option value="other">อื่นๆ</option>
+          </select>
+        </div>
+
+        <button onClick={handleConfirm} disabled={saving}
+          className="w-full py-2 text-sm rounded bg-[#9b9484] text-white font-semibold disabled:opacity-50 mb-2">
+          {saving ? 'กำลังบันทึก...' : '✅ ยืนยันข้อมูล'}
+        </button>
+        <button onClick={onClose}
+          className="w-full py-1.5 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-500 mb-3">
+          ปิด
+        </button>
+
+        {/* Delete */}
+        <div className="pt-3 border-t border-gray-200">
+          {!confirmDel ? (
+            <button onClick={() => setConfirmDel(true)}
+              className="w-full py-1.5 text-sm rounded border border-red-300 text-red-500 hover:bg-red-50">
+              🗑 ลบสลิปนี้
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-red-600 text-center">ยืนยันลบสลิปนี้?</p>
+              <div className="flex gap-2">
+                <button onClick={handleDelete}
+                  className="flex-1 py-1.5 text-sm rounded bg-red-600 text-white">ยืนยันลบ</button>
+                <button onClick={() => setConfirmDel(false)}
+                  className="flex-1 py-1.5 text-sm rounded bg-gray-100 text-gray-500">ยกเลิก</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Slip Summary Section ──────────────────────────────────────────────────────
+
+function SlipSummarySection({ session }: { session: BranchSession | null }) {
+  type Period = 'month' | 'week'
+  const [periods,      setPeriods]      = useState<Record<string, Period>>({ วรวุฒิ: 'month', print: 'month', pack: 'month', bb: 'month', กล่อง: 'month' })
+  const [totals,       setTotals]       = useState<Record<string, { month: number; week: number }>>({})
+  const [pendingSlips, setPendingSlips] = useState<Slip[]>([])
+  const [confirmSlip,  setConfirmSlip]  = useState<Slip | null>(null)
+  const [loading,      setLoading]      = useState(true)
+
+  const loadData = useCallback(async () => {
+    const [totalsRes, pendingRes] = await Promise.all([
+      fetch('/api/slips'),
+      fetch('/api/slips?pending=true'),
+    ])
+    const { totals: t } = await totalsRes.json()
+    const pending: Slip[] = await pendingRes.json()
+    setTotals(t ?? {})
+    setPendingSlips(pending)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { if (session?.is_admin || session?.is_manager) loadData() }, [loadData, session])
+
+  if (!session?.is_admin && !session?.is_manager) return null
+
+  const togglePeriod = (key: string) =>
+    setPeriods(prev => ({ ...prev, [key]: prev[key] === 'month' ? 'week' : 'month' }))
+
+  return (
+    <div className="bg-white border-b border-gray-200 px-4 py-3">
+      <div className="flex items-center gap-2 mb-2">
+        <h2 className="text-sm font-bold text-gray-600">สรุปสลิปโอนเงิน</h2>
+        {pendingSlips.length > 0 && (
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 font-medium animate-pulse">
+            รอยืนยัน {pendingSlips.length} รายการ
+          </span>
+        )}
+      </div>
+
+      {/* 5 category cards */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {SLIP_CATS.map(cat => {
+          const t      = totals[cat.key]
+          const period = periods[cat.key]
+          const total  = period === 'month' ? (t?.month ?? 0) : (t?.week ?? 0)
+          return (
+            <div key={cat.key} className="flex-shrink-0 border border-gray-200 rounded-lg p-3 min-w-[140px] bg-gray-50">
+              <div className="text-xs font-bold text-gray-600 mb-2 whitespace-nowrap">{cat.label}</div>
+              <button onClick={() => togglePeriod(cat.key)}
+                className="text-[10px] px-2 py-0.5 rounded-full border border-gray-300 bg-white text-gray-500 hover:bg-gray-100 mb-2 transition-colors">
+                {period === 'month' ? '📅 รอบเดือน' : '📅 รอบสัปดาห์'}
+              </button>
+              <div className={`text-base font-bold ${total > 0 ? 'text-green-500' : 'text-gray-300'}`}>
+                {loading ? '...' : `฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Pending slips list */}
+      {pendingSlips.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-orange-600 mb-1">รายการรอยืนยัน</div>
+          <div className="flex flex-wrap gap-1.5">
+            {pendingSlips.map(s => (
+              <button key={s.id} onClick={() => setConfirmSlip(s)}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-orange-50 border border-orange-200 hover:bg-orange-100 transition-colors text-left">
+                <div>
+                  <div className="text-xs font-bold text-orange-700">
+                    {SLIP_CATS.find(c => c.key === s.category)?.label ?? s.category}
+                  </div>
+                  <div className="text-[10px] text-gray-500">
+                    ฿{s.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} · {s.slip_date}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm modal */}
+      {confirmSlip && (
+        <SlipConfirmModal
+          slip={confirmSlip}
+          onClose={() => setConfirmSlip(null)}
+          onSaved={() => { setConfirmSlip(null); loadData() }}
+        />
+      )}
+    </div>
+  )
+}
 
 // ── Branch Row Component ──────────────────────────────────────────────────────
 
@@ -614,6 +828,9 @@ export default function BranchesPage() {
           📤 เบิกของ
         </Link>
       </div>
+
+      {/* Slip Summary */}
+      {session && <SlipSummarySection session={session} />}
 
       {/* Login Modal */}
       {!session && (
