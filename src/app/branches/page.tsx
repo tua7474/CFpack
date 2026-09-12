@@ -818,7 +818,7 @@ export default function BranchesPage() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">เบอร์โทร</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[360px]">ประวัติรายเดือน</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[360px]">ประวัติใบจอง</th>
                   {SLIP_CATS.map((cat, i) => (
                     <th key={cat.key} className={`px-2 py-1.5 whitespace-nowrap text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-500' : ''}`}>
                       <div className="font-semibold text-[11px] mb-1">{cat.label}</div>
