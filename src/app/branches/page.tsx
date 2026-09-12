@@ -471,29 +471,23 @@ function BranchRow({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">#{o.order_no}</div>
                   <div className="text-[9px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-gray-500">฿{fmtMoney(o.total_amount)}</div>
                   {o.payment_status === 'paid' ? (
                     <div>
-                      <span className="text-[10px] text-green-500 font-medium">ชำระแล้ว</span>
-                      <span className="block text-[9px] text-green-400">{fmtDateShort(o.updated_at)}</span>
+                      <div className="text-[10px] text-green-500 font-medium">ชำระแล้ว</div>
+                      <div className="text-[9px] text-green-400">{fmtDateShort(o.updated_at)}</div>
                     </div>
+                  ) : session?.is_admin ? (
+                    <button onClick={() => handleMarkPaid(o.id)}
+                      className="text-[10px] text-red-500 font-medium hover:text-red-700 hover:underline">
+                      รอชำระ
+                    </button>
                   ) : (
-                    <span className="text-[10px] text-red-500 font-medium">รอชำระ</span>
+                    <div className="text-[10px] text-red-500 font-medium">รอชำระ</div>
                   )}
                 </div>
-                <div className="text-right shrink-0 text-gray-500">
-                  <div>฿{fmtMoney(o.total_amount)}</div>
-                </div>
-                {session?.is_admin && (
-                  <button
-                    onClick={() => o.payment_status !== 'paid' && handleMarkPaid(o.id)}
-                    className={`shrink-0 self-center text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors ${
-                      o.payment_status === 'paid'
-                        ? 'bg-green-100 text-green-600 cursor-default'
-                        : 'bg-red-100 text-red-600 hover:bg-red-200 cursor-pointer'
-                    }`}>
-                    {o.payment_status === 'paid' ? '✓' : '●'}
-                  </button>
-                )}
               </div>
             ))}
           </div>
