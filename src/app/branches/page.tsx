@@ -241,15 +241,9 @@ function BranchRow({
   slipTotals: SlipTotals
   slipPeriods: SlipPeriods
 }) {
-  const [orders, setOrders] = useState<BranchOrder[]>([])
   const [monthOrders, setMonthOrders] = useState<BranchOrder[]>([])
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
   const [monthlySummary, setMonthlySummary] = useState<Record<number, { pending: number; paid: number }>>({})
-  const [showOtp, setShowOtp] = useState(false)
-  const [otpCode, setOtpCode] = useState('')
-  const [otpSent, setOtpSent] = useState(false)
-  const [otpError, setOtpError] = useState('')
-  const [payMsg, setPayMsg] = useState('')
 
   const thisMonth = new Date().getMonth() + 1
   const thisYear  = new Date().getFullYear()
@@ -257,7 +251,6 @@ function BranchRow({
   const loadOrders = useCallback(async () => {
     const r = await fetch(`/api/branches/orders?branch_id=${branch.id}`)
     const all: BranchOrder[] = await r.json()
-    setOrders(all)
 
     // Build monthly summary
     const summary: Record<number, { pending: number; paid: number }> = {}
@@ -272,7 +265,6 @@ function BranchRow({
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
-  const pendingOrders = orders.filter(o => o.payment_status !== 'paid')
   const thisMonthPaid = monthlySummary[thisMonth]?.paid ?? 0
   const thisMonthPending = monthlySummary[thisMonth]?.pending ?? 0
 
@@ -307,48 +299,6 @@ function BranchRow({
     loadOrders()
   }
 
-  const handleSendOtp = async () => {
-    setOtpError('')
-    const res = await fetch('/api/branches/otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'send', phone: session?.phone }),
-    })
-    const data = await res.json()
-    if (data.ok) {
-      setOtpSent(true)
-    } else if (data.error === 'line_not_linked') {
-      setOtpError('ยังไม่ได้เชื่อม LINE กรุณาส่ง "ลงทะเบียน [เบอร์]" ใน LINE Bot ก่อนครับ')
-    } else {
-      setOtpError('เกิดข้อผิดพลาด กรุณาลองใหม่')
-    }
-  }
-
-  const handleVerifyOtp = async () => {
-    setOtpError('')
-    const res = await fetch('/api/branches/otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'verify', phone: session?.phone, code: otpCode }),
-    })
-    const { valid } = await res.json()
-    if (!valid) { setOtpError('รหัส OTP ไม่ถูกต้องหรือหมดอายุแล้ว'); return }
-
-    // Mark pending orders as paid
-    const ids = pendingOrders.map(o => o.id)
-    await fetch('/api/branches/orders', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ branch_id: branch.id, order_ids: ids, action: 'pay' }),
-    })
-    setShowOtp(false)
-    setOtpCode('')
-    setOtpSent(false)
-    setPayMsg('บันทึกชำระเงินสำเร็จ')
-    setTimeout(() => setPayMsg(''), 3000)
-    loadOrders()
-  }
-
   return (
     <tr className={`${ROW_BG[colorGroup]} align-top border-b border-gray-200 transition-colors`}>
 
@@ -379,69 +329,7 @@ function BranchRow({
         ))}
       </td>
 
-      {/* 3. ใบจองรอชำระ */}
-      <td className="px-3 py-2 border-r border-gray-200 min-w-[180px]">
-        {pendingOrders.length === 0 ? (
-          <span className="text-xs text-gray-400">ไม่มีรายการค้าง</span>
-        ) : pendingOrders.map(o => (
-          <div key={o.id} className="text-xs mb-1 pb-1 border-b border-gray-100 last:border-0">
-            <div className="font-medium text-gray-500">#{o.order_no}</div>
-            <div className="text-gray-500">
-              จำนวน 1 ใบ · ฿{fmtMoney(o.total_amount)}
-            </div>
-            <div className="text-[10px] text-gray-400">{fmtDate(o.created_at)}</div>
-          </div>
-        ))}
-      </td>
-
-      {/* 4. สถานะ + ชำระเงิน */}
-      <td className="px-3 py-2 border-r border-gray-200 min-w-[130px]">
-        {pendingOrders.length > 0 ? (
-          <div>
-            <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-orange-100 text-green-400 font-medium mb-1">
-              รอชำระเงิน
-            </span>
-            {payMsg && <div className="text-xs text-green-400">{payMsg}</div>}
-            {(session?.is_admin || session?.is_manager) && !showOtp && (
-              <button onClick={() => { setShowOtp(true); setOtpSent(false); setOtpCode(''); setOtpError('') }}
-                className="block text-xs px-2 py-1 rounded bg-[#9b9484] hover:bg-[#9b9484] text-white mt-1 whitespace-nowrap">
-                ✓ ชำระเงินแล้ว
-              </button>
-            )}
-            {(session?.is_admin || session?.is_manager) && showOtp && (
-              <div className="mt-1 space-y-1">
-                {!otpSent ? (
-                  <button onClick={handleSendOtp}
-                    className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap">
-                    ส่ง OTP ทาง LINE
-                  </button>
-                ) : (
-                  <div className="space-y-1">
-                    <input value={otpCode} onChange={e => setOtpCode(e.target.value)}
-                      placeholder="รหัส OTP 6 หลัก"
-                      className="w-28 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400" />
-                    <div className="flex gap-1">
-                      <button onClick={handleVerifyOtp}
-                        className="text-xs px-2 py-1 rounded bg-[#9b9484] hover:bg-[#9b9484] text-white">
-                        ยืนยัน
-                      </button>
-                      <button onClick={() => setShowOtp(false)}
-                        className="text-xs px-2 py-1 rounded bg-gray-200 hover:bg-gray-300 text-gray-500">
-                        ยกเลิก
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {otpError && <div className="text-[10px] text-red-500">{otpError}</div>}
-              </div>
-            )}
-          </div>
-        ) : (
-          <span className="text-xs text-green-400">ชำระครบแล้ว</span>
-        )}
-      </td>
-
-      {/* 5. สรุปเดือนนี้ */}
+      {/* 3. สรุปเดือนนี้ */}
       <td className="px-3 py-2 border-r border-gray-200 text-center">
         <div className="text-xs text-gray-500 mb-0.5">{MONTH_NAMES[thisMonth - 1]}</div>
         <div className="text-sm font-bold text-green-400">{thisMonthPending}</div>
@@ -450,7 +338,7 @@ function BranchRow({
 
       {/* 6. ปุ่มเดือน 1-12 */}
       <td className="px-3 py-2">
-        <div className="flex flex-wrap gap-1 max-w-[200px]">
+        <div className="flex flex-wrap gap-1 max-w-[340px]">
           {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
             const s = monthlySummary[m] ?? { pending: 0, paid: 0 }
             const isSelected = selectedMonth === m
@@ -474,7 +362,7 @@ function BranchRow({
 
         {/* Month detail */}
         {selectedMonth !== null && (
-          <div className="mt-2 border border-gray-200 rounded p-2 bg-white text-xs max-w-[280px]">
+          <div className="mt-2 border border-gray-200 rounded p-2 bg-white text-xs max-w-[420px]">
             <div className="font-semibold text-gray-500 mb-1">{MONTH_NAMES[selectedMonth - 1]} {thisYear}</div>
             {monthOrders.length === 0 ? (
               <div className="text-gray-400">ไม่มีรายการ</div>
@@ -929,10 +817,8 @@ export default function BranchesPage() {
                 <tr className="bg-[#9b9484] text-white text-left">
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">เบอร์โทร</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ใบจองรอชำระ</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">สถานะ</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ประวัติรายเดือน</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[360px]">ประวัติรายเดือน</th>
                   {SLIP_CATS.map((cat, i) => (
                     <th key={cat.key} className={`px-2 py-1.5 whitespace-nowrap text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-500' : ''}`}>
                       <div className="font-semibold text-[11px] mb-1">{cat.label}</div>
@@ -949,7 +835,7 @@ export default function BranchesPage() {
                 {sortAndGroup(visibleBranches).map(({ color, items }) => (
                   <>
                     <tr key={`header-${color}`} className={GROUP_HEADER_BG[color]}>
-                      <td colSpan={11} className="px-3 py-1 text-xs font-bold tracking-wide">
+                      <td colSpan={9} className="px-3 py-1 text-xs font-bold tracking-wide">
                         {GROUP_LABEL[color]}
                       </td>
                     </tr>
