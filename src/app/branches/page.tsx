@@ -274,7 +274,7 @@ function BranchRow({
 
   const loadOrders = useCallback(async () => {
     // ดึงออเดอร์ 12 สัปดาห์ย้อนหลัง
-    const oldest = weekBounds(11)
+    const oldest = weekBounds(2)
     const r = await fetch(`/api/branches/orders?branch_id=${branch.id}&date_from=${oldest.start}&date_to=2099-12-31`)
     const all: BranchOrder[] = await r.json()
 
@@ -282,7 +282,7 @@ function BranchRow({
     const summary: Record<number, { pending: number; paid: number }> = {}
     for (const o of all) {
       const orderDate = new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-      for (let w = 0; w < 12; w++) {
+      for (let w = 0; w < 3; w++) {
         const { start, end } = weekBounds(w)
         if (orderDate >= start && orderDate <= end) {
           if (!summary[w]) summary[w] = { pending: 0, paid: 0 }
@@ -362,7 +362,7 @@ function BranchRow({
       {/* 4. ปุ่ม 36 สัปดาห์ */}
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1 max-w-[420px]">
-          {Array.from({ length: 12 }, (_, w) => w).map(w => {
+          {Array.from({ length: 3 }, (_, w) => w).map(w => {
             const s = weeklySummary[w] ?? { pending: 0, paid: 0 }
             const { weekNum, year } = weekBounds(w)
             const currentYear = new Date().getFullYear()
