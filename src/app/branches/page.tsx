@@ -229,15 +229,17 @@ function SlipConfirmModal({ slip, onClose, onSaved }: {
 
 type SlipTotals = Record<string, { month: number; week: number }>
 
+type SlipPeriods = Record<string, 'month' | 'week'>
+
 function BranchRow({
-  branch, session, onManage, colorGroup, slipTotals, slipPeriod,
+  branch, session, onManage, colorGroup, slipTotals, slipPeriods,
 }: {
   branch: Branch
   session: BranchSession | null
   onManage: (b: Branch) => void
   colorGroup: ColorGroup
   slipTotals: SlipTotals
-  slipPeriod: 'month' | 'week'
+  slipPeriods: SlipPeriods
 }) {
   const [orders, setOrders] = useState<BranchOrder[]>([])
   const [monthOrders, setMonthOrders] = useState<BranchOrder[]>([])
@@ -476,7 +478,7 @@ function BranchRow({
       {/* 7–11. Slip totals per category */}
       {SLIP_CATS.map((cat, i) => {
         const t     = slipTotals[cat.key]
-        const total = slipPeriod === 'month' ? (t?.month ?? 0) : (t?.week ?? 0)
+        const total = (slipPeriods[cat.key] ?? 'month') === 'month' ? (t?.month ?? 0) : (t?.week ?? 0)
         return (
           <td key={cat.key}
             className={`px-3 py-2 text-center whitespace-nowrap ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-200' : ''} ${colorGroup === 'black' ? '' : ''}`}>
@@ -651,7 +653,7 @@ export default function BranchesPage() {
   const [newBranchColor, setNewBranchColor] = useState<'black' | 'editor' | 'yellow' | 'red' | 'orange'>('orange')
 
   // Slip state
-  const [slipPeriod,   setSlipPeriod]   = useState<'month' | 'week'>('month')
+  const [slipPeriods,  setSlipPeriods]  = useState<SlipPeriods>({ วรวุฒิ: 'month', print: 'month', pack: 'month', bb: 'month', กล่อง: 'month' })
   const [slipData,     setSlipData]     = useState<Record<number, SlipTotals>>({})
   const [pendingSlips, setPendingSlips] = useState<Slip[]>([])
   const [confirmSlip,  setConfirmSlip]  = useState<Slip | null>(null)
@@ -894,22 +896,16 @@ export default function BranchesPage() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">สถานะ</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ประวัติรายเดือน</th>
-                  {SLIP_CATS.map(cat => (
-                    <th key={cat.key} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center last:border-r-0">
-                      {cat.label}
+                  {SLIP_CATS.map((cat, i) => (
+                    <th key={cat.key} className={`px-2 py-1.5 whitespace-nowrap text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-500' : ''}`}>
+                      <div className="font-semibold text-[11px] mb-1">{cat.label}</div>
+                      <button
+                        onClick={() => setSlipPeriods(prev => ({ ...prev, [cat.key]: prev[cat.key] === 'month' ? 'week' : 'month' }))}
+                        className="px-2 py-0.5 rounded border border-white/40 bg-white/15 hover:bg-white/30 text-white text-[10px] transition-colors whitespace-nowrap">
+                        {(slipPeriods[cat.key] ?? 'month') === 'month' ? 'รอบเดือน' : 'รอบสัปดาห์'}
+                      </button>
                     </th>
                   ))}
-                </tr>
-                {/* Period toggle sub-row */}
-                <tr className="bg-[#7a7468] text-white">
-                  <th colSpan={6} className="px-3 py-1 border-r border-gray-600"></th>
-                  <th colSpan={5} className="px-3 py-1 text-center">
-                    <button
-                      onClick={() => setSlipPeriod(p => p === 'month' ? 'week' : 'month')}
-                      className="px-3 py-0.5 rounded border border-white/40 bg-white/15 hover:bg-white/25 text-white text-[11px] transition-colors">
-                      {slipPeriod === 'month' ? '📅 รอบเดือน — คลิกเพื่อเปลี่ยนเป็นรอบสัปดาห์' : '📅 รอบสัปดาห์ (จ–อา) — คลิกเพื่อเปลี่ยนเป็นรอบเดือน'}
-                    </button>
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -924,7 +920,7 @@ export default function BranchesPage() {
                       <BranchRow key={b.id} branch={b} session={session}
                         onManage={setManageBranch} colorGroup={color}
                         slipTotals={slipData[b.id] ?? {}}
-                        slipPeriod={slipPeriod} />
+                        slipPeriods={slipPeriods} />
                     ))}
                   </>
                 ))}
