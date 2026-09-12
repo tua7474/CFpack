@@ -35,19 +35,28 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PATCH { branch_id, order_ids[], action: 'pay' } → mark orders as paid
+// PATCH { branch_id, order_ids[], action: 'pay'|'reset' }
 export async function PATCH(req: NextRequest) {
   try {
     const { branch_id, order_ids, action } = await req.json()
-    if (action !== 'pay' || !branch_id || !order_ids?.length)
+    if (!branch_id || !order_ids?.length || !['pay','reset'].includes(action))
       return NextResponse.json({ error: 'invalid request' }, { status: 400 })
 
-    await pool.query(
-      `UPDATE booking_orders
-       SET payment_status='paid', updated_at=NOW()
-       WHERE id=ANY($1) AND branch_id=$2`,
-      [order_ids, branch_id]
-    )
+    if (action === 'pay') {
+      await pool.query(
+        `UPDATE booking_orders
+         SET payment_status='paid', updated_at=NOW()
+         WHERE id=ANY($1) AND branch_id=$2`,
+        [order_ids, branch_id]
+      )
+    } else {
+      await pool.query(
+        `UPDATE booking_orders
+         SET payment_status='pending', updated_at=NOW()
+         WHERE id=ANY($1) AND branch_id=$2`,
+        [order_ids, branch_id]
+      )
+    }
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error(err)

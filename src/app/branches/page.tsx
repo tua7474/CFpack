@@ -295,6 +295,18 @@ function BranchRow({
     loadOrders()
   }
 
+  const handleResetPaid = async (orderId: number) => {
+    await fetch('/api/branches/orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch_id: branch.id, order_ids: [orderId], action: 'reset' }),
+    })
+    setMonthOrders(prev => prev.map(o =>
+      o.id === orderId ? { ...o, payment_status: 'pending', updated_at: new Date().toISOString() } : o
+    ))
+    loadOrders()
+  }
+
   const handleSendOtp = async () => {
     setOtpError('')
     const res = await fetch('/api/branches/otp', {
@@ -471,6 +483,12 @@ function BranchRow({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">#{o.order_no}</div>
                   <div className="text-[9px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
+                  {session?.is_admin && o.payment_status === 'paid' && (
+                    <button onClick={() => handleResetPaid(o.id)}
+                      className="text-[9px] text-gray-400 hover:text-red-500 hover:underline">
+                      รีเซ็ต
+                    </button>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-gray-500">฿{fmtMoney(o.total_amount)}</div>
