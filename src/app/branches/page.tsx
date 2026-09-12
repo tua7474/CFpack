@@ -95,6 +95,9 @@ const SLIP_CATS = [
   { key: 'กล่อง', label: 'สลิปกล่อง' },
 ] as const
 
+interface WithdrawalType { id: number; name: string }
+interface UnpaidOrder { id: number; order_no: string; total_amount: string }
+
 interface BranchSession {
   branch_id: number; branch_name: string; phone: string
   is_admin: boolean; is_manager: boolean; allowed_pages: string[]
@@ -233,6 +236,7 @@ type SlipPeriods = Record<string, 'month' | 'week'>
 
 function BranchRow({
   branch, session, onManage, colorGroup, slipTotals, slipPeriods,
+  withdrawalTypes, unpaidOrders,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -240,6 +244,8 @@ function BranchRow({
   colorGroup: ColorGroup
   slipTotals: SlipTotals
   slipPeriods: SlipPeriods
+  withdrawalTypes: WithdrawalType[]
+  unpaidOrders: Record<number, UnpaidOrder[]>
 }) {
   const [weekOrders,     setWeekOrders]     = useState<BranchOrder[]>([])
   const [selectedWeek,   setSelectedWeek]   = useState<number | null>(null)
@@ -429,6 +435,30 @@ function BranchRow({
           )}
         </td>
 
+      {/* ใบจองค้างชำระ แยกตามประเภทเบิกของ */}
+      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px] align-top">
+        {withdrawalTypes.length === 0 ? (
+          <span className="text-[10px] text-gray-300">-</span>
+        ) : withdrawalTypes.map((wt, i) => {
+          const orders = unpaidOrders[wt.id] ?? []
+          return (
+            <div key={wt.id} className={`flex gap-1.5 py-0.5 ${i < withdrawalTypes.length - 1 ? 'border-b border-gray-100' : ''}`}>
+              <div className="w-[72px] text-[9px] text-gray-400 shrink-0 pt-0.5 leading-tight">{wt.name}</div>
+              <div className="flex flex-col gap-0.5">
+                {orders.length === 0 ? (
+                  <span className="text-[10px] text-gray-300">-</span>
+                ) : orders.map(o => (
+                  <div key={o.id} className="text-[10px] whitespace-nowrap">
+                    <span className="text-gray-500">#{o.order_no}</span>
+                    <span className="text-orange-500 ml-1">฿{fmtMoney(o.total_amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </td>
+
       {/* 7–11. Slip totals per category */}
       {SLIP_CATS.map((cat, i) => {
         const t     = slipTotals[cat.key]
@@ -612,6 +642,10 @@ export default function BranchesPage() {
   const [pendingSlips, setPendingSlips] = useState<Slip[]>([])
   const [confirmSlip,  setConfirmSlip]  = useState<Slip | null>(null)
 
+  // Unpaid orders by withdrawal type
+  const [withdrawalTypes,  setWithdrawalTypes]  = useState<WithdrawalType[]>([])
+  const [unpaidByBranch,   setUnpaidByBranch]   = useState<Record<number, Record<number, UnpaidOrder[]>>>({})
+
   // Load session from localStorage
   useEffect(() => {
     try {
@@ -644,8 +678,23 @@ export default function BranchesPage() {
     setPendingSlips(pending)
   }, [])
 
+  const loadUnpaidData = useCallback(async () => {
+    const r = await fetch('/api/branches/orders/unpaid')
+    const data: { types: WithdrawalType[]; byBranch: Record<string, Record<string, UnpaidOrder[]>> } = await r.json()
+    setWithdrawalTypes(data.types ?? [])
+    const byBranch: Record<number, Record<number, UnpaidOrder[]>> = {}
+    for (const [bid, typeMap] of Object.entries(data.byBranch ?? {})) {
+      byBranch[Number(bid)] = {}
+      for (const [tid, orders] of Object.entries(typeMap)) {
+        byBranch[Number(bid)][Number(tid)] = orders
+      }
+    }
+    setUnpaidByBranch(byBranch)
+  }, [])
+
   useEffect(() => { loadBranches() }, [loadBranches])
   useEffect(() => { loadSlipData() }, [loadSlipData])
+  useEffect(() => { loadUnpaidData() }, [loadUnpaidData])
 
   const handleLogin = async () => {
     setLoginError('')
@@ -847,6 +896,7 @@ export default function BranchesPage() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[360px]">ประวัติใบจอง</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[180px]">ใบจองค้างชำระ</th>
                   {SLIP_CATS.map((cat, i) => (
                     <th key={cat.key} className={`px-2 py-1.5 whitespace-nowrap text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-500' : ''}`}>
                       <div className="font-semibold text-[11px] mb-1">{cat.label}</div>
@@ -863,7 +913,7 @@ export default function BranchesPage() {
                 {sortAndGroup(visibleBranches).map(({ color, items }) => (
                   <>
                     <tr key={`header-${color}`} className={GROUP_HEADER_BG[color]}>
-                      <td colSpan={8} className="px-3 py-1 text-xs font-bold tracking-wide">
+                      <td colSpan={9} className="px-3 py-1 text-xs font-bold tracking-wide">
                         {GROUP_LABEL[color]}
                       </td>
                     </tr>
@@ -871,7 +921,9 @@ export default function BranchesPage() {
                       <BranchRow key={b.id} branch={b} session={session}
                         onManage={setManageBranch} colorGroup={color}
                         slipTotals={slipData[b.id] ?? {}}
-                        slipPeriods={slipPeriods} />
+                        slipPeriods={slipPeriods}
+                        withdrawalTypes={withdrawalTypes}
+                        unpaidOrders={unpaidByBranch[b.id] ?? {}} />
                     ))}
                   </>
                 ))}
