@@ -365,7 +365,7 @@ function BranchRow({
 
       {/* 3. สรุปสัปดาห์นี้ */}
       <td className="px-3 py-2 border-r border-gray-200 text-center">
-        <div className="text-[10px] text-gray-400 mb-0.5">สป.ที่ {weekBounds(0).weekNum}</div>
+        <div className="text-[10px] text-gray-400 mb-0.5">สัปดาห์ที่ {weekBounds(0).weekNum}</div>
         <div className="text-sm font-bold text-green-400">{thisMonthPending}</div>
         <div className="text-xs text-gray-400">/ {thisMonthPaid} ชำระแล้ว</div>
       </td>
@@ -379,9 +379,7 @@ function BranchRow({
             const currentYear = new Date().getFullYear()
             const isSelected = selectedWeek === w
             const hasData = s.pending > 0 || s.paid > 0
-            const btnLabel = w === 0
-              ? `สป.${weekNum}`
-              : year < currentYear ? `สป.${weekNum} (${year})` : `สป.${weekNum}`
+            const btnLabel = year < currentYear ? `${weekNum}(${year})` : `${weekNum}`
             return (
               <button key={w} onClick={() => handleWeekClick(w)}
                 className={`text-[10px] px-2 py-0.5 rounded border transition-colors whitespace-nowrap ${
