@@ -352,23 +352,7 @@ function BranchRow({
         )}
       </td>
 
-      {/* 2. เบอร์โทร */}
-      <td className={`px-3 py-2 border-r ${colorGroup === 'black' ? 'border-gray-600 text-gray-300' : 'border-gray-200 text-gray-700'}`}>
-        {branch.phones.map(p => (
-          <div key={p.id} className="text-xs whitespace-nowrap">
-            {p.phone}
-            {p.is_admin && <span className={`ml-1 text-[10px] ${colorGroup === 'black' ? 'text-yellow-400' : 'text-green-400'}`}>(admin)</span>}
-            {!p.is_admin && p.is_manager && <span className={`ml-1 text-[10px] ${colorGroup === 'black' ? 'text-blue-300' : 'text-blue-500'}`}>(ผู้จัดการ)</span>}
-            {!p.is_admin && !p.is_manager && p.allowed_pages.length > 0 && (
-              <span className="ml-1 text-[9px] text-gray-400">
-                [{p.allowed_pages.map(k => PAGE_LIST.find(pg => pg.key === k)?.label ?? k).join(', ')}]
-              </span>
-            )}
-          </div>
-        ))}
-      </td>
-
-      {/* 3. สรุปสัปดาห์นี้ */}
+      {/* 2. สรุปสัปดาห์นี้ */}
       <td className="px-3 py-2 border-r border-gray-200 text-center">
         <div className="text-[10px] text-gray-400 mb-0.5">สัปดาห์ที่ {weekBounds(0).weekNum}</div>
         <div className="text-sm font-bold text-green-400">{thisMonthPending}</div>
@@ -861,7 +845,6 @@ export default function BranchesPage() {
               <thead>
                 <tr className="bg-[#9b9484] text-white text-left">
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">เบอร์โทร</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[360px]">ประวัติใบจอง</th>
                   {SLIP_CATS.map((cat, i) => (
@@ -880,7 +863,7 @@ export default function BranchesPage() {
                 {sortAndGroup(visibleBranches).map(({ color, items }) => (
                   <>
                     <tr key={`header-${color}`} className={GROUP_HEADER_BG[color]}>
-                      <td colSpan={9} className="px-3 py-1 text-xs font-bold tracking-wide">
+                      <td colSpan={8} className="px-3 py-1 text-xs font-bold tracking-wide">
                         {GROUP_LABEL[color]}
                       </td>
                     </tr>
