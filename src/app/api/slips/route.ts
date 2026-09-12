@@ -87,10 +87,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(rows)
     }
 
-    // Return totals for all categories (both month and week pre-computed)
+    // Return totals by branch (for table rows)
     const month = getMonthRange()
     const week  = getWeekRange()
 
+    if (url.searchParams.get('by_branch') === 'true') {
+      const { rows } = await pool.query(`
+        SELECT
+          branch_id,
+          category,
+          COALESCE(SUM(amount) FILTER (WHERE slip_date >= $1 AND slip_date <= $2), 0)::float AS month_total,
+          COALESCE(SUM(amount) FILTER (WHERE slip_date >= $3 AND slip_date <= $4), 0)::float AS week_total
+        FROM slips
+        WHERE status = 'confirmed' AND branch_id IS NOT NULL
+        GROUP BY branch_id, category
+      `, [month.start, month.end, week.start, week.end])
+      return NextResponse.json(rows)
+    }
+
+    // Return overall totals per category
     const { rows } = await pool.query(`
       SELECT
         category,
