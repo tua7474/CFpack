@@ -339,11 +339,16 @@ function BranchRow({
       {/* 1. ชื่อสาขา */}
       <td className={`px-3 py-2 border-r border-gray-600 font-semibold whitespace-nowrap ${colorGroup === 'black' ? 'text-white border-gray-600' : 'text-green-400 border-gray-200'}`}>
         <div>{branch.name}</div>
-        {session?.is_admin && (
-          <button onClick={() => onManage(branch)}
-            className={`mt-1 text-[10px] underline ${colorGroup === 'black' ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-green-400'}`}>
-            จัดการ
-          </button>
+        {branch.phones.length > 0 && (
+          <div className="mt-1">
+            {branch.phones.map(p => (
+              <div key={p.id}
+                onClick={session?.is_admin ? () => onManage(branch) : undefined}
+                className={`text-[10px] ${session?.is_admin ? 'underline cursor-pointer' : ''} ${colorGroup === 'black' ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-green-400'}`}>
+                {p.phone}
+              </div>
+            ))}
+          </div>
         )}
       </td>
 
