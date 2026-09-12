@@ -283,6 +283,18 @@ function BranchRow({
     setMonthOrders(await r.json())
   }
 
+  const handleMarkPaid = async (orderId: number) => {
+    await fetch('/api/branches/orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch_id: branch.id, order_ids: [orderId], action: 'pay' }),
+    })
+    setMonthOrders(prev => prev.map(o =>
+      o.id === orderId ? { ...o, payment_status: 'paid', updated_at: new Date().toISOString() } : o
+    ))
+    loadOrders()
+  }
+
   const handleSendOtp = async () => {
     setOtpError('')
     const res = await fetch('/api/branches/otp', {
@@ -455,12 +467,12 @@ function BranchRow({
             {monthOrders.length === 0 ? (
               <div className="text-gray-400">ไม่มีรายการ</div>
             ) : monthOrders.map(o => (
-              <div key={o.id} className={`flex justify-between items-start py-1 border-b border-gray-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
-                <div>
+              <div key={o.id} className={`flex items-start gap-1.5 py-1 border-b border-gray-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
+                <div className="flex-1 min-w-0">
                   <span className="font-medium">#{o.order_no}</span>
                   <span className="ml-1 text-[10px] text-gray-400">{o.payment_status === 'paid' ? '✓ชำระ' : 'รอชำระ'}</span>
                 </div>
-                <div className="text-right ml-2">
+                <div className="text-right shrink-0">
                   <div>฿{fmtMoney(o.total_amount)}</div>
                   <div className="text-[10px] text-gray-400">
                     จอง {fmtDateShort(o.created_at)}
@@ -469,6 +481,17 @@ function BranchRow({
                     )}
                   </div>
                 </div>
+                {session?.is_admin && (
+                  <button
+                    onClick={() => o.payment_status !== 'paid' && handleMarkPaid(o.id)}
+                    className={`shrink-0 self-center text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors ${
+                      o.payment_status === 'paid'
+                        ? 'bg-green-100 text-green-600 cursor-default'
+                        : 'bg-red-100 text-red-600 hover:bg-red-200 cursor-pointer'
+                    }`}>
+                    {o.payment_status === 'paid' ? '✓' : '●'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
