@@ -435,29 +435,26 @@ function BranchRow({
           )}
         </td>
 
-      {/* ใบจองค้างชำระ แยกตามประเภทเบิกของ */}
-      <td className="px-2 py-1.5 border-r border-gray-200 min-w-[180px] align-top">
-        {withdrawalTypes.length === 0 ? (
-          <span className="text-[10px] text-gray-300">-</span>
-        ) : withdrawalTypes.map((wt, i) => {
-          const orders = unpaidOrders[wt.id] ?? []
-          return (
-            <div key={wt.id} className={`flex gap-1.5 py-0.5 ${i < withdrawalTypes.length - 1 ? 'border-b border-gray-100' : ''}`}>
-              <div className="w-[72px] text-[9px] text-gray-400 shrink-0 pt-0.5 leading-tight">{wt.name}</div>
+      {/* ใบจองค้างชำระ — 1 คอลัมน์ต่อ 1 ประเภทเบิกของ */}
+      {withdrawalTypes.map(wt => {
+        const orders = unpaidOrders[wt.id] ?? []
+        return (
+          <td key={wt.id} className="px-2 py-1.5 border-r border-gray-200 align-top">
+            {orders.length === 0 ? (
+              <span className="text-[10px] text-gray-300">-</span>
+            ) : (
               <div className="flex flex-col gap-0.5">
-                {orders.length === 0 ? (
-                  <span className="text-[10px] text-gray-300">-</span>
-                ) : orders.map(o => (
+                {orders.map(o => (
                   <div key={o.id} className="text-[10px] whitespace-nowrap">
                     <span className="text-gray-500">#{o.order_no}</span>
                     <span className="text-orange-500 ml-1">฿{fmtMoney(o.total_amount)}</span>
                   </div>
                 ))}
               </div>
-            </div>
-          )
-        })}
-      </td>
+            )}
+          </td>
+        )
+      })}
 
       {/* 7–11. Slip totals per category */}
       {SLIP_CATS.map((cat, i) => {
@@ -896,7 +893,11 @@ export default function BranchesPage() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[360px]">ประวัติใบจอง</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[180px]">ใบจองค้างชำระ</th>
+                  {withdrawalTypes.map(wt => (
+                    <th key={wt.id} className="px-2 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[120px]">
+                      <div className="text-[11px] font-semibold">{wt.name}</div>
+                    </th>
+                  ))}
                   {SLIP_CATS.map((cat, i) => (
                     <th key={cat.key} className={`px-2 py-1.5 whitespace-nowrap text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-500' : ''}`}>
                       <div className="font-semibold text-[11px] mb-1">{cat.label}</div>
@@ -913,7 +914,7 @@ export default function BranchesPage() {
                 {sortAndGroup(visibleBranches).map(({ color, items }) => (
                   <>
                     <tr key={`header-${color}`} className={GROUP_HEADER_BG[color]}>
-                      <td colSpan={9} className="px-3 py-1 text-xs font-bold tracking-wide">
+                      <td colSpan={7 + withdrawalTypes.length + SLIP_CATS.length} className="px-3 py-1 text-xs font-bold tracking-wide">
                         {GROUP_LABEL[color]}
                       </td>
                     </tr>
