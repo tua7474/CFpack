@@ -23,6 +23,10 @@ export async function GET(req: NextRequest) {
       query += ` AND EXTRACT(YEAR FROM created_at AT TIME ZONE 'Asia/Bangkok') = $2
                  AND EXTRACT(MONTH FROM created_at AT TIME ZONE 'Asia/Bangkok') = $3`
       vals.push(year, month)
+    } else if (searchParams.get('date_from') && searchParams.get('date_to')) {
+      query += ` AND (created_at AT TIME ZONE 'Asia/Bangkok')::date >= $2
+                 AND (created_at AT TIME ZONE 'Asia/Bangkok')::date <= $3`
+      vals.push(searchParams.get('date_from'), searchParams.get('date_to'))
     }
 
     query += ` ORDER BY created_at DESC`

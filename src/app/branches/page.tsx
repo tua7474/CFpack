@@ -241,38 +241,63 @@ function BranchRow({
   slipTotals: SlipTotals
   slipPeriods: SlipPeriods
 }) {
-  const [monthOrders, setMonthOrders] = useState<BranchOrder[]>([])
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
-  const [monthlySummary, setMonthlySummary] = useState<Record<number, { pending: number; paid: number }>>({})
+  const [weekOrders,     setWeekOrders]     = useState<BranchOrder[]>([])
+  const [selectedWeek,   setSelectedWeek]   = useState<number | null>(null)
+  const [weeklySummary,  setWeeklySummary]  = useState<Record<number, { pending: number; paid: number }>>({})
 
   const thisMonth = new Date().getMonth() + 1
   const thisYear  = new Date().getFullYear()
 
+  // คำนวณช่วงวันของสัปดาห์ที่ weeksAgo สัปดาห์ที่แล้ว (0 = สัปดาห์นี้)
+  const weekBounds = useCallback((weeksAgo: number) => {
+    const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+    const day = bkk.getDay()
+    const mon = new Date(bkk)
+    mon.setDate(bkk.getDate() - (day === 0 ? 6 : day - 1) - weeksAgo * 7)
+    mon.setHours(0, 0, 0, 0)
+    const sun = new Date(mon)
+    sun.setDate(mon.getDate() + 6)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const iso   = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+    const short = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}`
+    return { start: iso(mon), end: iso(sun), label: `${short(mon)}–${short(sun)}` }
+  }, [])
+
   const loadOrders = useCallback(async () => {
-    const r = await fetch(`/api/branches/orders?branch_id=${branch.id}`)
+    // ดึงออเดอร์ 36 สัปดาห์ย้อนหลัง
+    const oldest = weekBounds(35)
+    const r = await fetch(`/api/branches/orders?branch_id=${branch.id}&date_from=${oldest.start}&date_to=2099-12-31`)
     const all: BranchOrder[] = await r.json()
 
-    // Build monthly summary
+    // จัดกลุ่มตามสัปดาห์ (offset 0–35)
     const summary: Record<number, { pending: number; paid: number }> = {}
-    for (let m = 1; m <= 12; m++) summary[m] = { pending: 0, paid: 0 }
     for (const o of all) {
-      const m = new Date(o.created_at).getMonth() + 1
-      if (o.payment_status === 'paid') summary[m].paid++
-      else summary[m].pending++
+      const orderDate = new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+      for (let w = 0; w < 36; w++) {
+        const { start, end } = weekBounds(w)
+        if (orderDate >= start && orderDate <= end) {
+          if (!summary[w]) summary[w] = { pending: 0, paid: 0 }
+          if (o.payment_status === 'paid') summary[w].paid++
+          else summary[w].pending++
+          break
+        }
+      }
     }
-    setMonthlySummary(summary)
-  }, [branch.id])
+    setWeeklySummary(summary)
+  }, [branch.id, weekBounds])
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
-  const thisMonthPaid = monthlySummary[thisMonth]?.paid ?? 0
-  const thisMonthPending = monthlySummary[thisMonth]?.pending ?? 0
+  const thisWeekData = weeklySummary[0] ?? { pending: 0, paid: 0 }
+  const thisMonthPaid    = thisWeekData.paid
+  const thisMonthPending = thisWeekData.pending
 
-  const handleMonthClick = async (month: number) => {
-    if (selectedMonth === month) { setSelectedMonth(null); return }
-    setSelectedMonth(month)
-    const r = await fetch(`/api/branches/orders?branch_id=${branch.id}&year=${thisYear}&month=${month}`)
-    setMonthOrders(await r.json())
+  const handleWeekClick = async (w: number) => {
+    if (selectedWeek === w) { setSelectedWeek(null); return }
+    setSelectedWeek(w)
+    const { start, end } = weekBounds(w)
+    const r = await fetch(`/api/branches/orders?branch_id=${branch.id}&date_from=${start}&date_to=${end}`)
+    setWeekOrders(await r.json())
   }
 
   const handleMarkPaid = async (orderId: number) => {
@@ -281,7 +306,7 @@ function BranchRow({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch_id: branch.id, order_ids: [orderId], action: 'pay' }),
     })
-    setMonthOrders(prev => prev.map(o =>
+    setWeekOrders(prev => prev.map(o =>
       o.id === orderId ? { ...o, payment_status: 'paid', updated_at: new Date().toISOString() } : o
     ))
     loadOrders()
@@ -293,7 +318,7 @@ function BranchRow({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch_id: branch.id, order_ids: [orderId], action: 'reset' }),
     })
-    setMonthOrders(prev => prev.map(o =>
+    setWeekOrders(prev => prev.map(o =>
       o.id === orderId ? { ...o, payment_status: 'pending', updated_at: new Date().toISOString() } : o
     ))
     loadOrders()
@@ -329,44 +354,48 @@ function BranchRow({
         ))}
       </td>
 
-      {/* 3. สรุปเดือนนี้ */}
+      {/* 3. สรุปสัปดาห์นี้ */}
       <td className="px-3 py-2 border-r border-gray-200 text-center">
-        <div className="text-xs text-gray-500 mb-0.5">{MONTH_NAMES[thisMonth - 1]}</div>
+        <div className="text-[10px] text-gray-400 mb-0.5">{weekBounds(0).label}</div>
         <div className="text-sm font-bold text-green-400">{thisMonthPending}</div>
         <div className="text-xs text-gray-400">/ {thisMonthPaid} ชำระแล้ว</div>
       </td>
 
-      {/* 6. ปุ่มเดือน 1-12 */}
+      {/* 4. ปุ่ม 36 สัปดาห์ */}
       <td className="px-3 py-2">
-        <div className="flex flex-wrap gap-1 max-w-[340px]">
-          {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
-            const s = monthlySummary[m] ?? { pending: 0, paid: 0 }
-            const isSelected = selectedMonth === m
+        <div className="flex flex-wrap gap-1 max-w-[420px]">
+          {Array.from({ length: 36 }, (_, w) => w).map(w => {
+            const s = weeklySummary[w] ?? { pending: 0, paid: 0 }
+            const { label } = weekBounds(w)
+            const isSelected = selectedWeek === w
+            const hasData = s.pending > 0 || s.paid > 0
             return (
-              <button key={m} onClick={() => handleMonthClick(m)}
-                className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+              <button key={w} onClick={() => handleWeekClick(w)}
+                className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap ${
                   isSelected
                     ? 'bg-[#9b9484] text-white border-gray-500'
                     : s.pending > 0
-                    ? 'bg-orange-50 text-green-400 border-orange-400 hover:bg-orange-100'
-                    : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+                    ? 'bg-orange-50 text-green-500 border-orange-300 hover:bg-orange-100'
+                    : hasData
+                    ? 'bg-green-50 text-green-400 border-green-200 hover:bg-green-100'
+                    : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                 }`}>
-                {m}
-                {(s.pending > 0 || s.paid > 0) && (
-                  <span className="ml-0.5">{s.pending}/{s.paid}</span>
-                )}
+                {w === 0 ? 'สัปดาห์นี้' : label}
+                {hasData && <span className="ml-0.5 font-semibold">{s.pending > 0 ? `${s.pending}รอ` : `${s.paid}✓`}</span>}
               </button>
             )
           })}
         </div>
 
-        {/* Month detail */}
-        {selectedMonth !== null && (
+        {/* Week detail */}
+        {selectedWeek !== null && (
           <div className="mt-2 border border-gray-200 rounded p-2 bg-white text-xs max-w-[420px]">
-            <div className="font-semibold text-gray-500 mb-1">{MONTH_NAMES[selectedMonth - 1]} {thisYear}</div>
-            {monthOrders.length === 0 ? (
+            <div className="font-semibold text-gray-500 mb-1">
+              {selectedWeek === 0 ? 'สัปดาห์นี้' : `สัปดาห์ที่แล้ว ${selectedWeek}`} · {weekBounds(selectedWeek).label}
+            </div>
+            {weekOrders.length === 0 ? (
               <div className="text-gray-400">ไม่มีรายการ</div>
-            ) : monthOrders.map(o => (
+            ) : weekOrders.map(o => (
               <div key={o.id} className={`flex items-start gap-1.5 py-1 border-b border-gray-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">#{o.order_no}</div>
@@ -396,9 +425,9 @@ function BranchRow({
                 </div>
               </div>
             ))}
-          </div>
-        )}
-      </td>
+            </div>
+          )}
+        </td>
 
       {/* 7–11. Slip totals per category */}
       {SLIP_CATS.map((cat, i) => {
