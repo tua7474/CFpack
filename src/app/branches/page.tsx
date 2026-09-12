@@ -470,6 +470,7 @@ function BranchRow({
               <div key={o.id} className={`flex items-start gap-1.5 py-1 border-b border-gray-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">#{o.order_no}</div>
+                  <div className="text-[9px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
                   {o.payment_status === 'paid' ? (
                     <div>
                       <span className="text-[10px] text-green-500 font-medium">ชำระแล้ว</span>
@@ -481,7 +482,6 @@ function BranchRow({
                 </div>
                 <div className="text-right shrink-0 text-gray-500">
                   <div>฿{fmtMoney(o.total_amount)}</div>
-                  <div className="text-[10px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
                 </div>
                 {session?.is_admin && (
                   <button
