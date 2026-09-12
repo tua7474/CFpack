@@ -469,17 +469,19 @@ function BranchRow({
             ) : monthOrders.map(o => (
               <div key={o.id} className={`flex items-start gap-1.5 py-1 border-b border-gray-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
                 <div className="flex-1 min-w-0">
-                  <span className="font-medium">#{o.order_no}</span>
-                  <span className="ml-1 text-[10px] text-gray-400">{o.payment_status === 'paid' ? '✓ชำระ' : 'รอชำระ'}</span>
+                  <div className="font-medium">#{o.order_no}</div>
+                  {o.payment_status === 'paid' ? (
+                    <div>
+                      <span className="text-[10px] text-green-500 font-medium">ชำระแล้ว</span>
+                      <span className="block text-[9px] text-green-400">{fmtDateShort(o.updated_at)}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-red-500 font-medium">รอชำระ</span>
+                  )}
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 text-gray-500">
                   <div>฿{fmtMoney(o.total_amount)}</div>
-                  <div className="text-[10px] text-gray-400">
-                    จอง {fmtDateShort(o.created_at)}
-                    {o.payment_status === 'paid' && (
-                      <span className="block text-green-400">ชำระ {fmtDateShort(o.updated_at)}</span>
-                    )}
-                  </div>
+                  <div className="text-[10px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
                 </div>
                 {session?.is_admin && (
                   <button
