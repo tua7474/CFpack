@@ -248,7 +248,7 @@ function BranchRow({
   const thisMonth = new Date().getMonth() + 1
   const thisYear  = new Date().getFullYear()
 
-  // คำนวณช่วงวันของสัปดาห์ที่ weeksAgo สัปดาห์ที่แล้ว (0 = สัปดาห์นี้)
+  // คำนวณช่วงวันและเลขสัปดาห์ของปี (นับจากวันจันทร์แรกของสัปดาห์ที่มี 1 ม.ค.)
   const weekBounds = useCallback((weeksAgo: number) => {
     const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
     const day = bkk.getDay()
@@ -257,15 +257,24 @@ function BranchRow({
     mon.setHours(0, 0, 0, 0)
     const sun = new Date(mon)
     sun.setDate(mon.getDate() + 6)
+
+    // หาเลขสัปดาห์ของปี: นับจากวันจันทร์ของสัปดาห์ที่มี 1 ม.ค.
+    const yr = mon.getFullYear()
+    const jan1 = new Date(yr, 0, 1)
+    const jan1Day = jan1.getDay()
+    const jan1Mon = new Date(jan1)
+    jan1Mon.setDate(jan1.getDate() - (jan1Day === 0 ? 6 : jan1Day - 1))
+    const weekNum = Math.floor((mon.getTime() - jan1Mon.getTime()) / (7 * 864e5)) + 1
+
     const pad = (n: number) => String(n).padStart(2, '0')
     const iso   = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
     const short = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}`
-    return { start: iso(mon), end: iso(sun), label: `${short(mon)}–${short(sun)}` }
+    return { start: iso(mon), end: iso(sun), weekNum, year: yr, dateRange: `${short(mon)}–${short(sun)}` }
   }, [])
 
   const loadOrders = useCallback(async () => {
-    // ดึงออเดอร์ 36 สัปดาห์ย้อนหลัง
-    const oldest = weekBounds(35)
+    // ดึงออเดอร์ 12 สัปดาห์ย้อนหลัง
+    const oldest = weekBounds(11)
     const r = await fetch(`/api/branches/orders?branch_id=${branch.id}&date_from=${oldest.start}&date_to=2099-12-31`)
     const all: BranchOrder[] = await r.json()
 
@@ -273,7 +282,7 @@ function BranchRow({
     const summary: Record<number, { pending: number; paid: number }> = {}
     for (const o of all) {
       const orderDate = new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-      for (let w = 0; w < 36; w++) {
+      for (let w = 0; w < 12; w++) {
         const { start, end } = weekBounds(w)
         if (orderDate >= start && orderDate <= end) {
           if (!summary[w]) summary[w] = { pending: 0, paid: 0 }
@@ -356,7 +365,7 @@ function BranchRow({
 
       {/* 3. สรุปสัปดาห์นี้ */}
       <td className="px-3 py-2 border-r border-gray-200 text-center">
-        <div className="text-[10px] text-gray-400 mb-0.5">{weekBounds(0).label}</div>
+        <div className="text-[10px] text-gray-400 mb-0.5">สป.ที่ {weekBounds(0).weekNum}</div>
         <div className="text-sm font-bold text-green-400">{thisMonthPending}</div>
         <div className="text-xs text-gray-400">/ {thisMonthPaid} ชำระแล้ว</div>
       </td>
@@ -364,14 +373,18 @@ function BranchRow({
       {/* 4. ปุ่ม 36 สัปดาห์ */}
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1 max-w-[420px]">
-          {Array.from({ length: 36 }, (_, w) => w).map(w => {
+          {Array.from({ length: 12 }, (_, w) => w).map(w => {
             const s = weeklySummary[w] ?? { pending: 0, paid: 0 }
-            const { label } = weekBounds(w)
+            const { weekNum, year } = weekBounds(w)
+            const currentYear = new Date().getFullYear()
             const isSelected = selectedWeek === w
             const hasData = s.pending > 0 || s.paid > 0
+            const btnLabel = w === 0
+              ? `สป.${weekNum}`
+              : year < currentYear ? `สป.${weekNum} (${year})` : `สป.${weekNum}`
             return (
               <button key={w} onClick={() => handleWeekClick(w)}
-                className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap ${
+                className={`text-[10px] px-2 py-0.5 rounded border transition-colors whitespace-nowrap ${
                   isSelected
                     ? 'bg-[#9b9484] text-white border-gray-500'
                     : s.pending > 0
@@ -380,8 +393,8 @@ function BranchRow({
                     ? 'bg-green-50 text-green-400 border-green-200 hover:bg-green-100'
                     : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                 }`}>
-                {w === 0 ? 'สัปดาห์นี้' : label}
-                {hasData && <span className="ml-0.5 font-semibold">{s.pending > 0 ? `${s.pending}รอ` : `${s.paid}✓`}</span>}
+                {btnLabel}
+                {hasData && <span className="ml-0.5 font-semibold">{s.pending > 0 ? ` ${s.pending}รอ` : ` ${s.paid}✓`}</span>}
               </button>
             )
           })}
@@ -391,7 +404,7 @@ function BranchRow({
         {selectedWeek !== null && (
           <div className="mt-2 border border-gray-200 rounded p-2 bg-white text-xs max-w-[420px]">
             <div className="font-semibold text-gray-500 mb-1">
-              {selectedWeek === 0 ? 'สัปดาห์นี้' : `สัปดาห์ที่แล้ว ${selectedWeek}`} · {weekBounds(selectedWeek).label}
+              สัปดาห์ที่ {weekBounds(selectedWeek).weekNum} · {weekBounds(selectedWeek).dateRange}
             </div>
             {weekOrders.length === 0 ? (
               <div className="text-gray-400">ไม่มีรายการ</div>
