@@ -485,12 +485,37 @@ function BranchRow({
 
 // ── Manage Branch Modal ───────────────────────────────────────────────────────
 
+// สถานะ → is_admin, is_manager, allowed_pages
+const ROLE_CONFIG = {
+  admin:   { is_admin: true,  is_manager: false, allowed_pages: [] as string[] },
+  manager: { is_admin: false, is_manager: true,  allowed_pages: ['booking2', 'stock', 'stock-paper'] },
+  branch:  { is_admin: false, is_manager: false, allowed_pages: ['booking2'] },
+} as const
+
+type Role = keyof typeof ROLE_CONFIG
+
+const ROLE_LABEL: Record<Role, string> = {
+  admin:   'แอดมิน',
+  manager: 'ผู้จัดการ',
+  branch:  'สาขา',
+}
+
+const ROLE_DESC: Record<Role, string> = {
+  admin:   'เข้าได้ทุกหน้า แก้ไขได้ทุกจุด',
+  manager: 'เข้าได้ทุกหน้า ยกเว้นจัดส่ง เบิกของ สาขาและตัวแทน',
+  branch:  'เข้าได้เฉพาะหน้าใบจองสินค้า',
+}
+
+function roleFromFlags(is_admin: boolean, is_manager: boolean): Role {
+  if (is_admin)   return 'admin'
+  if (is_manager) return 'manager'
+  return 'branch'
+}
+
 function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; onClose: () => void; onSaved: () => void; onDeleted: (id: number) => void }) {
   const [newCode, setNewCode] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [isManager, setIsManager] = useState(false)
-  const [allowedPages, setAllowedPages] = useState<string[]>([])
-  const [saving, setSaving] = useState(false)
+  const [role, setRole]       = useState<Role>('branch')
+  const [saving, setSaving]   = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const deleteBranch = async () => {
@@ -506,12 +531,13 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
     const c = newCode.trim()
     if (!c) return
     setSaving(true)
+    const { is_admin, is_manager, allowed_pages } = ROLE_CONFIG[role]
     await fetch('/api/branches', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add_phone', branch_id: branch.id, code: c, is_admin: isAdmin, is_manager: isManager, allowed_pages: allowedPages }),
+      body: JSON.stringify({ action: 'add_phone', branch_id: branch.id, code: c, is_admin, is_manager, allowed_pages }),
     })
-    setNewCode(''); setIsAdmin(false); setIsManager(false); setAllowedPages([]); setSaving(false)
+    setNewCode(''); setRole('branch'); setSaving(false)
     onSaved()
   }
 
@@ -537,8 +563,9 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
             <div key={p.id} className="flex items-center justify-between py-1 border-b border-gray-100">
               <div className="text-sm font-mono">
                 {p.phone}
-                {p.is_admin && <span className="ml-1 text-[10px] text-green-400 font-medium font-sans">(admin)</span>}
-                {!p.is_admin && p.is_manager && <span className="ml-1 text-[10px] text-blue-500 font-medium font-sans">(ผู้จัดการ)</span>}
+                <span className={`ml-1.5 text-[10px] font-medium font-sans ${p.is_admin ? 'text-green-500' : p.is_manager ? 'text-blue-500' : 'text-gray-400'}`}>
+                  ({ROLE_LABEL[roleFromFlags(p.is_admin, p.is_manager)]})
+                </span>
                 {p.line_user_id && <span className="ml-1 text-[10px] text-green-400 font-sans">✓LINE</span>}
               </div>
               <button onClick={() => removePhone(p.id)}
@@ -553,35 +580,24 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
           <input value={newCode} onChange={e => setNewCode(e.target.value)}
             placeholder="ตัวอักษร/ตัวเลขผสมกันได้" type="text" autoComplete="off"
             className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400" />
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={isAdmin} onChange={e => { setIsAdmin(e.target.checked); if (e.target.checked) setIsManager(false) }}
-              className="rounded" />
-            เป็น Admin (กดชำระเงินได้)
-          </label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={isManager} onChange={e => { setIsManager(e.target.checked); if (e.target.checked) setIsAdmin(false) }}
-              className="rounded" />
-            เป็นผู้จัดการ (กดชำระเงินได้)
-          </label>
-          {/* หน้าที่เข้าถึงได้ — driven by PAGE_LIST */}
-          <div className="border-t border-gray-100 pt-2">
-            <div className="text-xs text-gray-500 mb-1.5">หน้าที่เข้าถึงได้</div>
-            <div className="space-y-1">
-              {PAGE_LIST.map(pg => (
-                <label key={pg.key} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allowedPages.includes(pg.key)}
-                    onChange={e => setAllowedPages(prev =>
-                      e.target.checked ? [...prev, pg.key] : prev.filter(k => k !== pg.key)
-                    )}
-                    className="rounded"
-                  />
-                  {pg.label}
-                </label>
-              ))}
-            </div>
+
+          {/* Role selector */}
+          <div className="grid grid-cols-3 gap-1.5 pt-1">
+            {(Object.keys(ROLE_CONFIG) as Role[]).map(r => (
+              <button key={r} type="button" onClick={() => setRole(r)}
+                className={`py-1.5 text-xs rounded border-2 font-semibold transition-colors ${
+                  role === r
+                    ? r === 'admin'   ? 'bg-black text-white border-black'
+                    : r === 'manager' ? 'bg-blue-500 text-white border-blue-500'
+                    :                   'bg-[#9b9484] text-white border-[#9b9484]'
+                    : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'
+                }`}>
+                {ROLE_LABEL[r]}
+              </button>
+            ))}
           </div>
+          <p className="text-[10px] text-gray-400 leading-snug">{ROLE_DESC[role]}</p>
+
           <button onClick={addCode} disabled={saving}
             className="w-full py-1.5 text-sm rounded bg-[#9b9484] hover:bg-[#9b9484] text-white font-medium disabled:opacity-50">
             + เพิ่มรหัส
