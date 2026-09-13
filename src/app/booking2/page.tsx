@@ -512,7 +512,7 @@ function Booking2Inner() {
   for (const pv of Object.values(productPriorities)) {
     if (pv) priorityCounts[pv]++
   }
-  const PRIORITY_LIMITS: Record<PriorityLevel, number> = { critical: 5, important: 10, fill: Infinity }
+  const PRIORITY_LIMITS: Record<PriorityLevel, number> = { critical: 5, important: 10, fill: 100 }
 
   const handlePriorityClick = (productId: number) => {
     if (!priorityMode) return
@@ -521,7 +521,7 @@ function Booking2Inner() {
     if (current === priorityMode) {
       next = null
     } else {
-      if (priorityMode !== 'fill' && priorityCounts[priorityMode] >= PRIORITY_LIMITS[priorityMode]) {
+      if (priorityCounts[priorityMode] >= PRIORITY_LIMITS[priorityMode]) {
         return  // limit reached
       }
       next = priorityMode
@@ -997,18 +997,18 @@ function Booking2Inner() {
           {([
             { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', sub: 'ไม่ครบไม่ต้องออกรถ',      limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300' },
             { mode: 'important' as PriorityLevel, label: 'สำคัญ',    sub: 'ของครบ/จำนวนไม่ต้องครบ', limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300' },
-            { mode: 'fill'     as PriorityLevel, label: 'เติมเต็ม', sub: 'ไม่ครบ ไม่มี ก็ส่งได้',  limit: Infinity, bg: 'bg-green-800', ring: 'ring-green-300' },
+            { mode: 'fill'     as PriorityLevel, label: 'เติมเต็มรถ', sub: 'ไม่ครบ ไม่มี ก็ส่งได้',  limit: 100, bg: 'bg-green-800', ring: 'ring-green-300' },
           ]).map(({ mode, label, sub, limit, bg, ring }) => {
             const count = priorityCounts[mode]
             const isActive = priorityMode === mode
-            const atLimit = mode !== 'fill' && count >= limit
+            const atLimit = count >= limit
             return (
               <button
                 key={mode}
                 onClick={() => setPriorityMode(isActive ? null : mode)}
                 className={`px-2 py-1 text-xs rounded font-semibold transition-all border ${bg} text-white ${isActive ? `ring-2 ${ring} shadow-lg scale-105` : 'opacity-75 hover:opacity-100'} ${atLimit && !isActive ? 'opacity-50' : ''}`}
               >
-                <div>{label} {count}{limit !== Infinity ? `/${limit}` : ''}</div>
+                <div>{label} {count}/{limit}</div>
                 <div className="text-[9px] font-normal opacity-80 leading-tight">{sub}</div>
               </button>
             )
