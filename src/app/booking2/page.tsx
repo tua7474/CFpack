@@ -258,6 +258,8 @@ function Booking2Inner() {
   const [branchInfo, setBranchInfo] = useState<{ name: string; phone: string } | null>(null)
   const [isAdmin, setIsAdmin]       = useState(true)   // false = non-admin branch (LINE group)
   const [branchReady, setBranchReady] = useState<boolean | null>(null) // null=loading, false=ไม่มีสาขา, true=เข้าได้
+  const [withdrawalTypes, setWithdrawalTypes]   = useState<{ id: number; name: string }[]>([])
+  const [withdrawalTypeId, setWithdrawalTypeId] = useState<number | null>(null)
 
   // Load foy result from booking-foy (new order mode only)
   useEffect(() => {
@@ -324,6 +326,7 @@ function Booking2Inner() {
         vehicle_type: string | null;
         foy_quantities?: Record<string, { qty: number; amount: number }>;
         foy_item_quantities?: Record<string, number>;
+        withdrawal_type_id?: number | null;
       } | null) => {
         if (!order) return
         const qty: Record<number, number> = {}
@@ -352,9 +355,18 @@ function Booking2Inner() {
         }
         if (order.source_type) setSourceType(order.source_type as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
         if (order.vehicle_type) setVehicleType(order.vehicle_type as 'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน')
+        if (order.withdrawal_type_id) setWithdrawalTypeId(order.withdrawal_type_id)
       })
       .catch(() => {})
   }, [editOrderNo])
+
+  // Fetch withdrawal types
+  useEffect(() => {
+    fetch('/api/withdrawal')
+      .then(r => r.json())
+      .then((data: { id: number; name: string }[]) => setWithdrawalTypes(data))
+      .catch(() => {})
+  }, [])
 
   // Fetch products
   useEffect(() => {
@@ -512,6 +524,7 @@ function Booking2Inner() {
             order_no: editOrderNo, total_amount: totalToSave, quantities,
             source_type: sourceType || null, vehicle_type: vehicleType || null, branch_name: branchInfo?.name ?? null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
+            withdrawal_type_id: withdrawalTypeId,
           }),
         })
         if (!res.ok) throw new Error()
@@ -536,6 +549,7 @@ function Booking2Inner() {
             total_amount: totalToSave, quantities, branch_id: branchId,
             source_type: sourceType || null, vehicle_type: vehicleType || null, branch_name: branchInfo?.name ?? null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
+            withdrawal_type_id: withdrawalTypeId,
           }),
         })
         if (!res.ok) throw new Error()
@@ -1195,6 +1209,20 @@ function Booking2Inner() {
                                   </select>
                                   {sourceType === '' && <div className="text-[7px] text-red-500 leading-none">กรุณาเลือก</div>}
                                   {isAutoForced && <div className="text-[7px] text-blue-600 leading-none">ระบบกำหนดอัตโนมัติ</div>}
+                                  {withdrawalTypes.length > 0 && (
+                                    <>
+                                      <div className="text-[7px] text-gray-500 font-semibold leading-none mt-1">ประเภทเบิก</div>
+                                      <select
+                                        value={withdrawalTypeId ?? ''}
+                                        onChange={e => setWithdrawalTypeId(e.target.value ? Number(e.target.value) : null)}
+                                        className="w-full border-2 rounded font-bold text-[11px] h-7 px-0.5 focus:outline-none bg-white border-gray-300 text-gray-600">
+                                        <option value="">— ไม่ระบุ —</option>
+                                        {withdrawalTypes.map(wt => (
+                                          <option key={wt.id} value={wt.id}>{wt.name}</option>
+                                        ))}
+                                      </select>
+                                    </>
+                                  )}
                                 </div>
                               </td>,
                             ]
