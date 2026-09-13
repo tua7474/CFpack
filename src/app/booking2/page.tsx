@@ -1181,48 +1181,31 @@ function Booking2Inner() {
                                 </div>
                               </td>,
                               <td key={`${si}-ip5b`} colSpan={2} rowSpan={3}
-                                className={`${base} p-1 align-middle ${sourceType === '' ? 'bg-red-50' : 'bg-white'}`}>
+                                className={`${base} p-1 align-middle ${withdrawalTypeId === null && !isAutoForced ? 'bg-red-50' : 'bg-white'}`}>
                                 <div className="flex flex-col justify-center h-full gap-0.5">
                                   <div className="text-[7px] text-gray-500 font-semibold leading-none">เบิกของ</div>
-                                  <select value={sourceType}
+                                  <select
+                                    value={withdrawalTypeId ?? ''}
                                     disabled={isAutoForced}
                                     onChange={e => {
-                                      const val = e.target.value as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล'
-                                      setSourceType(val)
-                                      if ((val === 'โรงกล่อง' || val === 'โรงบับเบิล') && vehicleType !== 'รับเอง' && vehicleType !== 'รถโรงงาน') setVehicleType('')
+                                      const id = e.target.value ? Number(e.target.value) : null
+                                      setWithdrawalTypeId(id)
+                                      // map ชื่อ → sourceType เพื่อ vehicleType logic
+                                      const name = withdrawalTypes.find(w => w.id === id)?.name ?? ''
+                                      const src = name.includes('โรงกล่อง') ? 'โรงกล่อง'
+                                               : name.includes('โรงบับเบิล') ? 'โรงบับเบิล'
+                                               : name.includes('โกดัง') ? 'โกดัง' : 'หน้าร้าน'
+                                      setSourceType(src)
+                                      if ((src === 'โรงกล่อง' || src === 'โรงบับเบิล') && vehicleType !== 'รับเอง' && vehicleType !== 'รถโรงงาน') setVehicleType('')
                                     }}
-                                    className={`w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none ${isAutoForced ? 'bg-blue-50 border-blue-400 text-blue-700 opacity-90' : sourceType === '' ? 'bg-white border-red-400 text-red-500' : 'bg-white border-gray-400 text-gray-500'}`}>
+                                    className={`w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none ${isAutoForced ? 'bg-blue-50 border-blue-400 text-blue-700 opacity-90' : withdrawalTypeId === null ? 'bg-white border-red-400 text-red-500' : 'bg-white border-gray-400 text-gray-500'}`}>
                                     <option value="" disabled>— เลือก —</option>
-                                    {hasMixItems && !isAutoForced ? (
-                                      <>
-                                        <option value="หน้าร้าน">หน้าร้าน</option>
-                                        <option value="โกดัง">โกดัง</option>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <option value="โกดัง">โกดัง</option>
-                                        <option value="หน้าร้าน">หน้าร้าน</option>
-                                        <option value="โรงกล่อง">โรงกล่อง</option>
-                                        <option value="โรงบับเบิล">โรงบับเบิล</option>
-                                      </>
-                                    )}
+                                    {withdrawalTypes.map(wt => (
+                                      <option key={wt.id} value={wt.id}>{wt.name}</option>
+                                    ))}
                                   </select>
-                                  {sourceType === '' && <div className="text-[7px] text-red-500 leading-none">กรุณาเลือก</div>}
+                                  {withdrawalTypeId === null && !isAutoForced && <div className="text-[7px] text-red-500 leading-none">กรุณาเลือก</div>}
                                   {isAutoForced && <div className="text-[7px] text-blue-600 leading-none">ระบบกำหนดอัตโนมัติ</div>}
-                                  {withdrawalTypes.length > 0 && (
-                                    <>
-                                      <div className="text-[7px] text-gray-500 font-semibold leading-none mt-1">ประเภทเบิก</div>
-                                      <select
-                                        value={withdrawalTypeId ?? ''}
-                                        onChange={e => setWithdrawalTypeId(e.target.value ? Number(e.target.value) : null)}
-                                        className="w-full border-2 rounded font-bold text-[11px] h-7 px-0.5 focus:outline-none bg-white border-gray-300 text-gray-600">
-                                        <option value="">— ไม่ระบุ —</option>
-                                        {withdrawalTypes.map(wt => (
-                                          <option key={wt.id} value={wt.id}>{wt.name}</option>
-                                        ))}
-                                      </select>
-                                    </>
-                                  )}
                                 </div>
                               </td>,
                             ]
