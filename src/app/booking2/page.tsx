@@ -541,6 +541,23 @@ function Booking2Inner() {
     } catch { /* ignore */ }
   }
 
+  // Clear all product priorities after a successful booking
+  const clearAllPriorities = async () => {
+    const ids = Object.entries(productPriorities)
+      .filter(([, v]) => v !== null)
+      .map(([k]) => Number(k))
+    if (ids.length === 0) return
+    await Promise.all(ids.map(id =>
+      fetch('/api/booking2', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, priority: null }),
+      }).catch(() => {})
+    ))
+    setProductPriorities({})
+    setPriorityMode(null)
+  }
+
   const handleSave = async () => {
     if (!pendingCount && !hasFoyPending && !editOrderNo) return
     setSaving(true)
@@ -582,6 +599,7 @@ function Booking2Inner() {
         localStorage.removeItem('cf_foy_result')
         localStorage.removeItem('cf_foy_items')
         setSaveMsg(`อัพเดทใบจอง ${editOrderNo} สำเร็จ`)
+        await clearAllPriorities()
       } else {
         // ── Create new order ──────────────────────────────────────────────────
         let branchId: number | null = null
@@ -609,6 +627,7 @@ function Booking2Inner() {
         localStorage.removeItem('cf_foy_items')
         const totalItems = pendingCount + Object.keys(foyPending).length
         setSaveMsg(`บันทึกสำเร็จ ${totalItems} รายการ`)
+        await clearAllPriorities()
       }
     } catch {
       setSaveMsg('เกิดข้อผิดพลาด กรุณาลองใหม่')
