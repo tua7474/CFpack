@@ -995,10 +995,10 @@ function Booking2Inner() {
         {/* ── Priority mode buttons ── */}
         <div className="flex items-center gap-1.5 no-print">
           {([
-            { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300',   activeText: 'text-red-100' },
-            { mode: 'important' as PriorityLevel, label: 'สำคัญ',    limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300',  activeText: 'text-blue-100' },
-            { mode: 'fill'     as PriorityLevel, label: 'เติมเต็ม', limit: Infinity, bg: 'bg-green-800', ring: 'ring-green-300', activeText: 'text-green-100' },
-          ]).map(({ mode, label, limit, bg, ring, activeText }) => {
+            { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', sub: 'ไม่ครบไม่ต้องออกรถ',      limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300' },
+            { mode: 'important' as PriorityLevel, label: 'สำคัญ',    sub: 'ของครบ/จำนวนไม่ต้องครบ', limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300' },
+            { mode: 'fill'     as PriorityLevel, label: 'เติมเต็ม', sub: 'ไม่ครบ ไม่มี ก็ส่งได้',  limit: Infinity, bg: 'bg-green-800', ring: 'ring-green-300' },
+          ]).map(({ mode, label, sub, limit, bg, ring }) => {
             const count = priorityCounts[mode]
             const isActive = priorityMode === mode
             const atLimit = mode !== 'fill' && count >= limit
@@ -1008,7 +1008,8 @@ function Booking2Inner() {
                 onClick={() => setPriorityMode(isActive ? null : mode)}
                 className={`px-2 py-1 text-xs rounded font-semibold transition-all border ${bg} text-white ${isActive ? `ring-2 ${ring} shadow-lg scale-105` : 'opacity-75 hover:opacity-100'} ${atLimit && !isActive ? 'opacity-50' : ''}`}
               >
-                {label} {count}{limit !== Infinity ? `/${limit}` : ''}
+                <div>{label} {count}{limit !== Infinity ? `/${limit}` : ''}</div>
+                <div className="text-[9px] font-normal opacity-80 leading-tight">{sub}</div>
               </button>
             )
           })}
