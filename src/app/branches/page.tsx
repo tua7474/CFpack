@@ -666,17 +666,22 @@ export default function BranchesPage() {
   const [withdrawalTypes,  setWithdrawalTypes]  = useState<WithdrawalType[]>([])
   const [unpaidByBranch,   setUnpaidByBranch]   = useState<Record<number, Record<number, UnpaidOrder[]>>>({})
 
-  // Load session from localStorage — redirect non-admins away
+  // Load session from localStorage
+  // แอดมิน → โหลด session ปกติ
+  // non-admin → clear session แสดง login modal (ให้ login ใหม่เป็นแอดมินได้)
   useEffect(() => {
     try {
       const s = localStorage.getItem('branch_session')
       if (s) {
         const parsed: BranchSession = JSON.parse(s)
-        if (!parsed.is_admin) { router.replace('/booking2'); return }
-        setSession(parsed)
+        if (parsed.is_admin) {
+          setSession(parsed)
+        } else {
+          localStorage.removeItem('branch_session')
+        }
       }
     } catch { /* ignore */ }
-  }, [router])
+  }, [])
 
   const loadBranches = useCallback(async () => {
     setLoading(true)
