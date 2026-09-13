@@ -373,21 +373,18 @@ function Booking2Inner() {
       .catch(() => {})
   }, [])
 
-  // Fetch products
+  // Fetch products + load priorities from localStorage
   useEffect(() => {
     fetch('/api/booking2')
       .then(r => r.json())
       .then((data: CatalogProduct[]) => {
         setProducts(data)
         setLoading(false)
-        // Initialize priorities from DB
-        const init: Record<number, PriorityLevel | null> = {}
-        for (const p of data) {
-          if (p.priority === 'critical' || p.priority === 'important' || p.priority === 'fill') {
-            init[p.id] = p.priority
-          }
-        }
-        setProductPriorities(init)
+        // Load priorities from localStorage only (not DB)
+        try {
+          const stored = localStorage.getItem('cf_product_priorities')
+          if (stored) setProductPriorities(JSON.parse(stored))
+        } catch { /* ignore */ }
       })
       .catch(() => setLoading(false))
   }, [])
@@ -517,39 +514,31 @@ function Booking2Inner() {
   }
   const PRIORITY_LIMITS: Record<PriorityLevel, number> = { critical: 5, important: 10, fill: Infinity }
 
-  const handlePriorityClick = async (productId: number) => {
+  const handlePriorityClick = (productId: number) => {
     if (!priorityMode) return
     const current = productPriorities[productId] ?? null
     let next: PriorityLevel | null
     if (current === priorityMode) {
-      // Toggle off
       next = null
     } else {
-      // Check limit
       if (priorityMode !== 'fill' && priorityCounts[priorityMode] >= PRIORITY_LIMITS[priorityMode]) {
         return  // limit reached
       }
       next = priorityMode
     }
-    setProductPriorities(prev => ({ ...prev, [productId]: next }))
-    try {
-      await fetch('/api/booking2', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: productId, priority: next }),
-      })
-    } catch { /* ignore */ }
+    setProductPriorities(prev => {
+      const updated = { ...prev, [productId]: next }
+      // Persist in localStorage
+      try { localStorage.setItem('cf_product_priorities', JSON.stringify(updated)) } catch { /* ignore */ }
+      return updated
+    })
   }
 
-  // Clear all product priorities after a successful booking (single DB call)
-  const clearAllPriorities = async () => {
+  // Clear all product priorities after a successful booking
+  const clearAllPriorities = () => {
     setProductPriorities({})
     setPriorityMode(null)
-    await fetch('/api/booking2', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clearAll: true }),
-    }).catch(() => {})
+    try { localStorage.removeItem('cf_product_priorities') } catch { /* ignore */ }
   }
 
   const handleSave = async () => {
@@ -593,7 +582,7 @@ function Booking2Inner() {
         localStorage.removeItem('cf_foy_result')
         localStorage.removeItem('cf_foy_items')
         setSaveMsg(`อัพเดทใบจอง ${editOrderNo} สำเร็จ`)
-        await clearAllPriorities()
+        clearAllPriorities()
       } else {
         // ── Create new order ──────────────────────────────────────────────────
         let branchId: number | null = null
@@ -621,7 +610,7 @@ function Booking2Inner() {
         localStorage.removeItem('cf_foy_items')
         const totalItems = pendingCount + Object.keys(foyPending).length
         setSaveMsg(`บันทึกสำเร็จ ${totalItems} รายการ`)
-        await clearAllPriorities()
+        clearAllPriorities()
       }
     } catch {
       setSaveMsg('เกิดข้อผิดพลาด กรุณาลองใหม่')
