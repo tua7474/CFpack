@@ -332,6 +332,7 @@ function Booking2Inner() {
         foy_quantities?: Record<string, { qty: number; amount: number }>;
         foy_item_quantities?: Record<string, number>;
         withdrawal_type_id?: number | null;
+        priorities?: Record<string, string>;
       } | null) => {
         if (!order) return
         const qty: Record<number, number> = {}
@@ -361,6 +362,13 @@ function Booking2Inner() {
         if (order.source_type) setSourceType(order.source_type as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
         if (order.vehicle_type) setVehicleType(order.vehicle_type as 'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน')
         if (order.withdrawal_type_id) setWithdrawalTypeId(order.withdrawal_type_id)
+        if (order.priorities && Object.keys(order.priorities).length > 0) {
+          const prio: Record<number, PriorityLevel | null> = {}
+          for (const [k, v] of Object.entries(order.priorities)) {
+            if (v === 'critical' || v === 'important' || v === 'fill') prio[Number(k)] = v
+          }
+          setProductPriorities(prio)
+        }
       })
       .catch(() => {})
   }, [editOrderNo])
@@ -571,7 +579,7 @@ function Booking2Inner() {
             order_no: editOrderNo, total_amount: totalToSave, quantities,
             source_type: sourceType || null, vehicle_type: vehicleType || null, branch_name: branchInfo?.name ?? null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
-            withdrawal_type_id: withdrawalTypeId,
+            withdrawal_type_id: withdrawalTypeId, priorities: productPriorities,
           }),
         })
         if (!res.ok) throw new Error()
@@ -597,7 +605,7 @@ function Booking2Inner() {
             total_amount: totalToSave, quantities, branch_id: branchId,
             source_type: sourceType || null, vehicle_type: vehicleType || null, branch_name: branchInfo?.name ?? null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
-            withdrawal_type_id: withdrawalTypeId,
+            withdrawal_type_id: withdrawalTypeId, priorities: productPriorities,
           }),
         })
         if (!res.ok) throw new Error()

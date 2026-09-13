@@ -29,6 +29,7 @@ interface BookingOrder {
   quantities: Record<string, number>
   foy_quantities: Record<string, { qty: number; amount: number }>
   foy_item_quantities: Record<string, number>
+  priorities: Record<string, string>
   status: string
   payment_status: string
   payment_date: string | null
@@ -252,7 +253,18 @@ export default function OrdersPage() {
                         {sectionName}
                       </td>
                     )}
-                    <td style={{ ...tdBase }}>{item.product.product_name}</td>
+                    <td style={{ ...tdBase }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        {(() => {
+                          const prio = (order.priorities ?? {})[String(item.product.id)]
+                          if (prio === 'critical')  return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#000', flexShrink: 0 }} />
+                          if (prio === 'important') return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#888', border: '1px solid #000', flexShrink: 0 }} />
+                          if (prio === 'fill')      return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#fff', border: '1px solid #000', flexShrink: 0 }} />
+                          return null
+                        })()}
+                        {item.product.product_name}
+                      </span>
+                    </td>
                     <td style={{ ...tdBase, textAlign: 'right' }}>
                       {item.product.price ? parseFloat(item.product.price).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '—'}
                     </td>

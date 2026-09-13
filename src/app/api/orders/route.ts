@@ -41,6 +41,7 @@ export async function GET(request: Request) {
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS branch_name        VARCHAR(200)`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS foy_quantities     JSONB NOT NULL DEFAULT '{}'`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS foy_item_quantities JSONB NOT NULL DEFAULT '{}'`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS priorities          JSONB NOT NULL DEFAULT '{}'`).catch(() => {})
   const { searchParams } = new URL(request.url)
   const no = searchParams.get('no')
 
@@ -81,7 +82,7 @@ async function deductStock(quantities: Record<string, number>) {
 // ── POST — create new order ───────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  const { total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id } = await request.json()
+  const { total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities } = await request.json()
   await pool.query(CREATE_TABLE)
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS branch_id INT`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS withdrawal_type_id INT`).catch(() => {})
@@ -90,10 +91,10 @@ export async function POST(request: Request) {
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [order_no, total_amount, JSON.stringify(quantities), branch_id ?? null, source_type ?? null, vehicle_type ?? null, branch_name ?? null,
-       JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null]
+       JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {})]
     )
     await deductStock(quantities ?? {})
     return NextResponse.json(rows[0], { status: 201 })
@@ -101,10 +102,10 @@ export async function POST(request: Request) {
     if ((e as { code?: string }).code === '23505') {
       order_no = order_no + String(new Date().getUTCSeconds()).padStart(2, '0')
       const { rows } = await pool.query(
-        `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [order_no, total_amount, JSON.stringify(quantities), branch_id ?? null, source_type ?? null, vehicle_type ?? null, branch_name ?? null,
-         JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null]
+         JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {})]
       )
       await deductStock(quantities ?? {})
       return NextResponse.json(rows[0], { status: 201 })
@@ -146,7 +147,7 @@ async function adjustStockDelta(
 // ── PATCH — update order (status / payment / quantities) ─────────────────────
 
 export async function PATCH(request: Request) {
-  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id } = await request.json()
+  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities } = await request.json()
 
   // If quantities are being updated, load old quantities first to compute delta
   let oldQuantities: Record<string, number> = {}
@@ -174,6 +175,7 @@ export async function PATCH(request: Request) {
   if (foy_quantities      !== undefined) { sets.push(`foy_quantities = $${i++}`);       vals.push(JSON.stringify(foy_quantities)) }
   if (foy_item_quantities !== undefined) { sets.push(`foy_item_quantities = $${i++}`);  vals.push(JSON.stringify(foy_item_quantities)) }
   if (withdrawal_type_id  !== undefined) { sets.push(`withdrawal_type_id = $${i++}`);   vals.push(withdrawal_type_id) }
+  if (priorities          !== undefined) { sets.push(`priorities = $${i++}`);           vals.push(JSON.stringify(priorities)) }
 
   vals.push(order_no)
   const { rows } = await pool.query(
