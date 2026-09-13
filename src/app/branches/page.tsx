@@ -753,6 +753,12 @@ export default function BranchesPage() {
               + เพิ่มสาขา
             </button>
           )}
+          {session && (
+            <Link href="/booking2"
+              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors">
+              ใบจองสินค้า
+            </Link>
+          )}
           {session ? (
             <button onClick={handleLogout}
               className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors">
