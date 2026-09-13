@@ -53,7 +53,7 @@ const GROUP_HEADER_BG: Record<ColorGroup, string> = {
   orange: 'bg-orange-200 text-orange-900',
 }
 const GROUP_LABEL: Record<ColorGroup, string> = {
-  black:  'กลุ่มแอดมิน',
+  black:  'ทีมงาน',
   editor: 'กลุ่ม Editor',
   green:  'โกดังCF',
   yellow: 'กลุ่มสีเหลือง',
@@ -636,7 +636,7 @@ export default function BranchesPage() {
   const [manageBranch, setManageBranch] = useState<Branch | null>(null)
   const [showAddBranch, setShowAddBranch] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
-  const [newBranchColor, setNewBranchColor] = useState<'black' | 'editor' | 'yellow' | 'red' | 'orange'>('orange')
+  const [newBranchColor, setNewBranchColor] = useState<'black' | 'yellow' | 'red' | 'orange'>('orange')
 
   // Slip state
   const [slipPeriods,  setSlipPeriods]  = useState<SlipPeriods>({ วรวุฒิ: 'month', print: 'month', pack: 'month', bb: 'month', กล่อง: 'month' })
@@ -844,11 +844,10 @@ export default function BranchesPage() {
               <div className="text-xs text-gray-500 mb-1.5">กลุ่มสี</div>
               <div className="flex gap-2 flex-wrap">
                 {([
-                  ['black',  'แอดมิน',  'bg-black text-white'],
-                  ['editor', 'Editor',  'bg-green-600 text-white'],
-                  ['yellow', 'สีเหลือง','bg-yellow-200 text-yellow-900'],
-                  ['red',    'สีแดง',   'bg-red-200 text-red-900'],
-                  ['orange', 'สีส้ม',   'bg-orange-200 text-orange-900'],
+                  ['black',  'ทีมงาน',   'bg-black text-white'],
+                  ['yellow', 'สีเหลือง', 'bg-yellow-200 text-yellow-900'],
+                  ['red',    'สีแดง',    'bg-red-200 text-red-900'],
+                  ['orange', 'สีส้ม',    'bg-orange-200 text-orange-900'],
                 ] as const).map(([val, label, cls]) => (
                   <button key={val} type="button"
                     onClick={() => setNewBranchColor(val)}
