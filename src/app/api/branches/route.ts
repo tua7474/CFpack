@@ -24,6 +24,7 @@ export async function ensureTables() {
   `)
   await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS is_manager BOOLEAN NOT NULL DEFAULT FALSE`)
   await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS allowed_pages TEXT[] NOT NULL DEFAULT '{}'`)
+  await pool.query(`ALTER TABLE branch_phones ALTER COLUMN phone TYPE VARCHAR(50)`).catch(() => {})
   await pool.query(`
     CREATE TABLE IF NOT EXISTS branch_otps (
       id         SERIAL PRIMARY KEY,
@@ -99,20 +100,22 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
 
-    // Add phone to branch
+    // Add code to branch
     if (body.action === 'add_phone') {
-      const { branch_id, phone, is_admin, is_manager, allowed_pages } = body
+      const { branch_id, is_admin, is_manager, allowed_pages } = body
+      const code = String(body.code ?? body.phone ?? '').trim()
+      if (!code) return NextResponse.json({ error: 'code required' }, { status: 400 })
       const { rows } = await pool.query(
         `INSERT INTO branch_phones (branch_id, phone, is_admin, is_manager, allowed_pages)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (phone) DO UPDATE SET branch_id=$1, is_admin=$3, is_manager=$4, allowed_pages=$5
          RETURNING *`,
-        [branch_id, phone, is_admin ?? false, is_manager ?? false, allowed_pages ?? []]
+        [branch_id, code, is_admin ?? false, is_manager ?? false, allowed_pages ?? []]
       )
       return NextResponse.json(rows[0])
     }
 
-    // Remove phone
+    // Remove code
     if (body.action === 'remove_phone') {
       await pool.query(`DELETE FROM branch_phones WHERE id=$1`, [body.phone_id])
       return NextResponse.json({ ok: true })

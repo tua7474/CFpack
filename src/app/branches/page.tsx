@@ -486,7 +486,7 @@ function BranchRow({
 // ── Manage Branch Modal ───────────────────────────────────────────────────────
 
 function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; onClose: () => void; onSaved: () => void; onDeleted: (id: number) => void }) {
-  const [newPhone, setNewPhone] = useState('')
+  const [newCode, setNewCode] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [isManager, setIsManager] = useState(false)
   const [allowedPages, setAllowedPages] = useState<string[]>([])
@@ -502,16 +502,16 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
     onDeleted(branch.id)
   }
 
-  const addPhone = async () => {
-    const p = newPhone.replace(/\D/g, '')
-    if (!p) return
+  const addCode = async () => {
+    const c = newCode.trim()
+    if (!c) return
     setSaving(true)
     await fetch('/api/branches', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add_phone', branch_id: branch.id, phone: p, is_admin: isAdmin, is_manager: isManager, allowed_pages: allowedPages }),
+      body: JSON.stringify({ action: 'add_phone', branch_id: branch.id, code: c, is_admin: isAdmin, is_manager: isManager, allowed_pages: allowedPages }),
     })
-    setNewPhone(''); setIsAdmin(false); setIsManager(false); setAllowedPages([]); setSaving(false)
+    setNewCode(''); setIsAdmin(false); setIsManager(false); setAllowedPages([]); setSaving(false)
     onSaved()
   }
 
@@ -529,17 +529,17 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
       <div className="bg-white rounded-lg shadow-xl p-5 w-full max-w-sm">
         <h3 className="text-base font-bold text-green-400 mb-3">จัดการสาขา: {branch.name}</h3>
 
-        {/* Phone list */}
+        {/* Code list */}
         <div className="mb-3">
-          <div className="text-xs text-gray-500 mb-1">เบอร์โทรที่ลงทะเบียน</div>
-          {branch.phones.length === 0 && <div className="text-xs text-gray-400">ยังไม่มีเบอร์</div>}
+          <div className="text-xs text-gray-500 mb-1">รหัสที่ลงทะเบียน</div>
+          {branch.phones.length === 0 && <div className="text-xs text-gray-400">ยังไม่มีรหัส</div>}
           {branch.phones.map(p => (
             <div key={p.id} className="flex items-center justify-between py-1 border-b border-gray-100">
-              <div className="text-sm">
+              <div className="text-sm font-mono">
                 {p.phone}
-                {p.is_admin && <span className="ml-1 text-[10px] text-green-400 font-medium">(admin)</span>}
-                {!p.is_admin && p.is_manager && <span className="ml-1 text-[10px] text-blue-500 font-medium">(ผู้จัดการ)</span>}
-                {p.line_user_id && <span className="ml-1 text-[10px] text-green-400">✓LINE</span>}
+                {p.is_admin && <span className="ml-1 text-[10px] text-green-400 font-medium font-sans">(admin)</span>}
+                {!p.is_admin && p.is_manager && <span className="ml-1 text-[10px] text-blue-500 font-medium font-sans">(ผู้จัดการ)</span>}
+                {p.line_user_id && <span className="ml-1 text-[10px] text-green-400 font-sans">✓LINE</span>}
               </div>
               <button onClick={() => removePhone(p.id)}
                 className="text-xs text-red-400 hover:text-red-600">ลบ</button>
@@ -547,11 +547,11 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
           ))}
         </div>
 
-        {/* Add phone */}
+        {/* Add code */}
         <div className="space-y-2">
-          <div className="text-xs text-gray-500">เพิ่มเบอร์โทร</div>
-          <input value={newPhone} onChange={e => setNewPhone(e.target.value)}
-            placeholder="0812345678" type="text" inputMode="numeric"
+          <div className="text-xs text-gray-500">เพิ่มรหัส</div>
+          <input value={newCode} onChange={e => setNewCode(e.target.value)}
+            placeholder="ตัวอักษร/ตัวเลขผสมกันได้" type="text" autoComplete="off"
             className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400" />
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={isAdmin} onChange={e => { setIsAdmin(e.target.checked); if (e.target.checked) setIsManager(false) }}
@@ -582,9 +582,9 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
               ))}
             </div>
           </div>
-          <button onClick={addPhone} disabled={saving}
+          <button onClick={addCode} disabled={saving}
             className="w-full py-1.5 text-sm rounded bg-[#9b9484] hover:bg-[#9b9484] text-white font-medium disabled:opacity-50">
-            + เพิ่มเบอร์
+            + เพิ่มรหัส
           </button>
         </div>
 
@@ -628,7 +628,7 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
 
 export default function BranchesPage() {
   const [session, setSession]         = useState<BranchSession | null>(null)
-  const [loginPhone, setLoginPhone]   = useState('')
+  const [loginCode, setLoginCode]     = useState('')
   const [loginError, setLoginError]   = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
   const [branches, setBranches]       = useState<Branch[]>([])
@@ -701,16 +701,16 @@ export default function BranchesPage() {
   const handleLogin = async () => {
     setLoginError('')
     setLoginLoading(true)
-    const clean = loginPhone.replace(/\D/g, '')
+    const code = loginCode.trim()
     const res = await fetch('/api/branches/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: clean }),
+      body: JSON.stringify({ code }),
     })
     setLoginLoading(false)
-    if (!res.ok) { setLoginError('ไม่พบเบอร์โทรนี้ในระบบ กรุณาติดต่อผู้ดูแล'); return }
+    if (!res.ok) { setLoginError('ไม่พบรหัสนี้ในระบบ กรุณาติดต่อผู้ดูแล'); return }
     const data = await res.json()
-    const s: BranchSession = { branch_id: data.branch_id, branch_name: data.branch_name, phone: clean, is_admin: data.is_admin, is_manager: data.is_manager ?? false, allowed_pages: data.allowed_pages ?? [] }
+    const s: BranchSession = { branch_id: data.branch_id, branch_name: data.branch_name, phone: data.phone, is_admin: data.is_admin, is_manager: data.is_manager ?? false, allowed_pages: data.allowed_pages ?? [] }
     localStorage.setItem('branch_session', JSON.stringify(s))
     setSession(s)
   }
@@ -718,7 +718,7 @@ export default function BranchesPage() {
   const handleLogout = () => {
     localStorage.removeItem('branch_session')
     setSession(null)
-    setLoginPhone('')
+    setLoginCode('')
   }
 
   const handleAddBranch = async () => {
@@ -819,10 +819,10 @@ export default function BranchesPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-xs">
             <h2 className="text-lg font-bold text-green-400 mb-1">เข้าสู่ระบบสาขา</h2>
-            <p className="text-xs text-gray-500 mb-4">กรอกเบอร์โทรที่ลงทะเบียนไว้</p>
-            <input value={loginPhone} onChange={e => setLoginPhone(e.target.value)}
+            <p className="text-xs text-gray-500 mb-4">กรอกรหัสที่ได้รับจากผู้ดูแล</p>
+            <input value={loginCode} onChange={e => setLoginCode(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="0812345678" type="text" inputMode="numeric"
+              placeholder="ใส่รหัส" type="text" autoComplete="off"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 mb-2" />
             {loginError && <p className="text-xs text-red-500 mb-2">{loginError}</p>}
             <button onClick={handleLogin} disabled={loginLoading}
