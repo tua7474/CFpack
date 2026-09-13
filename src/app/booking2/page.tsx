@@ -7,12 +7,15 @@ import { useSearchParams, useRouter } from 'next/navigation'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type PriorityLevel = 'critical' | 'important' | 'fill'
+
 interface CatalogProduct {
   id: number
   group_name: string
   product_name: string
   price: string | null
   stock_qty: string | null
+  priority: string | null
   section_order: number
   section_name: string
   is_vat_included: boolean
@@ -260,6 +263,8 @@ function Booking2Inner() {
   const [branchReady, setBranchReady] = useState<boolean | null>(null) // null=loading, false=ไม่มีสาขา, true=เข้าได้
   const [withdrawalTypes, setWithdrawalTypes]   = useState<{ id: number; name: string }[]>([])
   const [withdrawalTypeId, setWithdrawalTypeId] = useState<number | null>(null)
+  const [priorityMode, setPriorityMode]         = useState<PriorityLevel | null>(null)
+  const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
 
   // Load foy result from booking-foy (new order mode only)
   useEffect(() => {
@@ -372,7 +377,18 @@ function Booking2Inner() {
   useEffect(() => {
     fetch('/api/booking2')
       .then(r => r.json())
-      .then((data: CatalogProduct[]) => { setProducts(data); setLoading(false) })
+      .then((data: CatalogProduct[]) => {
+        setProducts(data)
+        setLoading(false)
+        // Initialize priorities from DB
+        const init: Record<number, PriorityLevel | null> = {}
+        for (const p of data) {
+          if (p.priority === 'critical' || p.priority === 'important' || p.priority === 'fill') {
+            init[p.id] = p.priority
+          }
+        }
+        setProductPriorities(init)
+      })
       .catch(() => setLoading(false))
   }, [])
 
@@ -493,6 +509,37 @@ function Booking2Inner() {
 
   const pendingCount = Object.values(pending).filter(q => q > 0).length
   const hasFoyPending = Object.keys(foyPending).length > 0
+
+  // Priority counts
+  const priorityCounts: Record<PriorityLevel, number> = { critical: 0, important: 0, fill: 0 }
+  for (const pv of Object.values(productPriorities)) {
+    if (pv) priorityCounts[pv]++
+  }
+  const PRIORITY_LIMITS: Record<PriorityLevel, number> = { critical: 5, important: 10, fill: Infinity }
+
+  const handlePriorityClick = async (productId: number) => {
+    if (!priorityMode) return
+    const current = productPriorities[productId] ?? null
+    let next: PriorityLevel | null
+    if (current === priorityMode) {
+      // Toggle off
+      next = null
+    } else {
+      // Check limit
+      if (priorityMode !== 'fill' && priorityCounts[priorityMode] >= PRIORITY_LIMITS[priorityMode]) {
+        return  // limit reached
+      }
+      next = priorityMode
+    }
+    setProductPriorities(prev => ({ ...prev, [productId]: next }))
+    try {
+      await fetch('/api/booking2', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: productId, priority: next }),
+      })
+    } catch { /* ignore */ }
+  }
 
   const handleSave = async () => {
     if (!pendingCount && !hasFoyPending && !editOrderNo) return
@@ -943,6 +990,31 @@ function Booking2Inner() {
           </button>
         )}
 
+        {/* ── Priority mode buttons ── */}
+        <div className="flex items-center gap-1.5 no-print">
+          {([
+            { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300',   activeText: 'text-red-100' },
+            { mode: 'important' as PriorityLevel, label: 'สำคัญ',    limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300',  activeText: 'text-blue-100' },
+            { mode: 'fill'     as PriorityLevel, label: 'เติมเต็ม', limit: Infinity, bg: 'bg-green-800', ring: 'ring-green-300', activeText: 'text-green-100' },
+          ]).map(({ mode, label, limit, bg, ring, activeText }) => {
+            const count = priorityCounts[mode]
+            const isActive = priorityMode === mode
+            const atLimit = mode !== 'fill' && count >= limit
+            return (
+              <button
+                key={mode}
+                onClick={() => setPriorityMode(isActive ? null : mode)}
+                className={`px-2 py-1 text-xs rounded font-semibold transition-all border ${bg} text-white ${isActive ? `ring-2 ${ring} shadow-lg scale-105` : 'opacity-75 hover:opacity-100'} ${atLimit && !isActive ? 'opacity-50' : ''}`}
+              >
+                {label} {count}{limit !== Infinity ? `/${limit}` : ''}
+              </button>
+            )
+          })}
+          {priorityMode && (
+            <span className="text-yellow-300 text-xs font-semibold animate-pulse">← คลิกสินค้า</span>
+          )}
+        </div>
+
         <button
           onClick={() => window.print()}
           className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
@@ -1370,17 +1442,33 @@ function Booking2Inner() {
                           const pendingRing = hasPending ? 'ring-1 ring-inset ring-yellow-400' : ''
                           const qtyBg = hasPending ? 'bg-yellow-50' : (sec.is_vat_included ? 'bg-gray-200' : 'bg-orange-50')
 
+                          const prio = productPriorities[p.id] ?? null
+                          const PRIO_BORDER: Record<PriorityLevel, string> = {
+                            critical:  'border-l-[3px] border-l-red-600',
+                            important: 'border-l-[3px] border-l-blue-600',
+                            fill:      'border-l-[3px] border-l-green-800',
+                          }
+                          const PRIO_TEXT: Record<PriorityLevel, string> = {
+                            critical:  'text-red-700 font-semibold',
+                            important: 'text-blue-700 font-semibold',
+                            fill:      'text-green-900 font-semibold',
+                          }
+                          const prioBorderCls = prio ? PRIO_BORDER[prio] : ''
+                          const prioTextCls   = prio ? PRIO_TEXT[prio] : ''
+                          const canClickPrio  = !!priorityMode && !stockPrintMode && !compactPrintMode
+
                           return [
                             // ชื่อสินค้า
                             <td key={`${si}-pn`}
-                              className={`border border-gray-300 px-1 py-px ${nameBg} ${pendingRing} relative overflow-hidden`}
+                              onClick={canClickPrio ? () => handlePriorityClick(p.id) : undefined}
+                              className={`border border-gray-300 px-1 py-px ${nameBg} ${pendingRing} ${prioBorderCls} relative overflow-hidden${canClickPrio ? ' cursor-pointer select-none' : ''}`}
                               title={p.product_name}>
                               {p.stock_qty !== null && p.stock_qty !== undefined && (
                                 <span className="absolute top-0 right-0 text-[7px] text-blue-500 leading-none px-0.5 py-px">
                                   {parseFloat(String(p.stock_qty)).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
                                 </span>
                               )}
-                              <div className="truncate pr-4">{p.product_name}</div>
+                              <div className={`truncate pr-4 ${prioTextCls}`}>{p.product_name}</div>
                             </td>,
 
                             // ราคา/หน่วย

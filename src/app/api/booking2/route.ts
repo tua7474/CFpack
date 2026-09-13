@@ -73,14 +73,18 @@ export async function GET() {
        WHERE REPLACE(LOWER(group_name), ' ', '') = 'airlock'
          AND group_name != 'AIRLOCK'`
     )
+    // Add priority column if not exists
+    await pool.query(
+      `ALTER TABLE products_catalog ADD COLUMN IF NOT EXISTS priority VARCHAR(20)`
+    ).catch(() => {})
 
     const groupNames = Object.keys(GROUP_MAP)
     const { rows } = await pool.query<{
       id: number; group_name: string; product_name: string
-      price: string | null; stock_qty: string | null
+      price: string | null; stock_qty: string | null; priority: string | null
     }>(
       `SELECT id, group_name, product_name, price,
-              quantity AS stock_qty
+              quantity AS stock_qty, priority
        FROM products_catalog
        WHERE group_name = ANY($1) AND show_in_booking = true
        ORDER BY group_name, id`,
@@ -120,6 +124,21 @@ export async function GET() {
       a.id - b.id
     )
     return NextResponse.json(all)
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
+// ── PATCH — update product priority ──────────────────────────────────────────
+
+export async function PATCH(request: Request) {
+  try {
+    const { id, priority } = await request.json()
+    await pool.query(
+      `UPDATE products_catalog SET priority = $1, updated_at = NOW() WHERE id = $2`,
+      [priority ?? null, id]
+    )
+    return NextResponse.json({ ok: true })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
