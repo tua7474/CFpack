@@ -921,6 +921,14 @@ function Booking2Inner() {
           📋 ประวัติใบจอง
         </Link>
 
+        {!isAdmin && (
+          <button
+            onClick={() => { localStorage.removeItem('branch_session'); window.location.replace('/branches') }}
+            className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
+            ออกจากระบบ
+          </button>
+        )}
+
         <button
           onClick={() => window.print()}
           className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
