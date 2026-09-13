@@ -101,6 +101,7 @@ export default function BookingFoyPage() {
   const [manualTotal, setManualTotal] = useState('')
   const [branchInfo, setBranchInfo]       = useState<{ name: string; phone: string } | null>(null)
   const [isAdmin, setIsAdmin]             = useState(true)
+  const [isBranchRole, setIsBranchRole]   = useState(false)
   const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
 
   // ตรวจว่าเปิดจาก booking2 และ/หรือ edit_foy mode
@@ -146,7 +147,8 @@ export default function BookingFoyPage() {
       if (bs) {
         const s = JSON.parse(bs)
         if (s?.branch_name) setBranchInfo({ name: s.branch_name, phone: s.phone ?? '' })
-        setIsAdmin(s?.is_admin !== false)
+        setIsAdmin(s?.is_admin === true)
+        setIsBranchRole(!s?.is_admin && !s?.is_manager)
         // Fetch color group for pricing
         if (s?.branch_id) {
           fetch('/api/branches')
@@ -454,9 +456,11 @@ export default function BookingFoyPage() {
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <header className="no-print bg-[#9b9484] text-white px-6 py-3 shadow flex items-center gap-4">
-        <Link href="/stock" className="text-orange-200 hover:text-white text-sm transition-colors">
-          ← สต็อคกระดาษฝอย
-        </Link>
+        {!isBranchRole && (
+          <Link href="/stock" className="text-orange-200 hover:text-white text-sm transition-colors">
+            ← สต็อคกระดาษฝอย
+          </Link>
+        )}
         <div>
           <h1 className="text-xl font-bold">ใบจองกระดาษฝอย</h1>
           <p className="text-orange-200 text-xs mt-0.5">A4 แนวตั้ง · 3 คอลัมน์ · {catGroups.reduce((s, c) => s + c.models.length, 0)} รุ่น</p>
