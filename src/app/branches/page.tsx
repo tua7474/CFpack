@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 // ── Page access config — เพิ่มหน้าใหม่ที่นี่เพื่อให้ขึ้น UI อัตโนมัติ ────────
 
@@ -643,6 +644,7 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BranchesPage() {
+  const router = useRouter()
   const [session, setSession]         = useState<BranchSession | null>(null)
   const [loginCode, setLoginCode]     = useState('')
   const [loginError, setLoginError]   = useState('')
@@ -664,13 +666,17 @@ export default function BranchesPage() {
   const [withdrawalTypes,  setWithdrawalTypes]  = useState<WithdrawalType[]>([])
   const [unpaidByBranch,   setUnpaidByBranch]   = useState<Record<number, Record<number, UnpaidOrder[]>>>({})
 
-  // Load session from localStorage
+  // Load session from localStorage — redirect non-admins away
   useEffect(() => {
     try {
       const s = localStorage.getItem('branch_session')
-      if (s) setSession(JSON.parse(s))
+      if (s) {
+        const parsed: BranchSession = JSON.parse(s)
+        if (!parsed.is_admin) { router.replace('/booking2'); return }
+        setSession(parsed)
+      }
     } catch { /* ignore */ }
-  }, [])
+  }, [router])
 
   const loadBranches = useCallback(async () => {
     setLoading(true)
@@ -728,6 +734,7 @@ export default function BranchesPage() {
     const data = await res.json()
     const s: BranchSession = { branch_id: data.branch_id, branch_name: data.branch_name, phone: data.phone, is_admin: data.is_admin, is_manager: data.is_manager ?? false, allowed_pages: data.allowed_pages ?? [] }
     localStorage.setItem('branch_session', JSON.stringify(s))
+    if (!data.is_admin) { router.replace('/booking2'); return }
     setSession(s)
   }
 

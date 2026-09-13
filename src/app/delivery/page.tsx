@@ -13,6 +13,17 @@ export default function DeliveryPage() {
   const [busy, setBusy]                         = useState(false)
   const [confirmDel, setConfirmDel]             = useState<number | null>(null)
 
+  // Guard: เฉพาะแอดมินเท่านั้น
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem('branch_session')
+      if (s) {
+        const session = JSON.parse(s)
+        if (!session.is_admin) { window.location.replace('/booking2'); return }
+      }
+    } catch { /* ignore */ }
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     const r = await fetch('/api/delivery')
