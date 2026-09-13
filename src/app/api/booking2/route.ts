@@ -133,7 +133,13 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const { id, priority } = await request.json()
+    const body = await request.json()
+    // clearAll: true → ล้าง priority ทุกสินค้าในครั้งเดียว
+    if (body.clearAll) {
+      await pool.query(`UPDATE products_catalog SET priority = NULL, updated_at = NOW() WHERE priority IS NOT NULL`)
+      return NextResponse.json({ ok: true })
+    }
+    const { id, priority } = body
     await pool.query(
       `UPDATE products_catalog SET priority = $1, updated_at = NOW() WHERE id = $2`,
       [priority ?? null, id]

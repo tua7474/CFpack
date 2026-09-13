@@ -541,21 +541,15 @@ function Booking2Inner() {
     } catch { /* ignore */ }
   }
 
-  // Clear all product priorities after a successful booking
+  // Clear all product priorities after a successful booking (single DB call)
   const clearAllPriorities = async () => {
-    const ids = Object.entries(productPriorities)
-      .filter(([, v]) => v !== null)
-      .map(([k]) => Number(k))
-    if (ids.length === 0) return
-    await Promise.all(ids.map(id =>
-      fetch('/api/booking2', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, priority: null }),
-      }).catch(() => {})
-    ))
     setProductPriorities({})
     setPriorityMode(null)
+    await fetch('/api/booking2', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clearAll: true }),
+    }).catch(() => {})
   }
 
   const handleSave = async () => {
