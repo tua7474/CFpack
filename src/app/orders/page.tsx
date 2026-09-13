@@ -96,6 +96,7 @@ export default function OrdersPage() {
 
   // Role
   const [isAdmin, setIsAdmin]       = useState(true)
+  const [isManager, setIsManager]   = useState(false)
   const [branchName, setBranchName] = useState<string | null>(null)
 
   const load = useCallback(() => {
@@ -120,7 +121,8 @@ export default function OrdersPage() {
       const bs = localStorage.getItem('branch_session')
       if (bs) {
         const s = JSON.parse(bs)
-        setIsAdmin(s?.is_admin !== false)
+        setIsAdmin(s?.is_admin === true)
+        setIsManager(s?.is_manager === true)
         if (s?.branch_name) setBranchName(s.branch_name)
       }
     } catch { /* ignore */ }
@@ -566,7 +568,7 @@ export default function OrdersPage() {
                               <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-400">
                                 ✅ ขึ้นของแล้ว
                               </span>
-                              {isAdmin && (
+                              {(isAdmin || isManager) && (
                                 <button
                                   onClick={() => handleResetPickup(order)}
                                   className="text-[10px] text-gray-400 hover:text-red-500 hover:underline transition-colors"
@@ -575,7 +577,7 @@ export default function OrdersPage() {
                                 </button>
                               )}
                             </div>
-                          ) : isAdmin ? (
+                          ) : (isAdmin || isManager) ? (
                             <button
                               onClick={() => handlePickup(order)}
                               className="px-3 py-1 text-xs rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 transition-colors font-medium"
