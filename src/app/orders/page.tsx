@@ -155,6 +155,11 @@ export default function OrdersPage() {
     await patch(order.order_no, { pickup_status: 'picked_up' })
   }
 
+  const handleResetPickup = async (order: BookingOrder) => {
+    if (!confirm(`รีเซ็ตสถานะขึ้นของของใบจอง ${order.order_no}?`)) return
+    await patch(order.order_no, { pickup_status: 'pending' })
+  }
+
   const handlePayment = async (order_no: string) => {
     if (!payDate || !payBank.trim()) return
     await patch(order_no, {
@@ -557,9 +562,19 @@ export default function OrdersPage() {
                           {cancelled ? (
                             <span className="text-gray-300 text-xs">—</span>
                           ) : pickedUp ? (
-                            <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-400">
-                              ✅ ขึ้นของแล้ว
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-400">
+                                ✅ ขึ้นของแล้ว
+                              </span>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleResetPickup(order)}
+                                  className="text-[10px] text-gray-400 hover:text-red-500 hover:underline transition-colors"
+                                >
+                                  รีเซ็ต
+                                </button>
+                              )}
+                            </div>
                           ) : isAdmin ? (
                             <button
                               onClick={() => handlePickup(order)}
