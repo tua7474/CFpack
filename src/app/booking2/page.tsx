@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, Suspense } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { flushSync } from 'react-dom'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -891,6 +891,19 @@ function Booking2Inner() {
     return () => window.removeEventListener('resize', calc)
   }, [])
 
+  // Measure actual content height for transform-scale container compensation
+  const contentScaleRef = useRef<HTMLDivElement>(null)
+  const [scaledContentHeight, setScaledContentHeight] = useState(0)
+  useEffect(() => {
+    const el = contentScaleRef.current
+    if (!el) return
+    const measure = () => setScaledContentHeight(el.scrollHeight)
+    measure()
+    const obs = new ResizeObserver(measure)
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [loading, sections])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -898,12 +911,8 @@ function Booking2Inner() {
       <style>{`
         .foy-print-frame { display: none; }
 
-        /* Transform-scale fallback for browsers that don't support zoom (Firefox) */
-        @supports not (zoom: 1) {
-          .screen-zoom-wrapper-scale {
-            transform-origin: top center;
-          }
-        }
+        /* Prevent iOS Safari text inflation/reflow during pinch-zoom */
+        html, body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
         @media screen {
           .a4-content input[type="text"] {
@@ -1013,7 +1022,7 @@ function Booking2Inner() {
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <Link href="/orders"
               className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
-              📋<span className="hidden sm:inline"> ประวัติใบจอง</span>
+              📋 <span className="text-xs">ประวัติใบจอง</span>
             </Link>
 
             {!isAdmin && (
@@ -1122,13 +1131,8 @@ function Booking2Inner() {
       </header>
 
       {/* Main */}
-      <main style={{ overflowX: 'auto' }}>
-        <div
-          className="screen-zoom-wrapper p-2 sm:p-4 flex justify-center overflow-x-hidden"
-          style={{
-            zoom: viewScale < 1 ? viewScale : undefined,
-          }}
-        >
+      <main style={{ overflowX: 'hidden' }}>
+        <div className="screen-zoom-wrapper flex justify-center pt-2 pb-2 sm:pt-4 sm:pb-4">
 
           {/* ── ยังไม่ได้ระบุสาขา → lock screen ── */}
           {branchReady === false ? (
@@ -1148,6 +1152,15 @@ function Booking2Inner() {
           ) : loading ? (
             <div className="flex items-center justify-center h-40 text-gray-400">กำลังโหลดข้อมูล...</div>
           ) : (
+            /* transform: scale replaces CSS zoom — iOS won't reflow layout on pinch-zoom */
+            <div
+              ref={contentScaleRef}
+              style={viewScale < 1 ? {
+                transform: `scale(${viewScale})`,
+                transformOrigin: 'top center',
+                marginBottom: scaledContentHeight > 0 ? (viewScale - 1) * scaledContentHeight : undefined,
+              } : undefined}
+            >
             <><div className="a4-frame bg-white shadow-xl"
               style={{ width: '297mm', minHeight: '210mm', padding: '8mm', boxSizing: 'border-box' }}>
               <div className="a4-content" style={{ zoom: CONTENT_SCALE, transformOrigin: 'top left' }}>
@@ -1690,6 +1703,7 @@ function Booking2Inner() {
               })()}
             </div>
             </>
+            </div>
           )}
         </div>
       </main>
