@@ -89,6 +89,7 @@ async function setInputState(userId: string, state: InputState | null) {
 }
 
 async function getPaySelection(userId: string): Promise<string[]> {
+  await ensureTable()
   const { rows } = await pool.query('SELECT pay_selection FROM line_sessions WHERE user_id=$1', [userId])
   return rows[0]?.pay_selection ?? []
 }
