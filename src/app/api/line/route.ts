@@ -57,6 +57,8 @@ async function ensureTable() {
   `).catch(() => {})
   // Ensure slips status column is wide enough for 'pending_confirm'
   await pool.query(`ALTER TABLE slips ALTER COLUMN status TYPE VARCHAR(30)`).catch(() => {})
+  // Payment selection per user
+  await pool.query(`ALTER TABLE line_sessions ADD COLUMN IF NOT EXISTS pay_selection JSONB DEFAULT '[]'`).catch(() => {})
 }
 
 async function getOrder(userId: string): Promise<Record<number, number>> {
@@ -84,6 +86,19 @@ async function setInputState(userId: string, state: InputState | null) {
     INSERT INTO line_sessions (user_id, order_data, input_state, updated_at) VALUES ($1,'{}', $2, NOW())
     ON CONFLICT (user_id) DO UPDATE SET input_state=$2, updated_at=NOW()
   `, [userId, state ? JSON.stringify(state) : null])
+}
+
+async function getPaySelection(userId: string): Promise<string[]> {
+  const { rows } = await pool.query('SELECT pay_selection FROM line_sessions WHERE user_id=$1', [userId])
+  return rows[0]?.pay_selection ?? []
+}
+
+async function setPaySelection(userId: string, sel: string[]) {
+  await ensureTable()
+  await pool.query(`
+    INSERT INTO line_sessions (user_id, order_data, pay_selection, updated_at) VALUES ($1,'{}', $2, NOW())
+    ON CONFLICT (user_id) DO UPDATE SET pay_selection=$2, updated_at=NOW()
+  `, [userId, JSON.stringify(sel)])
 }
 
 // ── DB Queries ────────────────────────────────────────────────────────────────
@@ -204,6 +219,40 @@ async function getMonthlySummary(branchId: number, year: number): Promise<Record
   const out: Record<number, { pending: number; paid: number }> = {}
   for (const r of rows) out[r.month] = { pending: r.pending, paid: r.paid }
   return out
+}
+
+// ── PromptPay QR ──────────────────────────────────────────────────────────────
+
+function crc16(str: string): number {
+  let crc = 0xFFFF
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8
+    for (let j = 0; j < 8; j++) { crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1; crc &= 0xFFFF }
+  }
+  return crc
+}
+
+function f(tag: string, value: string) { return `${tag}${value.length.toString().padStart(2, '0')}${value}` }
+
+function promptPayPayload(promptPayId: string, amount: number): string {
+  // Normalize phone: 0812345678 → 0066812345678
+  const acct = /^\d{10}$/.test(promptPayId) ? '0066' + promptPayId.slice(1) : promptPayId
+  const merchantAcc = f('00', 'A000000677010111') + f('01', acct)
+  const name = (process.env.PROMPTPAY_NAME ?? 'CF PACKAGING').slice(0, 25)
+  const raw = [
+    f('00', '01'), f('01', '12'),
+    f('29', merchantAcc),
+    f('52', '0000'), f('53', '764'),
+    f('54', amount.toFixed(2)),
+    f('58', 'TH'), f('59', name), f('60', 'BANGKOK'),
+    '6304',
+  ].join('')
+  return raw + crc16(raw).toString(16).toUpperCase().padStart(4, '0')
+}
+
+function promptPayQrUrl(promptPayId: string, amount: number): string {
+  const payload = promptPayPayload(promptPayId, amount)
+  return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&ecc=M&data=${encodeURIComponent(payload)}`
 }
 
 // ── Weekly summary helpers ────────────────────────────────────────────────────
@@ -651,8 +700,12 @@ async function historyView(branchId: number, branchName: string): Promise<object
   }
 }
 
-async function paymentView(branchId: number, branchName: string): Promise<object> {
-  const pending = await getPendingOrders(branchId)
+async function paymentView(branchId: number, branchName: string, userId: string): Promise<object> {
+  const [pending, rawSel] = await Promise.all([
+    getPendingOrders(branchId),
+    getPaySelection(userId),
+  ])
+
   if (!pending.length) {
     return {
       type: 'flex', altText: '✅ ไม่มียอดค้างชำระ',
@@ -668,48 +721,90 @@ async function paymentView(branchId: number, branchName: string): Promise<object
       }
     }
   }
-  const total = pending.reduce((s: number, o: Record<string, number>) => s + (o.total_amount ?? 0), 0)
-  const orderItems = pending.map((o: Record<string, string | number>) => ({
-    type: 'box', layout: 'horizontal', margin: 'sm',
+
+  const pendingNos  = new Set(pending.map((o: Record<string, string>) => o.order_no))
+  const selectedSet = new Set(rawSel.filter(no => pendingNos.has(no)))
+  const totalAll    = pending.reduce((s: number, o: Record<string, number>) => s + (o.total_amount ?? 0), 0)
+  const totalSel    = pending
+    .filter((o: Record<string, string>) => selectedSet.has(o.order_no))
+    .reduce((s: number, o: Record<string, number>) => s + (o.total_amount ?? 0), 0)
+  const selCount = selectedSet.size
+
+  const orderRows = pending.map((o: Record<string, string | number>) => {
+    const isSel = selectedSet.has(String(o.order_no))
+    return {
+      type: 'box', layout: 'horizontal', margin: 'xs', paddingAll: '8px',
+      backgroundColor: isSel ? '#fff1f2' : '#fafafa', cornerRadius: '6px',
+      contents: [
+        { type: 'box', flex: 6, layout: 'vertical', justifyContent: 'center', contents: [
+          { type: 'text', text: `#${o.order_no}`, size: 'xs', weight: 'bold', color: isSel ? '#dc2626' : '#333333' },
+          { type: 'text', text: fmtDateShortLine(String(o.created_at)), size: 'xs', color: '#aaaaaa' }
+        ]},
+        { type: 'text', text: `฿${fmt(Number(o.total_amount))}`, size: 'xs', flex: 4, align: 'end',
+          color: isSel ? '#dc2626' : '#f59e0b', weight: 'bold' },
+        { type: 'button', flex: 2,
+          action: { type: 'postback', label: isSel ? '✔' : '○', data: `PAY_TOGGLE:${branchId}:${o.order_no}` },
+          style: isSel ? 'primary' : 'secondary', color: isSel ? '#ef4444' : undefined, height: 'sm' }
+      ]
+    }
+  })
+
+  const summaryBox = {
+    type: 'box', layout: 'horizontal', margin: 'md', paddingAll: '10px',
+    backgroundColor: '#f9fafb', cornerRadius: '8px',
     contents: [
-      { type: 'box', flex: 5, layout: 'vertical', contents: [
-        { type: 'text', text: `#${o.order_no}`, size: 'xs', color: '#333333', weight: 'bold' },
-        { type: 'text', text: fmtDateShortLine(String(o.created_at)), size: 'xs', color: '#aaaaaa' }
+      { type: 'box', flex: 6, layout: 'vertical', contents: [
+        { type: 'text', text: selCount > 0 ? `เลือก ${selCount} ใบ` : 'ยังไม่ได้เลือก', size: 'sm', weight: 'bold', color: selCount > 0 ? '#dc2626' : '#888888' },
+        { type: 'text', text: `ทั้งหมด ${pending.length} ใบ · ฿${fmt(totalAll)}`, size: 'xs', color: '#888888', margin: 'xs' }
       ]},
-      { type: 'text', text: `฿${fmt(Number(o.total_amount))}`, size: 'xs', flex: 3, align: 'end', color: '#f59e0b', weight: 'bold' }
+      { type: 'text', text: selCount > 0 ? `฿${fmt(totalSel)}` : '-', size: 'lg', flex: 4, align: 'end', weight: 'bold', color: '#dc2626' }
     ]
-  }))
+  }
+
+  const footerBtns: object[] = [
+    {
+      type: 'box', layout: 'horizontal', spacing: 'sm',
+      contents: [
+        { type: 'button', flex: 1, action: { type: 'postback', label: '✔ ทั้งหมด', data: `PAY_SELECTALL:${branchId}` }, style: 'secondary', height: 'sm' },
+        { type: 'button', flex: 1, action: { type: 'postback', label: '○ ล้าง', data: `PAY_CLEARSEL:${branchId}` }, style: 'secondary', height: 'sm' }
+      ]
+    }
+  ]
+
+  if (selCount > 0 && process.env.PROMPTPAY_ID) {
+    footerBtns.push({
+      type: 'button',
+      action: { type: 'postback', label: `💳 สร้าง QR ฿${fmt(totalSel)} (${selCount} ใบ)`, data: `PAY_QR:${branchId}` },
+      style: 'primary', color: '#dc2626', height: 'sm'
+    })
+  } else if (selCount > 0) {
+    footerBtns.push({ type: 'text', text: '⚠️ ยังไม่ได้ตั้งค่า PROMPTPAY_ID', size: 'xs', color: '#dc2626', align: 'center', margin: 'sm' })
+  }
+
+  footerBtns.push({ type: 'button', action: { type: 'postback', label: '← กลับ', data: `HIST:${branchId}` }, style: 'secondary', height: 'sm' })
+
   return {
-    type: 'flex', altText: `💳 ยืนยันชำระเงิน — ${branchName}`,
+    type: 'flex', altText: `💳 เลือกยอดชำระ — ${branchName}`,
     contents: {
       type: 'bubble', size: 'giga',
       header: {
         type: 'box', layout: 'vertical', backgroundColor: '#9b9484',
         contents: [
-          { type: 'text', text: '💳 ยืนยันชำระเงิน', color: '#ffffff', weight: 'bold', size: 'md' },
+          { type: 'text', text: '💳 เลือกยอดที่ต้องการชำระ', color: '#ffffff', weight: 'bold', size: 'md' },
           { type: 'text', text: branchName, color: '#aaffaa', size: 'xs' }
         ]
       },
       body: {
         type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px',
         contents: [
-          { type: 'text', text: `${pending.length} ใบจองรอชำระ`, size: 'sm', color: '#666666' },
+          { type: 'text', text: 'กด ○ เพื่อเลือก · กด ✔ เพื่อยกเลิกการเลือก', size: 'xs', color: '#888888' },
           { type: 'separator', margin: 'sm' },
-          ...orderItems,
+          ...orderRows,
           { type: 'separator', margin: 'md' },
-          { type: 'box', layout: 'horizontal', margin: 'sm', contents: [
-            { type: 'text', text: 'รวมทั้งหมด', size: 'sm', flex: 5, weight: 'bold', color: '#333333' },
-            { type: 'text', text: `฿${fmt(total)}`, size: 'sm', flex: 3, align: 'end', weight: 'bold', color: '#f59e0b' }
-          ]}
+          summaryBox
         ]
       },
-      footer: {
-        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
-        contents: [
-          { type: 'button', action: { type: 'postback', label: '✅ ยืนยันชำระเงิน', data: `PAYCONFIRM:${branchId}` }, style: 'primary', color: '#4ade80', height: 'sm' },
-          { type: 'button', action: { type: 'postback', label: '← ยกเลิก', data: `HIST:${branchId}` }, style: 'secondary', height: 'sm' }
-        ]
-      }
+      footer: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px', contents: footerBtns }
     }
   }
 }
@@ -870,11 +965,63 @@ async function handlePostback(data: string, userId: string, replyToken: string) 
     return reply(replyToken, [await historyView(branchId, br[0]?.name ?? `สาขา #${branchId}`)])
   }
 
-  // PAYVIEW: show pending orders for payment confirmation
+  // PAYVIEW: show selectable pending orders
   if (data.startsWith('PAYVIEW:')) {
     const branchId = parseInt(data.split(':')[1])
     const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
-    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`)])
+    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
+  }
+
+  // PAY_TOGGLE:{branchId}:{orderNo}
+  if (data.startsWith('PAY_TOGGLE:')) {
+    const parts  = data.split(':')
+    const branchId = parseInt(parts[1])
+    const orderNo  = parts[2]
+    const sel = await getPaySelection(userId)
+    const newSel = sel.includes(orderNo) ? sel.filter(s => s !== orderNo) : [...sel, orderNo]
+    await setPaySelection(userId, newSel)
+    const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
+    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
+  }
+
+  // PAY_SELECTALL:{branchId}
+  if (data.startsWith('PAY_SELECTALL:')) {
+    const branchId = parseInt(data.split(':')[1])
+    const pending  = await getPendingOrders(branchId)
+    await setPaySelection(userId, pending.map((o: Record<string, string>) => o.order_no))
+    const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
+    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
+  }
+
+  // PAY_CLEARSEL:{branchId}
+  if (data.startsWith('PAY_CLEARSEL:')) {
+    const branchId = parseInt(data.split(':')[1])
+    await setPaySelection(userId, [])
+    const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
+    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
+  }
+
+  // PAY_QR:{branchId} — generate PromptPay QR for selected orders
+  if (data.startsWith('PAY_QR:')) {
+    const branchId = parseInt(data.split(':')[1])
+    const promptPayId = process.env.PROMPTPAY_ID
+    if (!promptPayId) return reply(replyToken, [{ type: 'text', text: '⚠️ ยังไม่ได้ตั้งค่า PROMPTPAY_ID' }])
+
+    const [pending, sel] = await Promise.all([getPendingOrders(branchId), getPaySelection(userId)])
+    const pendingNos = new Set(pending.map((o: Record<string, string>) => o.order_no))
+    const validSel   = sel.filter(no => pendingNos.has(no))
+    const selOrders  = pending.filter((o: Record<string, string>) => validSel.includes(o.order_no))
+    const total      = selOrders.reduce((s: number, o: Record<string, number>) => s + (o.total_amount ?? 0), 0)
+
+    if (!total) return reply(replyToken, [{ type: 'text', text: '⚠️ ยังไม่ได้เลือกรายการ กด ○ เพื่อเลือกก่อนครับ' }])
+
+    const qrUrl   = promptPayQrUrl(promptPayId, total)
+    const orderNos = selOrders.map((o: Record<string, string>) => `#${o.order_no}`).join(', ')
+
+    return reply(replyToken, [
+      { type: 'image', originalContentUrl: qrUrl, previewImageUrl: qrUrl },
+      { type: 'text', text: `💳 PromptPay\n฿${fmt(total)}\n\nรายการ: ${orderNos}\n\nสแกน QR โอนเงินได้เลยครับ\nเสร็จแล้วส่งสลิปในกลุ่มนี้` }
+    ])
   }
 
   // PAYCONFIRM: mark all pending orders paid (admin only via LINE user_id)
