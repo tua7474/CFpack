@@ -898,6 +898,27 @@ function Booking2Inner() {
       <style>{`
         .foy-print-frame { display: none; }
 
+        /* Transform-scale fallback for browsers that don't support zoom (Firefox) */
+        @supports not (zoom: 1) {
+          .screen-zoom-wrapper-scale {
+            transform-origin: top center;
+          }
+        }
+
+        @media screen {
+          .a4-content input[type="text"] {
+            font-size: 16px !important;
+            touch-action: manipulation;
+          }
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+          /* Mobile touch devices */
+          .a4-content input[type="text"] {
+            min-height: 28px;
+          }
+        }
+
         @media print {
           @page            { margin: 0; }
           @page landscape-p { size: A4 landscape; }
@@ -970,132 +991,144 @@ function Booking2Inner() {
       `}</style>
 
       {/* Header */}
-      <header className="no-print bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          {isAdmin && (
-            <Link href="/" className="text-orange-200 hover:text-white text-sm transition-colors">
-              ← กลับหน้าหลัก
+      <header className="no-print bg-[#9b9484] text-white px-4 py-2 shadow flex flex-col gap-2">
+        {/* Row 1: title + right actions */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {isAdmin && (
+              <Link href="/" className="text-orange-200 hover:text-white text-sm transition-colors shrink-0">
+                ← กลับหน้าหลัก
+              </Link>
+            )}
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold leading-tight">
+                {editOrderNo ? `แก้ไขใบจอง — ${editOrderNo}` : 'ใบจองสินค้า'}
+              </h1>
+              <p className="text-orange-200 text-xs mt-0.5 hidden sm:block">
+                {editOrderNo ? 'แก้ไขรายการแล้วกดบันทึกเพื่ออัพเดท' : 'ข้อมูลจากสต็อคสินค้า · Auto-save ใน browser'}
+              </p>
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <Link href="/orders"
+              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
+              📋<span className="hidden sm:inline"> ประวัติใบจอง</span>
             </Link>
-          )}
-          <div>
-            <h1 className="text-xl font-bold">
-              {editOrderNo ? `แก้ไขใบจอง — ${editOrderNo}` : 'ใบจองสินค้า'}
-            </h1>
-            <p className="text-orange-200 text-xs mt-0.5">
-              {editOrderNo ? 'แก้ไขรายการแล้วกดบันทึกเพื่ออัพเดท' : 'ข้อมูลจากสต็อคสินค้า · Auto-save ใน browser'}
-            </p>
+
+            {!isAdmin && (
+              <button
+                onClick={() => { localStorage.removeItem('branch_session'); window.location.replace('/branches') }}
+                className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
+                ออกจากระบบ
+              </button>
+            )}
           </div>
         </div>
 
-        <Link href="/orders"
-          className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
-          📋 ประวัติใบจอง
-        </Link>
-
-        {!isAdmin && (
-          <button
-            onClick={() => { localStorage.removeItem('branch_session'); window.location.replace('/branches') }}
-            className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
-            ออกจากระบบ
-          </button>
-        )}
-
-        {/* ── Priority mode buttons ── */}
-        <div className="flex items-center gap-1.5 no-print">
-          {([
-            { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', sub: 'ไม่ครบไม่ต้องออกรถ',      limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300' },
-            { mode: 'important' as PriorityLevel, label: 'สำคัญ',    sub: 'ของครบ/จำนวนไม่ต้องครบ', limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300' },
-          ]).map(({ mode, label, sub, limit, bg, ring }) => {
-            const count = priorityCounts[mode]
-            const isActive = priorityMode === mode
-            const atLimit = count >= limit
-            return (
-              <button
-                key={mode}
-                onClick={() => setPriorityMode(isActive ? null : mode)}
-                className={`px-2 py-1 text-xs rounded font-semibold transition-all border ${bg} text-white ${isActive ? `ring-2 ${ring} shadow-lg scale-105` : 'opacity-75 hover:opacity-100'} ${atLimit && !isActive ? 'opacity-50' : ''}`}
-              >
-                <div>{label} {count}/{limit}</div>
-                <div className="text-[9px] font-normal opacity-80 leading-tight">{sub}</div>
-              </button>
-            )
-          })}
-          {priorityMode && (
-            <span className="text-yellow-300 text-xs font-semibold animate-pulse">← คลิกสินค้า</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {saveMsg && (
-            <span className={`text-sm px-3 py-1 rounded-full text-white ${saveMsg.includes('สำเร็จ') ? 'bg-green-500' : 'bg-red-500'}`}>
-              {saveMsg}
-            </span>
-          )}
-          {/* ── New order: show save when has items ── */}
-          {!editOrderNo && (pendingCount > 0 || hasFoyPending) && (
-            <>
-              {pendingCount > 0 && (
-                <>
-                  <span className="text-yellow-300 text-sm">✎ แก้ไขค้างอยู่ {pendingCount} รายการ</span>
-                  <button
-                    onClick={() => { setPending({}); localStorage.removeItem(DRAFT_KEY) }}
-                    className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors"
-                  >
-                    ยกเลิก
-                  </button>
-                </>
-              )}
-              {hasFoyPending && pendingCount === 0 && (
-                <span className="text-teal-300 text-sm">📦 กระดาษฝอย {Object.keys(foyPending).length} รุ่น พร้อมจอง</span>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={saving || cannotBook25k || vehicleType === '' || sourceType === '' || bubbleBlocking}
-                className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors disabled:opacity-50"
-              >
-                {saving ? 'กำลังบันทึก...' : '💾 บันทึกการจอง'}
-              </button>
-              {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
-              {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
-            </>
-          )}
-
-          {/* ── Edit mode: save always visible + cancel order when empty ── */}
-          {editOrderNo && (
-            <>
-              {pendingCount > 0 && (
-                <span className="text-yellow-300 text-sm">✎ แก้ไขค้างอยู่ {pendingCount} รายการ</span>
-              )}
-              {hasFoyPending && pendingCount === 0 && (
-                <span className="text-teal-300 text-sm">📦 กระดาษฝอย {Object.keys(foyPending).length} รุ่น</span>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={saving || cannotBook25k || vehicleType === '' || sourceType === '' || bubbleBlocking}
-                className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors disabled:opacity-50"
-              >
-                {saving ? 'กำลังบันทึก...' : '💾 อัพเดทการจอง'}
-              </button>
-              {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
-              {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
-              {pendingCount === 0 && !hasFoyPending && (
+        {/* Row 2: priority buttons + save/cancel actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* ── Priority mode buttons ── */}
+          <div className="flex items-center gap-1.5 no-print">
+            {([
+              { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', sub: 'ไม่ครบไม่ต้องออกรถ',      limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300' },
+              { mode: 'important' as PriorityLevel, label: 'สำคัญ',    sub: 'ของครบ/จำนวนไม่ต้องครบ', limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300' },
+            ]).map(({ mode, label, sub, limit, bg, ring }) => {
+              const count = priorityCounts[mode]
+              const isActive = priorityMode === mode
+              const atLimit = count >= limit
+              return (
                 <button
-                  onClick={handleCancelOrder}
-                  disabled={saving}
-                  className="px-4 py-1.5 text-sm rounded bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors disabled:opacity-50"
+                  key={mode}
+                  onClick={() => setPriorityMode(isActive ? null : mode)}
+                  className={`px-2 py-1 text-xs rounded font-semibold transition-all border ${bg} text-white ${isActive ? `ring-2 ${ring} shadow-lg scale-105` : 'opacity-75 hover:opacity-100'} ${atLimit && !isActive ? 'opacity-50' : ''}`}
                 >
-                  {saving ? 'กำลังดำเนินการ...' : '🗑️ ยกเลิกใบจองนี้'}
+                  <div>{label} {count}/{limit}</div>
+                  <div className="text-[9px] font-normal opacity-80 leading-tight">{sub}</div>
                 </button>
-              )}
-            </>
-          )}
+              )
+            })}
+            {priorityMode && (
+              <span className="text-yellow-300 text-xs font-semibold animate-pulse">← คลิกสินค้า</span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {saveMsg && (
+              <span className={`text-sm px-3 py-1 rounded-full text-white ${saveMsg.includes('สำเร็จ') ? 'bg-green-500' : 'bg-red-500'}`}>
+                {saveMsg}
+              </span>
+            )}
+            {/* ── New order: show save when has items ── */}
+            {!editOrderNo && (pendingCount > 0 || hasFoyPending) && (
+              <>
+                {pendingCount > 0 && (
+                  <>
+                    <span className="text-yellow-300 text-sm">✎ แก้ไขค้างอยู่ {pendingCount} รายการ</span>
+                    <button
+                      onClick={() => { setPending({}); localStorage.removeItem(DRAFT_KEY) }}
+                      className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors"
+                    >
+                      ยกเลิก
+                    </button>
+                  </>
+                )}
+                {hasFoyPending && pendingCount === 0 && (
+                  <span className="text-teal-300 text-sm">📦 กระดาษฝอย {Object.keys(foyPending).length} รุ่น พร้อมจอง</span>
+                )}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || cannotBook25k || vehicleType === '' || sourceType === '' || bubbleBlocking}
+                  className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'กำลังบันทึก...' : '💾 บันทึกการจอง'}
+                </button>
+                {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
+                {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+              </>
+            )}
+
+            {/* ── Edit mode: save always visible + cancel order when empty ── */}
+            {editOrderNo && (
+              <>
+                {pendingCount > 0 && (
+                  <span className="text-yellow-300 text-sm">✎ แก้ไขค้างอยู่ {pendingCount} รายการ</span>
+                )}
+                {hasFoyPending && pendingCount === 0 && (
+                  <span className="text-teal-300 text-sm">📦 กระดาษฝอย {Object.keys(foyPending).length} รุ่น</span>
+                )}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || cannotBook25k || vehicleType === '' || sourceType === '' || bubbleBlocking}
+                  className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'กำลังบันทึก...' : '💾 อัพเดทการจอง'}
+                </button>
+                {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
+                {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+                {pendingCount === 0 && !hasFoyPending && (
+                  <button
+                    onClick={handleCancelOrder}
+                    disabled={saving}
+                    className="px-4 py-1.5 text-sm rounded bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'กำลังดำเนินการ...' : '🗑️ ยกเลิกใบจองนี้'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </header>
 
       {/* Main */}
-      <main>
-        <div className="screen-zoom-wrapper p-4 flex justify-center"
-          style={{ zoom: viewScale < 1 ? viewScale : undefined }}>
+      <main style={{ overflowX: 'auto' }}>
+        <div
+          className="screen-zoom-wrapper p-2 sm:p-4 flex justify-center overflow-x-hidden"
+          style={{
+            zoom: viewScale < 1 ? viewScale : undefined,
+          }}
+        >
 
           {/* ── ยังไม่ได้ระบุสาขา → lock screen ── */}
           {branchReady === false ? (
