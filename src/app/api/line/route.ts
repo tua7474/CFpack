@@ -55,6 +55,8 @@ async function ensureTable() {
   await pool.query(`
     ALTER TABLE line_sessions ADD COLUMN IF NOT EXISTS input_state JSONB
   `).catch(() => {})
+  // Ensure slips status column is wide enough for 'pending_confirm'
+  await pool.query(`ALTER TABLE slips ALTER COLUMN status TYPE VARCHAR(30)`).catch(() => {})
 }
 
 async function getOrder(userId: string): Promise<Record<number, number>> {
@@ -1174,6 +1176,7 @@ async function handleImage(messageId: string, userId: string, replyToken: string
 
   // Scan with Claude Vision
   let scanResult: { amount?: number; account_name?: string; date?: string; error?: string } = {}
+  let rawText = ''
   try {
     const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1189,20 +1192,27 @@ async function handleImage(messageId: string, userId: string, replyToken: string
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
-            { type: 'text', text: 'นี่คือสลิปโอนเงิน กรุณาอ่านและตอบเป็น JSON เท่านั้น ไม่ต้องอธิบาย:\n{"amount": ตัวเลขยอดโอน (ไม่มีสัญลักษณ์), "account_name": "ชื่อบัญชีผู้รับ", "date": "YYYY-MM-DD"}\nถ้าไม่ใช่สลิปโอนเงินหรืออ่านไม่ได้ให้ตอบ: {"error": "not a slip"}' }
+            { type: 'text', text: 'นี่คือสลิปโอนเงิน กรุณาอ่านและตอบเป็น JSON เท่านั้น ไม่ต้องอธิบาย:\n{"amount": ตัวเลขยอดโอน (ไม่มีสัญลักษณ์ เช่น 22254.10), "account_name": "ชื่อบัญชีผู้รับ (เฉพาะชื่อ ไม่ต้องมีธนาคาร)", "date": "YYYY-MM-DD (วันที่โอนในรูปแบบ Gregorian)"}\nถ้าไม่ใช่สลิปโอนเงินหรืออ่านไม่ได้ให้ตอบ: {"error": "not a slip"}' }
           ]
         }]
       })
     })
     const apiData = await apiRes.json()
-    const text = apiData?.content?.[0]?.text ?? ''
-    const jsonMatch = text.match(/\{[\s\S]*?\}/)
+    rawText = apiData?.content?.[0]?.text ?? ''
+    console.log('[slip-scan] raw:', rawText)
+    const jsonMatch = rawText.match(/\{[\s\S]*?\}/)
     if (jsonMatch) scanResult = JSON.parse(jsonMatch[0])
-  } catch {
-    return // scan error — ไม่ reply ถ้าอ่านไม่ออก
+  } catch (e) {
+    console.error('[slip-scan] error:', e)
+    return reply(replyToken, [{ type: 'text', text: `⚠️ เกิดข้อผิดพลาดในการสแกนสลิป\n${String(e)}` }])
   }
 
-  if (scanResult.error || !scanResult.amount) return // ไม่ใช่สลิปโอนเงิน
+  if (scanResult.error) {
+    return reply(replyToken, [{ type: 'text', text: '❓ อ่านสลิปไม่ได้ กรุณาส่งรูปสลิปที่ชัดเจนครับ' }])
+  }
+  if (!scanResult.amount) {
+    return reply(replyToken, [{ type: 'text', text: `⚠️ อ่านยอดเงินไม่ได้ครับ\n(ผลลัพธ์: ${rawText.slice(0, 100)})` }])
+  }
 
   // Determine category
   const category = scanResult.account_name ? categorizeByAccount(scanResult.account_name) : null
