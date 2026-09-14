@@ -25,9 +25,9 @@ function verifySignature(body: string, sig: string) {
 
 // ── Session (DB) ──────────────────────────────────────────────────────────────
 
-interface InputState {
-  id: number; name: string; price: number; sec: number; sg: number; page: number
-}
+type InputState =
+  | { type?: 'product_qty'; id: number; name: string; price: number; sec: number; sg: number; page: number }
+  | { type: 'slip_edit'; slip_id: number; field: 'date' | 'account_name' | 'amount' }
 
 async function ensureTable() {
   await pool.query(`
@@ -842,6 +842,27 @@ async function handlePostback(data: string, userId: string, replyToken: string) 
     const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
     return reply(replyToken, [await monthDetailView(branchId, br[0]?.name ?? `สาขา #${branchId}`, month, year)])
   }
+
+  // SLIP_CONFIRM:{id} — confirm slip, save to pending
+  if (data.startsWith('SLIP_CONFIRM:')) {
+    const slipId = parseInt(data.split(':')[1])
+    await pool.query(`UPDATE slips SET status='pending' WHERE id=$1`, [slipId])
+    return reply(replyToken, [{ type: 'text', text: '✅ ยืนยันสลิปแล้วครับ\nบันทึกเข้าระบบเรียบร้อย' }])
+  }
+
+  // SLIP_EDIT:{id}:{field} — ask user to type corrected value
+  if (data.startsWith('SLIP_EDIT:')) {
+    const parts = data.split(':')
+    const slipId = parseInt(parts[1])
+    const field  = parts[2] as 'date' | 'account_name' | 'amount'
+    const prompts: Record<string, string> = {
+      date:         '📅 แก้ไขวันที่โอน\nพิมพ์ในรูปแบบ วว/ดด/ปปปป เช่น 12/09/2026\n(หรือ YYYY-MM-DD ก็ได้)',
+      account_name: '👤 แก้ไขชื่อผู้รับ\nพิมพ์ชื่อที่ถูกต้อง',
+      amount:       '💰 แก้ไขยอดเงิน\nพิมพ์ตัวเลขเท่านั้น เช่น 22254.10',
+    }
+    await setInputState(userId, { type: 'slip_edit', slip_id: slipId, field })
+    return reply(replyToken, [{ type: 'text', text: prompts[field] ?? 'พิมพ์ข้อมูลใหม่:' }])
+  }
 }
 
 // ── Text handler ──────────────────────────────────────────────────────────────
@@ -849,11 +870,45 @@ async function handlePostback(data: string, userId: string, replyToken: string) 
 async function handleText(text: string, userId: string, replyToken: string, source?: Record<string, string>) {
   const t = text.trim().toLowerCase()
 
-  // Check if user is responding to a QI: input prompt
+  // Check input state first (slip_edit or product_qty)
+  const inputState = await getInputState(userId)
+
+  // ── Slip edit: user typed corrected value ─────────────────────────────────
+  if (inputState && inputState.type === 'slip_edit') {
+    const { slip_id, field } = inputState
+    await setInputState(userId, null)
+
+    if (field === 'amount') {
+      const num = parseFloat(text.trim().replace(/,/g, ''))
+      if (isNaN(num) || num <= 0) {
+        return reply(replyToken, [{ type: 'text', text: '❌ กรุณาพิมพ์ตัวเลขเท่านั้น เช่น 22254.10' }])
+      }
+      await pool.query(`UPDATE slips SET amount=$1 WHERE id=$2`, [num, slip_id])
+    } else if (field === 'date') {
+      const iso = parseDateInput(text.trim())
+      if (!iso) {
+        return reply(replyToken, [{ type: 'text', text: '❌ รูปแบบวันที่ไม่ถูกต้อง\nกรุณาพิมพ์ เช่น 12/09/2026 หรือ 2026-09-12' }])
+      }
+      await pool.query(`UPDATE slips SET slip_date=$1 WHERE id=$2`, [iso, slip_id])
+    } else {
+      await pool.query(`UPDATE slips SET account_name=$1 WHERE id=$2`, [text.trim(), slip_id])
+    }
+
+    const { rows: [slip] } = await pool.query(
+      'SELECT id, amount, account_name, slip_date, created_at FROM slips WHERE id=$1', [slip_id]
+    )
+    if (!slip) return reply(replyToken, [{ type: 'text', text: '✅ แก้ไขแล้วครับ' }])
+    return reply(replyToken, [
+      { type: 'text', text: '✅ แก้ไขแล้วครับ กรุณาตรวจสอบอีกครั้ง:' },
+      slipConfirmCard(slip)
+    ])
+  }
+
+  // ── Product qty input: user typed a number after QI: prompt ──────────────
   const numVal = parseFloat(text.trim())
   if (!isNaN(numVal) && numVal > 0 && /^\d+(\.\d+)?$/.test(text.trim())) {
-    const state = await getInputState(userId)
-    if (state) {
+    if (inputState && (!inputState.type || inputState.type === 'product_qty')) {
+      const state = inputState
       const qty = Math.round(numVal)
       const order = await getOrder(userId)
       order[state.id] = qty
@@ -1000,6 +1055,91 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
 }
 
+// ── Slip Confirm Card ─────────────────────────────────────────────────────────
+
+interface SlipRow {
+  id: number; amount: string | number; account_name: string | null
+  slip_date: Date | string; created_at: Date | string
+}
+
+function slipConfirmCard(slip: SlipRow): object {
+  const fmtAmount = Number(slip.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const slipDateIso = typeof slip.slip_date === 'string'
+    ? slip.slip_date.slice(0, 10) : (slip.slip_date as Date).toISOString().slice(0, 10)
+  const transferDateDisplay = new Date(slipDateIso + 'T12:00:00').toLocaleDateString('th-TH', {
+    day: 'numeric', month: 'long', year: 'numeric'
+  })
+  const sentDisplay = new Date(slip.created_at).toLocaleString('th-TH', {
+    day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Bangkok'
+  })
+
+  return {
+    type: 'flex',
+    altText: `🧾 สลิป ฿${fmtAmount} — กรุณายืนยัน`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#1a7b4e',
+        contents: [
+          { type: 'text', text: '🧾 ข้อมูลสลิปโอนเงิน', color: '#ffffff', weight: 'bold', size: 'md' },
+          { type: 'text', text: `ส่งสลิปเมื่อ: ${sentDisplay}`, color: '#aaffaa', size: 'xs' }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px',
+        contents: [
+          { type: 'text', text: 'กรุณาตรวจสอบ — กด ✏️ เพื่อแก้ไข', size: 'xs', color: '#888888', margin: 'none' },
+          { type: 'separator', margin: 'sm' },
+          {
+            type: 'box', layout: 'horizontal', margin: 'md', alignItems: 'center',
+            contents: [
+              { type: 'text', text: '📅 วันที่โอน', size: 'sm', flex: 4, color: '#555555' },
+              { type: 'text', text: transferDateDisplay, size: 'sm', flex: 5, align: 'end', weight: 'bold', color: '#222222', wrap: true },
+              { type: 'button', flex: 2, action: { type: 'postback', label: '✏️', data: `SLIP_EDIT:${slip.id}:date` }, style: 'secondary', height: 'sm' }
+            ]
+          },
+          {
+            type: 'box', layout: 'horizontal', margin: 'sm', alignItems: 'center',
+            contents: [
+              { type: 'text', text: '👤 ผู้รับ', size: 'sm', flex: 4, color: '#555555' },
+              { type: 'text', text: slip.account_name ?? '-', size: 'sm', flex: 5, align: 'end', weight: 'bold', color: '#222222', wrap: true },
+              { type: 'button', flex: 2, action: { type: 'postback', label: '✏️', data: `SLIP_EDIT:${slip.id}:account_name` }, style: 'secondary', height: 'sm' }
+            ]
+          },
+          {
+            type: 'box', layout: 'horizontal', margin: 'sm', alignItems: 'center',
+            contents: [
+              { type: 'text', text: '💰 ยอดเงิน', size: 'sm', flex: 4, color: '#555555' },
+              { type: 'text', text: `฿${fmtAmount}`, size: 'md', flex: 5, align: 'end', weight: 'bold', color: '#1a7b4e' },
+              { type: 'button', flex: 2, action: { type: 'postback', label: '✏️', data: `SLIP_EDIT:${slip.id}:amount` }, style: 'secondary', height: 'sm' }
+            ]
+          }
+        ]
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          { type: 'button', action: { type: 'postback', label: '✅ ยืนยันข้อมูลถูกต้อง', data: `SLIP_CONFIRM:${slip.id}` }, style: 'primary', color: '#1a7b4e', height: 'sm' }
+        ]
+      }
+    }
+  }
+}
+
+function parseDateInput(raw: string): string | null {
+  const s = raw.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/)
+  if (m) {
+    let y = parseInt(m[3])
+    if (y > 2500) y -= 543
+    else if (y < 100) y += 2000
+    return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  }
+  return null
+}
+
 // ── Slip scanning via Claude Vision ──────────────────────────────────────────
 
 function categorizeByAccount(name: string): string | null {
@@ -1081,11 +1221,12 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     if (ub) branchId = ub.branch_id
   }
 
-  // Save slip as pending
+  // Save slip as pending_confirm — wait for user to confirm
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-  await pool.query(`
-    INSERT INTO slips (branch_id, category, amount, account_name, slip_date, line_image_id)
-    VALUES ($1, $2, $3, $4, $5, $6)
+  const { rows: [slip] } = await pool.query(`
+    INSERT INTO slips (branch_id, category, amount, account_name, slip_date, status, line_image_id)
+    VALUES ($1, $2, $3, $4, $5, 'pending_confirm', $6)
+    RETURNING id, amount, account_name, slip_date, created_at
   `, [
     branchId,
     category ?? 'other',
@@ -1095,12 +1236,7 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     messageId,
   ])
 
-  const catLabel  = category ? (SLIP_LABEL[category] ?? category) : '❓ ไม่ระบุหมวด'
-  const fmtAmount = Number(scanResult.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return reply(replyToken, [{
-    type: 'text',
-    text: `✅ รับสลิปแล้วครับ\n💰 ฿${fmtAmount}\n🏦 ${scanResult.account_name ?? '-'}\n📅 ${scanResult.date ?? today}\n📂 ${catLabel}\n\n⚠️ กรุณายืนยันข้อมูลในเว็บ สาขาและตัวแทน ด้วยครับ`,
-  }])
+  return reply(replyToken, [slipConfirmCard(slip)])
 }
 
 // ── Webhook entry ─────────────────────────────────────────────────────────────

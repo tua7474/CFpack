@@ -882,7 +882,14 @@ function Booking2Inner() {
 
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
-  // No JavaScript scaling — let iOS/Android handle zoom natively (no feedback loops)
+  // ── Viewport scale for screen display (fits A4 width in window) ─────────────
+  const [viewScale, setViewScale] = useState(1)
+  useEffect(() => {
+    const calc = () => setViewScale(Math.min(1, (window.innerWidth - 16) / A4_W_PX))
+    calc()
+    window.addEventListener('resize', calc)
+    return () => window.removeEventListener('resize', calc)
+  }, [])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1110,9 +1117,10 @@ function Booking2Inner() {
         </div>
       </header>
 
-      {/* Main — scrollable, no JS scaling; native iOS/Android pinch-zoom */}
-      <main style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <div className="py-3 px-2 flex justify-start">
+      {/* Main — CSS zoom fits A4 to screen; browser/OS handles pinch-zoom natively */}
+      <main>
+        <div className="py-3 px-2 flex justify-center"
+          style={viewScale < 1 ? { zoom: viewScale, transformOrigin: 'top center' } : undefined}>
 
           {/* ── ยังไม่ได้ระบุสาขา → lock screen ── */}
           {branchReady === false ? (
