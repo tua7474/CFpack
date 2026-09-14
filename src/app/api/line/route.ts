@@ -275,12 +275,24 @@ function getISOWeekInfo(): { year: number; week: number; dayOfWeek: number } {
   return { year: thu.getUTCFullYear(), week, dayOfWeek: dow }
 }
 
-function absWeek(yr: number, wk: number): number { return yr * 54 + wk }
-
-function isBookingBlocked(weeks: WeekSummary[], curYear: number, curWeek: number, dayOfWeek: number): boolean {
-  // Monday: must have paid through W-2; Tue-Sun: must have paid through W-1
-  const limit = absWeek(curYear, curWeek) - (dayOfWeek === 1 ? 2 : 1)
-  return weeks.some(w => absWeek(w.yr, w.wk) <= limit && w.pending_amount > 0)
+// ตรวจสอบบล็อกจาก DB โดยตรง (ครอบคลุมทุกออเดอร์ ไม่จำกัด 3 สัปดาห์)
+// วันจันทร์: ยกเว้น W-1 (มี grace 1 สัปดาห์) → block ถ้ามีค้างก่อน W-1
+// วันอื่น:   ไม่มี grace → block ถ้ามีค้างก่อน W-ปัจจุบัน
+async function checkBlockedFromDB(branchId: number): Promise<boolean> {
+  const { dayOfWeek } = getISOWeekInfo()
+  // Monday: weeksBack=1 → cutoff = start of last week (W-1 start)
+  // Tue-Sun: weeksBack=0 → cutoff = start of this week (W-0 start)
+  const weeksBack = dayOfWeek === 1 ? 1 : 0
+  const { rows } = await pool.query(`
+    SELECT EXISTS (
+      SELECT 1 FROM booking_orders
+      WHERE branch_id = $1
+        AND payment_status != 'paid'
+        AND created_at AT TIME ZONE 'Asia/Bangkok' <
+            date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - ($2 * INTERVAL '1 week')
+    ) AS blocked
+  `, [branchId, weeksBack])
+  return rows[0]?.blocked === true
 }
 
 function isoWeekStart(yr: number, wk: number): Date {
@@ -1180,19 +1192,20 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
 
     // ── สรุปรายสัปดาห์ + ตรวจสอบการบล็อก ────────────────────────────────────
-    const { year: curYear, week: curWeek, dayOfWeek } = getISOWeekInfo()
+    const { year: curYear, week: curWeek } = getISOWeekInfo()
     let weekRows: WeekSummary[] = []
     let blocked = false
     let pendingCount = 0
 
     if (branchId !== null) {
-      const [wRows, pending] = await Promise.all([
+      const [wRows, pending, blockedResult] = await Promise.all([
         getWeeklySummary(branchId, 3),
         getPendingOrders(branchId),
+        checkBlockedFromDB(branchId),   // ตรวจทุกออเดอร์ใน DB ไม่จำกัด 3 สัปดาห์
       ])
       weekRows     = wRows
       pendingCount = pending.length
-      blocked      = isBookingBlocked(weekRows, curYear, curWeek, dayOfWeek)
+      blocked      = blockedResult
     }
 
     // ── สร้าง body rows สรุปแต่ละสัปดาห์ ─────────────────────────────────────
