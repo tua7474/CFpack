@@ -7,7 +7,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type PriorityLevel = 'critical' | 'important' | 'fill'
+type PriorityLevel = 'critical' | 'important'
 
 interface CatalogProduct {
   id: number
@@ -365,7 +365,7 @@ function Booking2Inner() {
         if (order.priorities && Object.keys(order.priorities).length > 0) {
           const prio: Record<number, PriorityLevel | null> = {}
           for (const [k, v] of Object.entries(order.priorities)) {
-            if (v === 'critical' || v === 'important' || v === 'fill') prio[Number(k)] = v
+            if (v === 'critical' || v === 'important') prio[Number(k)] = v
           }
           setProductPriorities(prio)
         }
@@ -516,11 +516,11 @@ function Booking2Inner() {
   const hasFoyPending = Object.keys(foyPending).length > 0
 
   // Priority counts
-  const priorityCounts: Record<PriorityLevel, number> = { critical: 0, important: 0, fill: 0 }
+  const priorityCounts: Record<PriorityLevel, number> = { critical: 0, important: 0 }
   for (const pv of Object.values(productPriorities)) {
     if (pv) priorityCounts[pv]++
   }
-  const PRIORITY_LIMITS: Record<PriorityLevel, number> = { critical: 5, important: 10, fill: 100 }
+  const PRIORITY_LIMITS: Record<PriorityLevel, number> = { critical: 5, important: 10 }
 
   const handlePriorityClick = (productId: number) => {
     if (!priorityMode) return
@@ -1005,7 +1005,6 @@ function Booking2Inner() {
           {([
             { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', sub: 'ไม่ครบไม่ต้องออกรถ',      limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300' },
             { mode: 'important' as PriorityLevel, label: 'สำคัญ',    sub: 'ของครบ/จำนวนไม่ต้องครบ', limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300' },
-            { mode: 'fill'     as PriorityLevel, label: 'เติมเต็มรถ', sub: 'ไม่ครบ ไม่มี ก็ส่งได้',  limit: 100, bg: 'bg-green-800', ring: 'ring-green-300' },
           ]).map(({ mode, label, sub, limit, bg, ring }) => {
             const count = priorityCounts[mode]
             const isActive = priorityMode === mode
@@ -1457,12 +1456,10 @@ function Booking2Inner() {
                           const PRIO_BORDER: Record<PriorityLevel, string> = {
                             critical:  'border-l-[3px] border-l-red-600',
                             important: 'border-l-[3px] border-l-blue-600',
-                            fill:      'border-l-[3px] border-l-green-800',
                           }
                           const PRIO_TEXT: Record<PriorityLevel, string> = {
                             critical:  'text-red-700 font-semibold',
                             important: 'text-blue-700 font-semibold',
-                            fill:      'text-green-900 font-semibold',
                           }
                           const prioBorderCls = prio ? PRIO_BORDER[prio] : ''
                           const prioTextCls   = prio ? PRIO_TEXT[prio] : ''
