@@ -206,6 +206,72 @@ async function getMonthlySummary(branchId: number, year: number): Promise<Record
   return out
 }
 
+// ── Weekly summary helpers ────────────────────────────────────────────────────
+
+interface WeekSummary {
+  yr: number; wk: number
+  total_count: number; total_amount: number
+  paid_count: number; paid_amount: number; pending_amount: number
+}
+
+function getISOWeekInfo(): { year: number; week: number; dayOfWeek: number } {
+  // Use Thai time UTC+7
+  const now = new Date(Date.now() + 7 * 3600 * 1000)
+  const d   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  const dow = d.getUTCDay() || 7               // 1=Mon … 7=Sun
+  const thu = new Date(d)
+  thu.setUTCDate(d.getUTCDate() + 4 - dow)     // nearest Thursday
+  const jan1 = new Date(Date.UTC(thu.getUTCFullYear(), 0, 1))
+  const week = Math.ceil((((thu.getTime() - jan1.getTime()) / 86400000) + 1) / 7)
+  return { year: thu.getUTCFullYear(), week, dayOfWeek: dow }
+}
+
+function absWeek(yr: number, wk: number): number { return yr * 54 + wk }
+
+function isBookingBlocked(weeks: WeekSummary[], curYear: number, curWeek: number, dayOfWeek: number): boolean {
+  // Monday: must have paid through W-2; Tue-Sun: must have paid through W-1
+  const limit = absWeek(curYear, curWeek) - (dayOfWeek === 1 ? 2 : 1)
+  return weeks.some(w => absWeek(w.yr, w.wk) <= limit && w.pending_amount > 0)
+}
+
+function isoWeekStart(yr: number, wk: number): Date {
+  const jan4 = new Date(Date.UTC(yr, 0, 4))
+  const jan4Dow = jan4.getUTCDay() || 7
+  const start = new Date(jan4)
+  start.setUTCDate(jan4.getUTCDate() - (jan4Dow - 1) + (wk - 1) * 7)
+  return start
+}
+
+function weekLabel(yr: number, wk: number): string {
+  const s = isoWeekStart(yr, wk)
+  const e = new Date(s); e.setUTCDate(s.getUTCDate() + 6)
+  const sm = TH_MONTHS[s.getUTCMonth()], em = TH_MONTHS[e.getUTCMonth()]
+  const range = sm === em
+    ? `${s.getUTCDate()}–${e.getUTCDate()} ${sm}`
+    : `${s.getUTCDate()} ${sm}–${e.getUTCDate()} ${em}`
+  return `W${wk} (${range} ${(yr + 543).toString().slice(-2)})`
+}
+
+async function getWeeklySummary(branchId: number, limitWeeks = 3): Promise<WeekSummary[]> {
+  const { rows } = await pool.query(`
+    SELECT
+      EXTRACT(ISOYEAR FROM created_at AT TIME ZONE 'Asia/Bangkok')::int AS yr,
+      EXTRACT(WEEK   FROM created_at AT TIME ZONE 'Asia/Bangkok')::int AS wk,
+      COUNT(*)::int AS total_count,
+      SUM(total_amount)::float AS total_amount,
+      COUNT(*) FILTER (WHERE payment_status = 'paid')::int AS paid_count,
+      SUM(CASE WHEN payment_status = 'paid'  THEN total_amount ELSE 0 END)::float AS paid_amount,
+      SUM(CASE WHEN payment_status != 'paid' THEN total_amount ELSE 0 END)::float AS pending_amount
+    FROM booking_orders
+    WHERE branch_id = $1
+      AND created_at AT TIME ZONE 'Asia/Bangkok' >= NOW() AT TIME ZONE 'Asia/Bangkok' - INTERVAL '35 days'
+    GROUP BY yr, wk
+    ORDER BY yr DESC, wk DESC
+    LIMIT $2
+  `, [branchId, limitWeeks])
+  return rows as WeekSummary[]
+}
+
 async function getMonthOrders(branchId: number, year: number, month: number) {
   const { rows } = await pool.query(`
     SELECT id, order_no, total_amount::float AS total_amount,
@@ -941,60 +1007,104 @@ async function handleText(text: string, userId: string, replyToken: string, sour
   }
 
   if (['ใบจอง', 'จอง', 'สั่งสินค้า', 'order', 'booking', 'เมนู', 'menu'].includes(t)) {
-    // ── หาสาขา: จากกลุ่ม หรือจาก userId ──────────────────────────────────────
-    let bookingUrl    = `${BASE_URL}/booking2`
-    let branchLabel   = 'ข้อมูลสินค้าและราคาล่าสุดจากระบบ'
-    let branchId: number | null    = null
-    let branchNameStr: string | null = null
+    // ── หาสาขา ───────────────────────────────────────────────────────────────
+    let bookingUrl  = `${BASE_URL}/booking2`
+    let branchLabel = 'ข้อมูลสินค้าและราคาล่าสุดจากระบบ'
+    let branchId: number | null = null
 
     if (source?.type === 'group' && source.groupId) {
       const groupName = await getGroupName(source.groupId)
       if (groupName) {
         const branch = await findBranchByGroupName(groupName)
         if (branch) {
-          bookingUrl    = `${BASE_URL}/booking2?branch_id=${branch.id}&branch_name=${encodeURIComponent(branch.name)}`
-          branchLabel   = `สาขา: ${branch.name}`
-          branchId      = branch.id
-          branchNameStr = branch.name
+          bookingUrl  = `${BASE_URL}/booking2?branch_id=${branch.id}&branch_name=${encodeURIComponent(branch.name)}`
+          branchLabel = `สาขา: ${branch.name}`
+          branchId    = branch.id
         }
       }
     }
     if (!branchId) {
       const ub = await getBranchFromLineUser(userId)
       if (ub) {
-        branchId      = ub.branch_id
-        branchNameStr = ub.branch_name
-        branchLabel   = `สาขา: ${ub.branch_name}`
-        bookingUrl    = `${BASE_URL}/booking2?branch_id=${ub.branch_id}&branch_name=${encodeURIComponent(ub.branch_name)}`
+        branchId    = ub.branch_id
+        branchLabel = `สาขา: ${ub.branch_name}`
+        bookingUrl  = `${BASE_URL}/booking2?branch_id=${ub.branch_id}&branch_name=${encodeURIComponent(ub.branch_name)}`
       }
     }
 
-    // ── ประวัติรายเดือน + ยอดค้างชำระ ────────────────────────────────────────
-    const year = new Date().getFullYear()
-    const summaryExtra: object[] = []
+    // ── สรุปรายสัปดาห์ + ตรวจสอบการบล็อก ────────────────────────────────────
+    const { year: curYear, week: curWeek, dayOfWeek } = getISOWeekInfo()
+    let weekRows: WeekSummary[] = []
+    let blocked = false
     let pendingCount = 0
 
     if (branchId !== null) {
-      const [summary, pending] = await Promise.all([
-        getMonthlySummary(branchId, year),
+      const [wRows, pending] = await Promise.all([
+        getWeeklySummary(branchId, 3),
         getPendingOrders(branchId),
       ])
+      weekRows     = wRows
       pendingCount = pending.length
-      const mRows = monthSummaryRows(summary, branchId, year)
-      if (mRows.length > 0) {
-        summaryExtra.push(
-          { type: 'separator', margin: 'lg' },
-          { type: 'text', text: `ประวัติรายเดือน ${year + 543}`, size: 'xs', color: '#9b9484', weight: 'bold', margin: 'md' },
-          ...mRows
-        )
-      }
+      blocked      = isBookingBlocked(weekRows, curYear, curWeek, dayOfWeek)
     }
 
+    // ── สร้าง body rows สรุปแต่ละสัปดาห์ ─────────────────────────────────────
+    const weekBodyRows: object[] = weekRows.map(w => {
+      const allPaid = w.pending_amount === 0
+      const label   = weekLabel(w.yr, w.wk)
+      return {
+        type: 'box', layout: 'vertical', margin: 'sm', paddingAll: '8px',
+        backgroundColor: allPaid ? '#f0fff4' : '#fff1f2', cornerRadius: '6px',
+        contents: [
+          {
+            type: 'box', layout: 'horizontal',
+            contents: [
+              { type: 'text', text: label, size: 'xs', color: '#555555', weight: 'bold', flex: 5 },
+              { type: 'text', text: allPaid ? '✅ ครบ' : '🔴 ค้าง', size: 'xs',
+                color: allPaid ? '#4ade80' : '#ef4444', weight: 'bold', flex: 2, align: 'end' }
+            ]
+          },
+          {
+            type: 'box', layout: 'horizontal', margin: 'xs',
+            contents: [
+              { type: 'text', text: `${w.total_count} ใบจอง`, size: 'xs', color: '#888888', flex: 3 },
+              { type: 'text',
+                text: allPaid
+                  ? `฿${fmt(w.total_amount)}`
+                  : `ค้าง ฿${fmt(w.pending_amount)} / ฿${fmt(w.total_amount)}`,
+                size: 'xs', color: allPaid ? '#4ade80' : '#ef4444', flex: 7, align: 'end', weight: 'bold' }
+            ]
+          }
+        ]
+      }
+    })
+
     // ── Footer buttons ────────────────────────────────────────────────────────
-    const footerBtns: object[] = [
-      { type: 'button', action: { type: 'uri', label: '🛒 เปิดใบจองสินค้า', uri: bookingUrl }, style: 'primary', color: '#9b9484', height: 'md' },
-      { type: 'button', action: { type: 'uri', label: '📋 ประวัติใบจอง', uri: `${BASE_URL}/orders` }, style: 'secondary', height: 'sm' },
-    ]
+    const footerBtns: object[] = []
+
+    if (blocked) {
+      footerBtns.push({
+        type: 'box', layout: 'vertical', backgroundColor: '#fef2f2',
+        cornerRadius: '8px', paddingAll: '10px', margin: 'none',
+        contents: [
+          { type: 'text', text: '🔴 ค้างชำระ — จองสินค้าไม่ได้', weight: 'bold', size: 'sm', color: '#dc2626', align: 'center' },
+          { type: 'text', text: 'ต้องชำระยอดค้างทั้งหมดก่อนจึงจะจองได้', size: 'xs', color: '#dc2626', align: 'center', margin: 'xs', wrap: true }
+        ]
+      })
+    } else {
+      footerBtns.push({
+        type: 'button',
+        action: { type: 'uri', label: '🛒 เปิดใบจองสินค้า', uri: bookingUrl },
+        style: 'primary', color: '#9b9484', height: 'md'
+      })
+    }
+
+    footerBtns.push({
+      type: 'button',
+      action: { type: 'uri', label: '📋 ประวัติใบจอง', uri: `${BASE_URL}/orders` },
+      style: 'secondary', height: 'sm'
+    })
+
     if (branchId !== null) {
       footerBtns.push({
         type: 'button',
@@ -1003,24 +1113,35 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       })
     }
 
+    const bodyContents: object[] = [
+      {
+        type: 'box', layout: 'horizontal',
+        contents: [
+          { type: 'text', text: 'สรุปรายสัปดาห์', size: 'sm', weight: 'bold', color: '#9b9484', flex: 4 },
+          { type: 'text', text: `สัปดาห์ปัจจุบัน W${curWeek}`, size: 'xs', color: '#aaaaaa', flex: 3, align: 'end' }
+        ]
+      },
+      ...(weekBodyRows.length
+        ? [{ type: 'separator', margin: 'sm' }, ...weekBodyRows]
+        : [{ type: 'text', text: 'ยังไม่มีประวัติการสั่งซื้อ', size: 'sm', color: '#aaaaaa', margin: 'sm' }])
+    ]
+
     return reply(replyToken, [{
       type: 'flex',
-      altText: '📋 เปิดใบจองสินค้า',
+      altText: blocked ? '🔴 ค้างชำระ — จองสินค้าไม่ได้' : '📋 เปิดใบจองสินค้า',
       contents: {
         type: 'bubble',
         header: {
-          type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '16px',
+          type: 'box', layout: 'vertical',
+          backgroundColor: blocked ? '#dc2626' : '#9b9484', paddingAll: '16px',
           contents: [
             { type: 'text', text: '📋 ใบจองสินค้า', color: '#ffffff', weight: 'bold', size: 'xl' },
-            { type: 'text', text: branchLabel, color: '#aaffaa', size: 'sm', margin: 'sm' }
+            { type: 'text', text: branchLabel, color: blocked ? '#fecaca' : '#aaffaa', size: 'sm', margin: 'sm' }
           ]
         },
         body: {
           type: 'box', layout: 'vertical', paddingAll: '16px', backgroundColor: '#F5EED8',
-          contents: [
-            { type: 'text', text: 'กดปุ่มด้านล่างเพื่อเปิดหน้าจองสินค้า สามารถเลือกสินค้า บันทึกใบจอง และดูประวัติได้ทันทีครับ', wrap: true, size: 'sm', color: '#9b9484' },
-            ...summaryExtra
-          ]
+          contents: bodyContents
         },
         footer: {
           type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm', backgroundColor: '#F5EED8',
