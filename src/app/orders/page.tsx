@@ -514,7 +514,7 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(isAdmin ? orders : orders.filter(o => o.branch_name === branchName)).map((order, i) => {
+                  {((isAdmin || isManager) ? orders : orders.filter(o => o.branch_name === branchName)).map((order, i) => {
                     const cancelled = order.status === 'cancelled'
                     const pickedUp  = order.pickup_status === 'picked_up'
                     const paid      = order.payment_status === 'paid'

@@ -489,7 +489,7 @@ function BranchRow({
 // สถานะ → is_admin, is_manager, allowed_pages
 const ROLE_CONFIG = {
   admin:   { is_admin: true,  is_manager: false, allowed_pages: [] as string[] },
-  manager: { is_admin: false, is_manager: true,  allowed_pages: ['booking2', 'stock', 'stock-paper'] },
+  manager: { is_admin: false, is_manager: true,  allowed_pages: ['booking2', 'stock', 'stock-paper', 'orders'] },
   branch:  { is_admin: false, is_manager: false, allowed_pages: ['booking2'] },
 } as const
 
