@@ -96,9 +96,10 @@ export default function OrdersPage() {
   const [printType, setPrintType]   = useState<'booking' | 'foy' | null>(null)
 
   // Role
-  const [isAdmin, setIsAdmin]       = useState(true)
-  const [isManager, setIsManager]   = useState(false)
-  const [branchName, setBranchName] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin]           = useState(false)
+  const [isManager, setIsManager]       = useState(false)
+  const [branchName, setBranchName]     = useState<string | null>(null)
+  const [sessionLoaded, setSessionLoaded] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -125,8 +126,12 @@ export default function OrdersPage() {
         setIsAdmin(s?.is_admin === true)
         setIsManager(s?.is_manager === true)
         if (s?.branch_name) setBranchName(s.branch_name)
+      } else {
+        // ไม่มี session → ถือว่าเป็น admin (เข้าตรง)
+        setIsAdmin(true)
       }
     } catch { /* ignore */ }
+    setSessionLoaded(true)
   }, [])
 
   // Auto-print when print order is set
@@ -494,7 +499,7 @@ export default function OrdersPage() {
 
         {/* Main */}
         <main className="p-4 overflow-x-auto">
-          {loading ? (
+          {(!sessionLoaded || loading) ? (
             <div className="flex items-center justify-center h-40 text-gray-400">กำลังโหลด...</div>
           ) : orders.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400">ยังไม่มีใบจอง</div>
