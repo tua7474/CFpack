@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { Fragment, useState, useEffect, useCallback, Suspense } from 'react'
 import { flushSync } from 'react-dom'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -882,27 +882,7 @@ function Booking2Inner() {
 
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
-  // Scale A4 landscape frame to fit narrow screens (same pattern as booking-foy)
-  const [viewScale, setViewScale] = useState(1)
-  useEffect(() => {
-    const calc = () => setViewScale(Math.min(1, (window.innerWidth - 16) / A4_W_PX))
-    calc()
-    window.addEventListener('resize', calc)
-    return () => window.removeEventListener('resize', calc)
-  }, [])
-
-  // Measure actual content height for transform-scale container compensation
-  const contentScaleRef = useRef<HTMLDivElement>(null)
-  const [scaledContentHeight, setScaledContentHeight] = useState(0)
-  useEffect(() => {
-    const el = contentScaleRef.current
-    if (!el) return
-    const measure = () => setScaledContentHeight(el.scrollHeight)
-    measure()
-    const obs = new ResizeObserver(measure)
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [loading, sections])
+  // No JavaScript scaling — let iOS/Android handle zoom natively (no feedback loops)
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1130,13 +1110,13 @@ function Booking2Inner() {
         </div>
       </header>
 
-      {/* Main */}
-      <main style={{ overflowX: 'hidden' }}>
-        <div className="screen-zoom-wrapper flex justify-center pt-2 pb-2 sm:pt-4 sm:pb-4">
+      {/* Main — scrollable, no JS scaling; native iOS/Android pinch-zoom */}
+      <main style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div className="py-3 px-2 flex justify-start">
 
           {/* ── ยังไม่ได้ระบุสาขา → lock screen ── */}
           {branchReady === false ? (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] gap-5 text-center px-6">
+            <div className="flex flex-col items-center justify-center min-h-[70vh] gap-5 text-center px-6 w-screen">
               <div className="text-6xl select-none">🔒</div>
               <div>
                 <div className="text-xl font-bold text-gray-500 mb-1">ใบจองสินค้า</div>
@@ -1148,19 +1128,10 @@ function Booking2Inner() {
               </div>
             </div>
           ) : branchReady === null ? (
-            <div className="flex items-center justify-center h-40 text-gray-400">กำลังตรวจสอบ...</div>
+            <div className="flex items-center justify-center h-40 text-gray-400 w-screen">กำลังตรวจสอบ...</div>
           ) : loading ? (
-            <div className="flex items-center justify-center h-40 text-gray-400">กำลังโหลดข้อมูล...</div>
+            <div className="flex items-center justify-center h-40 text-gray-400 w-screen">กำลังโหลดข้อมูล...</div>
           ) : (
-            /* transform: scale replaces CSS zoom — iOS won't reflow layout on pinch-zoom */
-            <div
-              ref={contentScaleRef}
-              style={viewScale < 1 ? {
-                transform: `scale(${viewScale})`,
-                transformOrigin: 'top center',
-                marginBottom: scaledContentHeight > 0 ? (viewScale - 1) * scaledContentHeight : undefined,
-              } : undefined}
-            >
             <><div className="a4-frame bg-white shadow-xl"
               style={{ width: '297mm', minHeight: '210mm', padding: '8mm', boxSizing: 'border-box' }}>
               <div className="a4-content" style={{ zoom: CONTENT_SCALE, transformOrigin: 'top left' }}>
@@ -1703,7 +1674,6 @@ function Booking2Inner() {
               })()}
             </div>
             </>
-            </div>
           )}
         </div>
       </main>
