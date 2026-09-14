@@ -1025,21 +1025,6 @@ function Booking2Inner() {
           )}
         </div>
 
-        <button
-          onClick={() => window.print()}
-          className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
-        >
-          🖨️ พิมพ์
-        </button>
-
-        <button
-          onClick={handleCompactPrint}
-          className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
-        >
-          🖨️ พิมพ์อย่างย่อ
-        </button>
-
-
         <div className="flex items-center gap-3">
           {saveMsg && (
             <span className={`text-sm px-3 py-1 rounded-full text-white ${saveMsg.includes('สำเร็จ') ? 'bg-green-500' : 'bg-red-500'}`}>
