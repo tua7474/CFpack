@@ -313,7 +313,7 @@ function weekLabel(yr: number, wk: number): string {
   return `W${wk} (${range} ${(yr + 543).toString().slice(-2)})`
 }
 
-async function getWeeklySummary(branchId: number, limitWeeks = 3): Promise<WeekSummary[]> {
+async function getWeeklySummary(branchId: number): Promise<WeekSummary[]> {
   const { rows } = await pool.query(`
     SELECT
       EXTRACT(ISOYEAR FROM created_at AT TIME ZONE 'Asia/Bangkok')::int AS yr,
@@ -325,11 +325,17 @@ async function getWeeklySummary(branchId: number, limitWeeks = 3): Promise<WeekS
       SUM(CASE WHEN payment_status != 'paid' THEN total_amount ELSE 0 END)::float AS pending_amount
     FROM booking_orders
     WHERE branch_id = $1
-      AND created_at AT TIME ZONE 'Asia/Bangkok' >= NOW() AT TIME ZONE 'Asia/Bangkok' - INTERVAL '35 days'
     GROUP BY yr, wk
+    HAVING
+      -- แสดงทุกสัปดาห์ที่มียอดค้างชำระ (ไม่จำกัดช่วงเวลา)
+      SUM(CASE WHEN payment_status != 'paid' THEN 1 ELSE 0 END) > 0
+      OR
+      -- หรือ 3 สัปดาห์ล่าสุดสำหรับบริบท (แม้ชำระครบแล้ว)
+      MAX(created_at) AT TIME ZONE 'Asia/Bangkok' >=
+        date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - INTERVAL '2 weeks'
     ORDER BY yr DESC, wk DESC
-    LIMIT $2
-  `, [branchId, limitWeeks])
+    LIMIT 20
+  `, [branchId])
   return rows as WeekSummary[]
 }
 
@@ -1199,7 +1205,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
     if (branchId !== null) {
       const [wRows, pending, blockedResult] = await Promise.all([
-        getWeeklySummary(branchId, 3),
+        getWeeklySummary(branchId),
         getPendingOrders(branchId),
         checkBlockedFromDB(branchId),   // ตรวจทุกออเดอร์ใน DB ไม่จำกัด 3 สัปดาห์
       ])
