@@ -1198,9 +1198,15 @@ async function handleImage(messageId: string, userId: string, replyToken: string
       })
     })
     const apiData = await apiRes.json()
+    console.log('[slip-scan] status:', apiRes.status, 'body:', JSON.stringify(apiData).slice(0, 400))
+    // Handle Anthropic error response
+    if (apiData?.type === 'error' || apiData?.error) {
+      const errMsg = apiData?.error?.message ?? apiData?.message ?? JSON.stringify(apiData)
+      return reply(replyToken, [{ type: 'text', text: `⚠️ Claude API error:\n${errMsg}` }])
+    }
     rawText = apiData?.content?.[0]?.text ?? ''
-    console.log('[slip-scan] raw:', rawText)
-    const jsonMatch = rawText.match(/\{[\s\S]*?\}/)
+    console.log('[slip-scan] raw text:', rawText)
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
     if (jsonMatch) scanResult = JSON.parse(jsonMatch[0])
   } catch (e) {
     console.error('[slip-scan] error:', e)
@@ -1211,7 +1217,7 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     return reply(replyToken, [{ type: 'text', text: '❓ อ่านสลิปไม่ได้ กรุณาส่งรูปสลิปที่ชัดเจนครับ' }])
   }
   if (!scanResult.amount) {
-    return reply(replyToken, [{ type: 'text', text: `⚠️ อ่านยอดเงินไม่ได้ครับ\n(ผลลัพธ์: ${rawText.slice(0, 100)})` }])
+    return reply(replyToken, [{ type: 'text', text: `⚠️ อ่านยอดเงินไม่ได้ครับ\nผล: ${rawText.slice(0, 200) || '(ว่าง)'}` }])
   }
 
   // Determine category
