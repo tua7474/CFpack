@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, Suspense } from 'react'
+import { Fragment, useState, useEffect, useCallback, Suspense, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -891,6 +891,25 @@ function Booking2Inner() {
     return () => window.removeEventListener('resize', calc)
   }, [])
 
+  // ── iOS-safe scaling: measure content height so transform layout collapses ───
+  // CSS zoom interacts badly with iOS Safari pinch-to-zoom (thick borders, distortion).
+  // We use transform:scale instead, but it doesn't shrink layout space — we need ref.
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentNaturalH, setContentNaturalH] = useState(0)
+  useEffect(() => {
+    if (!contentRef.current) return
+    // rAF ensures layout is complete before measuring
+    const id = requestAnimationFrame(() => {
+      if (contentRef.current) setContentNaturalH(contentRef.current.scrollHeight)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [sections, loading, maxRows])
+
+  // Derived: visual height of a4-content after CONTENT_SCALE, + frame padding
+  const scaledFrameH = contentNaturalH > 0
+    ? contentNaturalH * CONTENT_SCALE + A4_PAD_PX * 2
+    : 0
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -922,13 +941,6 @@ function Booking2Inner() {
 
           html, body { margin: 0 !important; padding: 0 !important; }
           .no-print   { display: none !important; }
-
-          /* Remove screen-only zoom on outer wrapper */
-          .screen-zoom-wrapper {
-            zoom: 1 !important;
-            padding: 0 !important;
-            display: block !important;
-          }
 
           /* A4 frame (page 1 — landscape) */
           .a4-frame {
@@ -1117,10 +1129,9 @@ function Booking2Inner() {
         </div>
       </header>
 
-      {/* Main — CSS zoom fits A4 to screen; browser/OS handles pinch-zoom natively */}
+      {/* Main — transform:scale fits A4 to screen (iOS-safe; zoom causes thick borders on Safari) */}
       <main>
-        <div className="py-3 px-2 flex justify-center"
-          style={viewScale < 1 ? { zoom: viewScale, transformOrigin: 'top center' } : undefined}>
+        <div className="py-3 px-2 flex justify-center">
 
           {/* ── ยังไม่ได้ระบุสาขา → lock screen ── */}
           {branchReady === false ? (
@@ -1140,9 +1151,24 @@ function Booking2Inner() {
           ) : loading ? (
             <div className="flex items-center justify-center h-40 text-gray-400 w-screen">กำลังโหลดข้อมูล...</div>
           ) : (
-            <><div className="a4-frame bg-white shadow-xl"
+            <><div style={viewScale < 1 ? {
+                transform: `scale(${viewScale})`,
+                transformOrigin: 'top left',
+                marginRight: `${-A4_W_PX * (1 - viewScale)}px`,
+                ...(scaledFrameH > 0 ? { marginBottom: `${-(scaledFrameH * (1 - viewScale))}px` } : {}),
+              } : undefined}>
+            <div className="a4-frame bg-white shadow-xl"
               style={{ width: '297mm', minHeight: '210mm', padding: '8mm', boxSizing: 'border-box' }}>
-              <div className="a4-content" style={{ zoom: CONTENT_SCALE, transformOrigin: 'top left' }}>
+              <div
+                ref={contentRef}
+                className="a4-content"
+                style={{
+                  transform: `scale(${CONTENT_SCALE})`,
+                  transformOrigin: 'top left',
+                  width: TABLE_W,
+                  marginRight: `${-TABLE_W * (1 - CONTENT_SCALE)}px`,
+                  ...(contentNaturalH > 0 ? { marginBottom: `${-(contentNaturalH * (1 - CONTENT_SCALE))}px` } : {}),
+                }}>
 
               {/* Table */}
               <div className="inline-block rounded shadow overflow-hidden border border-gray-400">
@@ -1530,6 +1556,7 @@ function Booking2Inner() {
 
               </div>
             </div>
+            </div>{/* end viewScale wrapper */}
 
             {/* ── Page 2: ใบจองกระดาษฝอย ──────────────────────────────────── */}
             <div className="foy-print-frame bg-white">
@@ -1685,6 +1712,7 @@ function Booking2Inner() {
           )}
         </div>
       </main>
+
     </div>
   )
 }
