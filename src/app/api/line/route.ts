@@ -28,6 +28,7 @@ function verifySignature(body: string, sig: string) {
 type InputState =
   | { type?: 'product_qty'; id: number; name: string; price: number; sec: number; sg: number; page: number }
   | { type: 'slip_edit'; slip_id: number; field: 'date' | 'account_name' | 'amount' }
+  | { type: 'slip_purpose'; slip_id: number; purpose: 'PAY' | 'STORE'; matched_order_id?: number; matched_order_no?: string }
 
 async function ensureTable() {
   await pool.query(`
@@ -193,6 +194,28 @@ function fmtDateShortLine(iso: string): string {
   return new Date(iso).toLocaleString('th-TH', {
     day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Bangkok',
   })
+}
+
+async function getLineDisplayName(userId: string, source?: Record<string, string>): Promise<string | null> {
+  try {
+    let url = `https://api.line.me/v2/bot/profile/${userId}`
+    if (source?.type === 'group' && source.groupId) {
+      url = `https://api.line.me/v2/bot/group/${source.groupId}/member/${userId}`
+    } else if (source?.type === 'room' && source.roomId) {
+      url = `https://api.line.me/v2/bot/room/${source.roomId}/member/${userId}`
+    }
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } })
+    if (!res.ok) return null
+    const data = await res.json() as { displayName?: string }
+    return data.displayName ?? null
+  } catch { return null }
+}
+
+async function isLineAdmin(userId: string, source?: Record<string, string>): Promise<boolean> {
+  const displayName = await getLineDisplayName(userId, source)
+  if (displayName === 'TUA74^^') return true
+  const info = await getBranchFromLineUser(userId)
+  return info?.is_admin === true
 }
 
 async function getBranchFromLineUser(userId: string): Promise<{ branch_id: number; branch_name: string; is_admin: boolean } | null> {
@@ -880,7 +903,7 @@ async function monthDetailView(branchId: number, branchName: string, month: numb
 
 // ── Postback handler ──────────────────────────────────────────────────────────
 
-async function handlePostback(data: string, userId: string, replyToken: string) {
+async function handlePostback(data: string, userId: string, replyToken: string, source?: Record<string, string>) {
   // MENU
   if (data === 'M') {
     return reply(replyToken, [await mainMenu(userId)])
@@ -1055,10 +1078,16 @@ async function handlePostback(data: string, userId: string, replyToken: string) 
       WHERE branch_id=$1 AND payment_status != 'paid'
     `, [branchId])
     const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
-    return reply(replyToken, [{
+    const branchName = br[0]?.name ?? `สาขา #${branchId}`
+    const stillBlocked = await checkBlockedFromDB(branchId)
+    const msgs: object[] = [{
       type: 'text',
-      text: `✅ บันทึกชำระเงินสำเร็จ!\n${br[0]?.name ?? ''}\nอัปเดต ${rowCount} ใบจองแล้วครับ`
-    }])
+      text: `✅ บันทึกชำระเงินสำเร็จ!\n${branchName}\nอัปเดต ${rowCount} ใบจองแล้วครับ`
+    }]
+    if (!stillBlocked) {
+      msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${branchId}&branch_name=${encodeURIComponent(branchName)}`))
+    }
+    return reply(replyToken, msgs)
   }
 
   // MON: month detail view
@@ -1071,11 +1100,147 @@ async function handlePostback(data: string, userId: string, replyToken: string) 
     return reply(replyToken, [await monthDetailView(branchId, br[0]?.name ?? `สาขา #${branchId}`, month, year)])
   }
 
-  // SLIP_CONFIRM:{id} — confirm slip, save to pending
+  // SLIP_CONFIRM:{id}:{type} — confirm slip with category, mark branch orders paid
   if (data.startsWith('SLIP_CONFIRM:')) {
+    // เฉพาะ admin เท่านั้นที่ยืนยันได้
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{
+        type: 'text',
+        text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้\nกรุณาแจ้งผู้ดูแลระบบดำเนินการให้'
+      }])
+    }
+
+    const parts    = data.split(':')
+    const slipId   = parseInt(parts[1])
+    const slipType = parts[2] ?? 'other'   // วรวุฒิ | print | pack | bb | กล่อง | other
+    const slipTypeLabel = SLIP_TYPE_OPTS.find(o => o.key === slipType)?.label ?? slipType
+
+    // Check if already confirmed
+    const { rows: existing } = await pool.query('SELECT status FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+    const { rows: [slip] } = await pool.query(
+      `UPDATE slips SET status='confirmed', category=$2, applied=true WHERE id=$1 RETURNING branch_id, amount`,
+      [slipId, slipType]
+    )
+    const slipBranchId: number | null = slip?.branch_id ?? null
+    const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
+
+    if (slipBranchId !== null) {
+      // หักยอดใบจองค้างชำระจากเก่าสุดก่อน จนหมดยอดสลิป
+      const { rows: pending } = await pool.query(`
+        SELECT id, order_no, total_amount FROM booking_orders
+        WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
+        ORDER BY created_at ASC
+      `, [slipBranchId])
+      let left = slipAmount
+      for (const o of pending) {
+        if (left <= 0) break
+        const amt = parseFloat(o.total_amount) || 0
+        if (left >= amt) {
+          await pool.query(
+            `UPDATE booking_orders SET payment_status='paid', payment_bank=$2, updated_at=NOW() WHERE id=$1`,
+            [o.id, slipTypeLabel]
+          )
+          left -= amt
+        }
+        // ถ้ายอดสลิปไม่พอปิดบิลนี้ ไม่มาร์คว่าชำระแล้ว (รอโอนส่วนที่เหลือ)
+      }
+    }
+
+    const { rows: br } = slipBranchId !== null
+      ? await pool.query('SELECT name FROM branches WHERE id=$1', [slipBranchId])
+      : { rows: [] as {name:string}[] }
+    const branchName = br[0]?.name ?? ''
+
+    const msgs: object[] = [{
+      type: 'text',
+      text: `🙏 ขอบคุณครับ\nบันทึก${slipTypeLabel} ฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} เรียบร้อย${branchName ? `\nสาขา: ${branchName}` : ''}`
+    }]
+    if (slipBranchId !== null) {
+      const stillBlocked = await checkBlockedFromDB(slipBranchId)
+      if (!stillBlocked) {
+        msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}`))
+      }
+    }
+    return reply(replyToken, msgs)
+  }
+
+  // SLIP_PAY:{id} — ชำระยอดค้าง: ยืนยันสลิป + ปิดบิล + applied=true (เทาในสาขา)
+  if (data.startsWith('SLIP_PAY:')) {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้\nกรุณาแจ้งผู้ดูแลระบบดำเนินการให้' }])
+    }
     const slipId = parseInt(data.split(':')[1])
-    await pool.query(`UPDATE slips SET status='pending' WHERE id=$1`, [slipId])
-    return reply(replyToken, [{ type: 'text', text: '✅ ยืนยันสลิปแล้วครับ\nบันทึกเข้าระบบเรียบร้อย' }])
+    const { rows: existing } = await pool.query('SELECT status FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+    const { rows: [slip] } = await pool.query(
+      `UPDATE slips SET status='confirmed', applied=true WHERE id=$1 RETURNING branch_id, amount, category`,
+      [slipId]
+    )
+    const slipBranchId: number | null = slip?.branch_id ?? null
+    const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
+    if (slipBranchId !== null) {
+      const { rows: pending } = await pool.query(`
+        SELECT id, total_amount FROM booking_orders
+        WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
+        ORDER BY created_at ASC
+      `, [slipBranchId])
+      let left = slipAmount
+      for (const o of pending) {
+        if (left <= 0) break
+        const amt = parseFloat(o.total_amount) || 0
+        if (left >= amt) {
+          await pool.query(
+            `UPDATE booking_orders SET payment_status='paid', payment_bank='ชำระยอดค้าง', updated_at=NOW() WHERE id=$1`,
+            [o.id]
+          )
+          left -= amt
+        }
+      }
+    }
+    const { rows: br } = slipBranchId !== null
+      ? await pool.query('SELECT name FROM branches WHERE id=$1', [slipBranchId])
+      : { rows: [] as {name:string}[] }
+    const branchName = br[0]?.name ?? ''
+    const msgs: object[] = [{
+      type: 'text',
+      text: `✅ บันทึกชำระยอดค้างเรียบร้อย\n฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${branchName ? `\nสาขา: ${branchName}` : ''}`
+    }]
+    if (slipBranchId !== null) {
+      const stillBlocked = await checkBlockedFromDB(slipBranchId)
+      if (!stillBlocked) msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}`))
+    }
+    return reply(replyToken, msgs)
+  }
+
+  // SLIP_STORE:{id} — ไว้หักค่าของ: ยืนยันสลิป แต่ไม่ปิดบิล (available ใน payment modal)
+  if (data.startsWith('SLIP_STORE:')) {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้\nกรุณาแจ้งผู้ดูแลระบบดำเนินการให้' }])
+    }
+    const slipId = parseInt(data.split(':')[1])
+    const { rows: existing } = await pool.query('SELECT status FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+    const { rows: [slip] } = await pool.query(
+      `UPDATE slips SET status='confirmed', applied=false WHERE id=$1 RETURNING branch_id, amount`,
+      [slipId]
+    )
+    const slipBranchId: number | null = slip?.branch_id ?? null
+    const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
+    const { rows: br } = slipBranchId !== null
+      ? await pool.query('SELECT name FROM branches WHERE id=$1', [slipBranchId])
+      : { rows: [] as {name:string}[] }
+    const branchName = br[0]?.name ?? ''
+    return reply(replyToken, [{
+      type: 'text',
+      text: `✅ บันทึกยอดไว้หักค่าของเรียบร้อย\n฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${branchName ? `\nสาขา: ${branchName}` : ''}\nสามารถนำยอดนี้ไปหักค่าของได้ในหน้าแจ้งชำระเงิน`
+    }])
   }
 
   // SLIP_EDIT:{id}:{field} — ask user to type corrected value
@@ -1090,6 +1255,122 @@ async function handlePostback(data: string, userId: string, replyToken: string) 
     }
     await setInputState(userId, { type: 'slip_edit', slip_id: slipId, field })
     return reply(replyToken, [{ type: 'text', text: prompts[field] ?? 'พิมพ์ข้อมูลใหม่:' }])
+  }
+
+  // SLIP_PURPOSE:{id}:{PAY|STORE} — ขั้นตอนที่ 1: เลือกวัตถุประสงค์
+  if (data.startsWith('SLIP_PURPOSE:')) {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้\nกรุณาแจ้งผู้ดูแลระบบดำเนินการให้' }])
+    }
+    const parts   = data.split(':')
+    const slipId  = parseInt(parts[1])
+    const purpose = parts[2] as 'PAY' | 'STORE'
+
+    const { rows: existing } = await pool.query('SELECT status, amount FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+
+    // Store purpose in session with matched order info if PAY
+    let matched_order_id: number | undefined
+    let matched_order_no: string | undefined
+    if (purpose === 'PAY') {
+      const slipAmt = parseFloat(existing[0]?.amount ?? '0')
+      const { rows: [slip] } = await pool.query('SELECT branch_id FROM slips WHERE id=$1', [slipId])
+      if (slip?.branch_id) {
+        const { rows: pending } = await pool.query(`
+          SELECT id, order_no, total_amount::float FROM booking_orders
+          WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
+        `, [slip.branch_id])
+        const match = pending.find(o => Math.abs(parseFloat(o.total_amount) - slipAmt) < 0.01)
+        if (match) { matched_order_id = match.id; matched_order_no = match.order_no }
+      }
+    }
+    await setInputState(userId, { type: 'slip_purpose', slip_id: slipId, purpose, matched_order_id, matched_order_no })
+
+    const fmtAmt = Number(existing[0]?.amount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })
+    return reply(replyToken, [slipTypeCard(slipId, purpose, fmtAmt)])
+  }
+
+  // SLIP_TYPE:{id}:{type} — ขั้นตอนที่ 2: เลือกประเภทปลายทาง → confirm สมบูรณ์
+  if (data.startsWith('SLIP_TYPE:')) {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้\nกรุณาแจ้งผู้ดูแลระบบดำเนินการให้' }])
+    }
+    const parts    = data.split(':')
+    const slipId   = parseInt(parts[1])
+    const slipType = parts[2]
+    const slipTypeLabel = SLIP_TYPE_OPTS.find(o => o.key === slipType)?.label ?? slipType
+
+    // ดึง purpose จาก session
+    const state = await getInputState(userId)
+    if (!state || state.type !== 'slip_purpose' || state.slip_id !== slipId) {
+      return reply(replyToken, [{ type: 'text', text: '⚠️ กรุณาเลือกวัตถุประสงค์ (ชำระยอดตามบิล หรือ ไว้หักค่าของ) ก่อนครับ' }])
+    }
+    const { purpose, matched_order_id } = state
+
+    const { rows: existing } = await pool.query('SELECT status FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      await setInputState(userId, null)
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+
+    const applied = purpose === 'PAY'
+    const { rows: [slip] } = await pool.query(
+      `UPDATE slips SET status='confirmed', category=$2, applied=$3 WHERE id=$1 RETURNING branch_id, amount`,
+      [slipId, slipType, applied]
+    )
+    await setInputState(userId, null)
+
+    const slipBranchId: number | null = slip?.branch_id ?? null
+    const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
+    const msgs: object[] = []
+
+    if (purpose === 'PAY' && slipBranchId !== null) {
+      if (matched_order_id) {
+        // ตัดใบจองที่ตรงกันโดยตรง
+        await pool.query(
+          `UPDATE booking_orders SET payment_status='paid', payment_bank=$2, updated_at=NOW() WHERE id=$1`,
+          [matched_order_id, slipTypeLabel]
+        )
+      } else {
+        // ตัดจากเก่าสุดก่อน
+        const { rows: pending } = await pool.query(`
+          SELECT id, total_amount FROM booking_orders
+          WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
+          ORDER BY created_at ASC
+        `, [slipBranchId])
+        let left = slipAmount
+        for (const o of pending) {
+          if (left <= 0) break
+          const amt = parseFloat(o.total_amount) || 0
+          if (left >= amt) {
+            await pool.query(
+              `UPDATE booking_orders SET payment_status='paid', payment_bank=$2, updated_at=NOW() WHERE id=$1`,
+              [o.id, slipTypeLabel]
+            )
+            left -= amt
+          }
+        }
+      }
+    }
+
+    const { rows: br } = slipBranchId !== null
+      ? await pool.query('SELECT name FROM branches WHERE id=$1', [slipBranchId])
+      : { rows: [] as {name:string}[] }
+    const branchName = br[0]?.name ?? ''
+    const purposeLabel = purpose === 'PAY' ? 'ชำระยอดตามบิล' : 'ไว้หักค่าของ'
+
+    msgs.push({
+      type: 'text',
+      text: `✅ บันทึกสลิปเรียบร้อย\n${slipTypeLabel} — ${purposeLabel}\n฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${branchName ? `\nสาขา: ${branchName}` : ''}`
+    })
+
+    if (purpose === 'PAY' && slipBranchId !== null) {
+      const stillBlocked = await checkBlockedFromDB(slipBranchId)
+      if (!stillBlocked) msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}`))
+    }
+    return reply(replyToken, msgs)
   }
 }
 
@@ -1166,6 +1447,14 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
   }
 
+  if (['ไอดีฉัน', 'id ฉัน', 'myid', 'my id', 'lineid'].includes(t)) {
+    const isAdmin = await isLineAdmin(userId, source)
+    return reply(replyToken, [{
+      type: 'text',
+      text: `🪪 LINE User ID ของคุณ:\n${userId}\n\n${isAdmin ? '✅ คุณเป็นแอดมินในระบบแล้ว' : '📋 นำ ID นี้ไปให้แอดมิน\nเพื่อเพิ่มสิทธิ์ในหน้า CF ระบบจัดการข้อมูล\n→ สาขาและตัวแทน → ผู้ใช้งาน → ใส่ LINE ID → ติ๊ก แอดมิน'}`
+    }])
+  }
+
   if (['ใบจอง', 'จอง', 'สั่งสินค้า', 'order', 'booking', 'เมนู', 'menu'].includes(t)) {
     // ── หาสาขา ───────────────────────────────────────────────────────────────
     let bookingUrl  = `${BASE_URL}/booking2`
@@ -1196,17 +1485,14 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     const { year: curYear, week: curWeek } = getISOWeekInfo()
     let weekRows: WeekSummary[] = []
     let blocked = false
-    let pendingCount = 0
 
     if (branchId !== null) {
-      const [wRows, pending, blockedResult] = await Promise.all([
+      const [wRows, blockedResult] = await Promise.all([
         getWeeklySummary(branchId),
-        getPendingOrders(branchId),
         checkBlockedFromDB(branchId),   // ตรวจทุกออเดอร์ใน DB ไม่จำกัด 3 สัปดาห์
       ])
-      weekRows     = wRows
-      pendingCount = pending.length
-      blocked      = blockedResult
+      weekRows = wRows
+      blocked  = blockedResult
     }
 
     // ── สร้าง body rows สรุปแต่ละสัปดาห์ ─────────────────────────────────────
@@ -1266,13 +1552,14 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       style: 'secondary', height: 'sm'
     })
 
-    if (branchId !== null) {
-      footerBtns.push({
-        type: 'button',
-        action: { type: 'postback', label: pendingCount > 0 ? `💳 ชำระเงิน (${pendingCount} ใบ)` : '✅ ชำระครบแล้ว', data: `PAYVIEW:${branchId}` },
-        style: 'primary', color: pendingCount > 0 ? '#f59e0b' : '#4ade80', height: 'sm'
-      })
-    }
+    footerBtns.push({
+      type: 'button',
+      action: { type: 'uri', label: '💳 แจ้งชำระเงิน', uri: branchId && branchLabel.startsWith('สาขา: ')
+        ? `${BASE_URL}/orders?pay=1&branch_name=${encodeURIComponent(branchLabel.replace('สาขา: ', ''))}`
+        : `${BASE_URL}/orders?pay=1` },
+      style: 'primary', color: '#ea580c', height: 'sm'
+    })
+
 
     const bodyContents: object[] = [
       {
@@ -1346,7 +1633,48 @@ interface SlipRow {
   slip_date: Date | string; created_at: Date | string
 }
 
-function slipConfirmCard(slip: SlipRow): object {
+function buildBookingOpenCard(branchName: string, bookingUrl: string): object {
+  return {
+    type: 'flex', altText: '🟢 เปิดใบจองสินค้าได้แล้ว',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#16a34a', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '🟢 เปิดใบจองสินค้าได้แล้ว', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: branchName || 'ชำระครบแล้ว', color: '#bbf7d0', size: 'sm', margin: 'sm' }
+        ]
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          {
+            type: 'button',
+            action: { type: 'uri', label: '🛒 เปิดใบจองสินค้า', uri: bookingUrl },
+            style: 'primary', color: '#16a34a', height: 'md'
+          }
+        ]
+      }
+    }
+  }
+}
+
+// ── slip category labels (same as web) ───────────────────────────────────────
+const SLIP_TYPE_OPTS = [
+  { key: 'วรวุฒิ', label: 'สลิปวรวุฒิ' },
+  { key: 'print',  label: 'สลิปPrint'   },
+  { key: 'pack',   label: 'สลิปPACK'    },
+  { key: 'bb',     label: 'สลิปBB'      },
+  { key: 'กล่อง', label: 'สลิปกล่อง'  },
+]
+
+type SlipAutoSuggest = {
+  purpose: 'PAY' | 'STORE'
+  orderNo?: string
+  orderAmt?: number
+}
+
+function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
   const fmtAmount = Number(slip.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const slipDateIso = typeof slip.slip_date === 'string'
     ? slip.slip_date.slice(0, 10) : (slip.slip_date as Date).toISOString().slice(0, 10)
@@ -1358,20 +1686,36 @@ function slipConfirmCard(slip: SlipRow): object {
     timeZone: 'Asia/Bangkok'
   })
 
+  const autoBox: object = suggest
+    ? {
+        type: 'box', layout: 'vertical', backgroundColor: suggest.purpose === 'PAY' ? '#dcfce7' : '#fef9c3',
+        cornerRadius: '8px', paddingAll: '10px', margin: 'md',
+        contents: [
+          {
+            type: 'text', size: 'xs', wrap: true,
+            color: suggest.purpose === 'PAY' ? '#15803d' : '#92400e',
+            text: suggest.purpose === 'PAY'
+              ? `🔍 พบใบจอง ${suggest.orderNo} (฿${Number(suggest.orderAmt).toLocaleString('th-TH', { minimumFractionDigits: 2 })}) ตรงกับยอดสลิป\n→ แนะนำ: ชำระยอดตามบิล`
+              : '🔍 ไม่พบใบจองที่ตรงกับยอดนี้\n→ แนะนำ: ไว้หักค่าของ'
+          }
+        ]
+      }
+    : { type: 'text', text: ' ', size: 'xs', color: '#ffffff', margin: 'none' }
+
   return {
     type: 'flex',
     altText: `🧾 สลิป ฿${fmtAmount} — กรุณายืนยัน`,
     contents: {
       type: 'bubble',
       header: {
-        type: 'box', layout: 'vertical', backgroundColor: '#1a7b4e',
+        type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '14px',
         contents: [
           { type: 'text', text: '🧾 ข้อมูลสลิปโอนเงิน', color: '#ffffff', weight: 'bold', size: 'md' },
-          { type: 'text', text: `ส่งสลิปเมื่อ: ${sentDisplay}`, color: '#aaffaa', size: 'xs' }
+          { type: 'text', text: `ส่งสลิปเมื่อ: ${sentDisplay}`, color: '#ffe8cc', size: 'xs', margin: 'xs' }
         ]
       },
       body: {
-        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px',
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', backgroundColor: '#F5EED8',
         contents: [
           { type: 'text', text: 'กรุณาตรวจสอบ — กด ✏️ เพื่อแก้ไข', size: 'xs', color: '#888888', margin: 'none' },
           { type: 'separator', margin: 'sm' },
@@ -1379,7 +1723,7 @@ function slipConfirmCard(slip: SlipRow): object {
             type: 'box', layout: 'horizontal', margin: 'md', alignItems: 'center',
             contents: [
               { type: 'text', text: '📅 วันที่โอน', size: 'sm', flex: 4, color: '#555555' },
-              { type: 'text', text: transferDateDisplay, size: 'sm', flex: 5, align: 'end', weight: 'bold', color: '#222222', wrap: true },
+              { type: 'text', text: transferDateDisplay, size: 'sm', flex: 5, align: 'end', weight: 'bold', color: '#333333', wrap: true },
               { type: 'button', flex: 2, action: { type: 'postback', label: '✏️', data: `SLIP_EDIT:${slip.id}:date` }, style: 'secondary', height: 'sm' }
             ]
           },
@@ -1387,7 +1731,7 @@ function slipConfirmCard(slip: SlipRow): object {
             type: 'box', layout: 'horizontal', margin: 'sm', alignItems: 'center',
             contents: [
               { type: 'text', text: '👤 ผู้รับ', size: 'sm', flex: 4, color: '#555555' },
-              { type: 'text', text: slip.account_name ?? '-', size: 'sm', flex: 5, align: 'end', weight: 'bold', color: '#222222', wrap: true },
+              { type: 'text', text: slip.account_name ?? '-', size: 'sm', flex: 5, align: 'end', weight: 'bold', color: '#333333', wrap: true },
               { type: 'button', flex: 2, action: { type: 'postback', label: '✏️', data: `SLIP_EDIT:${slip.id}:account_name` }, style: 'secondary', height: 'sm' }
             ]
           },
@@ -1395,16 +1739,63 @@ function slipConfirmCard(slip: SlipRow): object {
             type: 'box', layout: 'horizontal', margin: 'sm', alignItems: 'center',
             contents: [
               { type: 'text', text: '💰 ยอดเงิน', size: 'sm', flex: 4, color: '#555555' },
-              { type: 'text', text: `฿${fmtAmount}`, size: 'md', flex: 5, align: 'end', weight: 'bold', color: '#1a7b4e' },
+              { type: 'text', text: `฿${fmtAmount}`, size: 'md', flex: 5, align: 'end', weight: 'bold', color: '#9b5e00' },
               { type: 'button', flex: 2, action: { type: 'postback', label: '✏️', data: `SLIP_EDIT:${slip.id}:amount` }, style: 'secondary', height: 'sm' }
+            ]
+          },
+          autoBox,
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: 'ขั้นตอนที่ 1: เลือกวัตถุประสงค์', size: 'xs', color: '#9b9484', weight: 'bold', margin: 'md' },
+          {
+            type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
+            contents: [
+              {
+                type: 'button',
+                action: { type: 'postback', label: '💳 ชำระยอดตามบิล', data: `SLIP_PURPOSE:${slip.id}:PAY` },
+                style: suggest?.purpose === 'PAY' ? 'primary' : 'secondary',
+                color: '#16a34a', flex: 1, height: 'sm',
+              },
+              {
+                type: 'button',
+                action: { type: 'postback', label: '🛒 ไว้หักค่าของ', data: `SLIP_PURPOSE:${slip.id}:STORE` },
+                style: suggest?.purpose === 'STORE' ? 'primary' : 'secondary',
+                color: '#9b9484', flex: 1, height: 'sm',
+              }
             ]
           }
         ]
-      },
-      footer: {
-        type: 'box', layout: 'vertical', paddingAll: '12px',
+      }
+    }
+  }
+}
+
+function slipTypeCard(slipId: number, purpose: 'PAY' | 'STORE', fmtAmount: string): object {
+  const purposeLabel = purpose === 'PAY' ? 'ชำระยอดตามบิล' : 'ไว้หักค่าของ'
+  return {
+    type: 'flex',
+    altText: `🧾 เลือกประเภทสลิป ฿${fmtAmount}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: purpose === 'PAY' ? '#16a34a' : '#9b9484', paddingAll: '14px',
         contents: [
-          { type: 'button', action: { type: 'postback', label: '✅ ยืนยันข้อมูลถูกต้อง', data: `SLIP_CONFIRM:${slip.id}` }, style: 'primary', color: '#1a7b4e', height: 'sm' }
+          { type: 'text', text: `✅ ${purposeLabel}`, color: '#ffffff', weight: 'bold', size: 'md' },
+          { type: 'text', text: `ยอด ฿${fmtAmount}`, color: '#ffffff', size: 'sm', margin: 'xs' }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', backgroundColor: '#F5EED8',
+        contents: [
+          { type: 'text', text: 'ขั้นตอนที่ 2: เลือกประเภทปลายทางรับเงิน', size: 'xs', color: '#9b9484', weight: 'bold', margin: 'none' },
+          { type: 'separator', margin: 'sm' },
+          {
+            type: 'box', layout: 'vertical', spacing: 'sm', margin: 'sm',
+            contents: SLIP_TYPE_OPTS.map(opt => ({
+              type: 'button',
+              action: { type: 'postback', label: opt.label, data: `SLIP_TYPE:${slipId}:${opt.key}` },
+              style: 'secondary', height: 'sm', color: '#9b9484',
+            }))
+          }
         ]
       }
     }
@@ -1534,7 +1925,20 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     messageId,
   ])
 
-  return reply(replyToken, [slipConfirmCard(slip)])
+  // Auto-detect matching pending order
+  let suggest: SlipAutoSuggest = { purpose: 'STORE' }
+  if (branchId) {
+    const { rows: pending } = await pool.query(`
+      SELECT id, order_no, total_amount::float FROM booking_orders
+      WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
+    `, [branchId])
+    const matched = pending.find(o => Math.abs(parseFloat(o.total_amount) - scanResult.amount!) < 0.01)
+    if (matched) {
+      suggest = { purpose: 'PAY', orderNo: matched.order_no, orderAmt: matched.total_amount }
+    }
+  }
+
+  return reply(replyToken, [slipConfirmCard(slip, suggest)])
 }
 
 // ── Webhook entry ─────────────────────────────────────────────────────────────
@@ -1553,7 +1957,7 @@ export async function POST(req: NextRequest) {
 
     if (ev.type === 'postback') {
       const data = (ev.postback as Record<string, string>)?.data ?? ''
-      await handlePostback(data, userId, replyToken)
+      await handlePostback(data, userId, replyToken, ev.source as Record<string, string>)
     } else if (ev.type === 'message') {
       const msg = ev.message as Record<string, unknown>
       if (msg?.type === 'text')  await handleText(msg.text as string, userId, replyToken, ev.source as Record<string, string>)
