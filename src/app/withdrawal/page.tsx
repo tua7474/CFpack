@@ -101,6 +101,10 @@ export default function WithdrawalPage() {
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50">
           📦 เบิกของ
         </span>
+        <Link href="/restock"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          📥 เติมสต็อค
+        </Link>
       </div>
 
       {/* Main */}

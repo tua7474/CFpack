@@ -231,7 +231,7 @@ function SlipConfirmModal({ slip, onClose, onSaved }: {
 
 // ── Branch Row Component ──────────────────────────────────────────────────────
 
-type SlipTotals = Record<string, { month: number; week: number }>
+type SlipTotals = Record<string, { month: number; week: number; applied_month: number; applied_week: number }>
 
 type SlipPeriods = Record<string, 'month' | 'week'>
 
@@ -464,13 +464,17 @@ function BranchRow({
 
       {/* 7–11. Slip totals per category */}
       {SLIP_CATS.map((cat, i) => {
-        const t     = slipTotals[cat.key]
-        const total = (slipPeriods[cat.key] ?? 'month') === 'month' ? (t?.month ?? 0) : (t?.week ?? 0)
+        const t           = slipTotals[cat.key]
+        const period      = slipPeriods[cat.key] ?? 'month'
+        const total       = period === 'month' ? (t?.month ?? 0) : (t?.week ?? 0)
+        const appliedAmt  = period === 'month' ? (t?.applied_month ?? 0) : (t?.applied_week ?? 0)
+        const fullyUsed   = total > 0 && appliedAmt >= total
         return (
           <td key={cat.key}
-            className={`px-3 py-2 text-center whitespace-nowrap ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-200' : ''} ${colorGroup === 'black' ? '' : ''}`}>
+            className={`px-3 py-2 text-center whitespace-nowrap ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-200' : ''}`}>
             {total > 0 ? (
-              <span className="text-xs font-semibold text-green-500">
+              <span className={`text-xs font-semibold ${fullyUsed ? 'text-gray-400 line-through' : 'text-green-500'}`}
+                title={fullyUsed ? 'ใช้หักยอดแล้ว' : undefined}>
                 ฿{Math.round(total).toLocaleString('th-TH')}
               </span>
             ) : (
@@ -518,6 +522,7 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
   const [role, setRole]       = useState<Role>('branch')
   const [saving, setSaving]   = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editLineId, setEditLineId] = useState<{ phoneId: number; value: string } | null>(null)
 
   const deleteBranch = async () => {
     await fetch('/api/branches', {
@@ -551,6 +556,17 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
     onSaved()
   }
 
+  const saveLineId = async () => {
+    if (!editLineId) return
+    await fetch('/api/branches', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_line_id', phone_id: editLineId.phoneId, line_user_id: editLineId.value }),
+    })
+    setEditLineId(null)
+    onSaved()
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl p-5 w-full max-w-sm">
@@ -561,16 +577,45 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
           <div className="text-xs text-gray-500 mb-1">รหัสที่ลงทะเบียน</div>
           {branch.phones.length === 0 && <div className="text-xs text-gray-400">ยังไม่มีรหัส</div>}
           {branch.phones.map(p => (
-            <div key={p.id} className="flex items-center justify-between py-1 border-b border-gray-100">
-              <div className="text-sm font-mono">
-                {p.phone}
-                <span className={`ml-1.5 text-[10px] font-medium font-sans ${p.is_admin ? 'text-green-500' : p.is_manager ? 'text-blue-500' : 'text-gray-400'}`}>
-                  ({ROLE_LABEL[roleFromFlags(p.is_admin, p.is_manager)]})
-                </span>
-                {p.line_user_id && <span className="ml-1 text-[10px] text-green-400 font-sans">✓LINE</span>}
+            <div key={p.id} className="py-1.5 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-mono">
+                  {p.phone}
+                  <span className={`ml-1.5 text-[10px] font-medium font-sans ${p.is_admin ? 'text-green-500' : p.is_manager ? 'text-blue-500' : 'text-gray-400'}`}>
+                    ({ROLE_LABEL[roleFromFlags(p.is_admin, p.is_manager)]})
+                  </span>
+                </div>
+                <button onClick={() => removePhone(p.id)}
+                  className="text-xs text-red-400 hover:text-red-600">ลบ</button>
               </div>
-              <button onClick={() => removePhone(p.id)}
-                className="text-xs text-red-400 hover:text-red-600">ลบ</button>
+              {/* LINE ID row */}
+              {editLineId?.phoneId === p.id ? (
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    autoFocus
+                    value={editLineId.value}
+                    onChange={e => setEditLineId({ phoneId: p.id, value: e.target.value })}
+                    placeholder="Uxxxxxxxxxxxxxxxx"
+                    className="flex-1 px-2 py-1 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono"
+                  />
+                  <button onClick={saveLineId} className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600">บันทึก</button>
+                  <button onClick={() => setEditLineId(null)} className="px-2 py-1 text-xs bg-gray-100 text-gray-500 rounded hover:bg-gray-200">ยกเลิก</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {p.line_user_id ? (
+                    <span className="text-[10px] text-green-600 font-mono bg-green-50 px-1.5 py-0.5 rounded">✓ {p.line_user_id}</span>
+                  ) : (
+                    <span className="text-[10px] text-gray-400">ยังไม่มี LINE ID</span>
+                  )}
+                  <button
+                    onClick={() => setEditLineId({ phoneId: p.id, value: p.line_user_id ?? '' })}
+                    className="text-[10px] text-blue-400 hover:text-blue-600 underline"
+                  >
+                    {p.line_user_id ? 'แก้ไข LINE ID' : '+ ตั้ง LINE ID'}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -695,13 +740,13 @@ export default function BranchesPage() {
       fetch('/api/slips?by_branch=true'),
       fetch('/api/slips?pending=true'),
     ])
-    const rows: { branch_id: number; category: string; month_total: number; week_total: number }[] = await byBranchRes.json()
+    const rows: { branch_id: number; category: string; month_total: number; week_total: number; applied_month_total: number; applied_week_total: number }[] = await byBranchRes.json()
     const pending: Slip[] = await pendingRes.json()
-    // Build map: branch_id → category → { month, week }
+    // Build map: branch_id → category → { month, week, applied_month, applied_week }
     const map: Record<number, SlipTotals> = {}
     for (const r of rows) {
       if (!map[r.branch_id]) map[r.branch_id] = {}
-      map[r.branch_id][r.category] = { month: r.month_total, week: r.week_total }
+      map[r.branch_id][r.category] = { month: r.month_total, week: r.week_total, applied_month: r.applied_month_total ?? 0, applied_week: r.applied_week_total ?? 0 }
     }
     setSlipData(map)
     setPendingSlips(pending)
@@ -818,6 +863,10 @@ export default function BranchesPage() {
         <Link href="/withdrawal"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
           📤 เบิกของ
+        </Link>
+        <Link href="/restock"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          📥 เติมสต็อค
         </Link>
       </div>
 
