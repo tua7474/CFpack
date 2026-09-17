@@ -1261,6 +1261,16 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     }])
   }
 
+  // SLIP_CANCEL:{id} — ลบสลิปออก (ไม่ใช่สลิปจริง)
+  if (data.startsWith('SLIP_CANCEL:')) {
+    const slipId = parseInt(data.split(':')[1])
+    try {
+      await pool.query(`DELETE FROM slips WHERE id = $1`, [slipId])
+    } catch { /* ignore if already gone */ }
+    await setInputState(userId, null)
+    return reply(replyToken, [{ type: 'text', text: '🗑️ ลบรูปนี้ออกแล้ว (ไม่ใช่สลิปโอนเงิน)' }])
+  }
+
   // SLIP_EDIT:{id}:{field} — ask user to type corrected value
   if (data.startsWith('SLIP_EDIT:')) {
     const parts = data.split(':')
@@ -1727,10 +1737,20 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
     contents: {
       type: 'bubble',
       header: {
-        type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '14px',
+        type: 'box', layout: 'horizontal', backgroundColor: '#9b9484', paddingAll: '14px',
         contents: [
-          { type: 'text', text: '🧾 ข้อมูลสลิปโอนเงิน', color: '#ffffff', weight: 'bold', size: 'md' },
-          { type: 'text', text: `ส่งสลิปเมื่อ: ${sentDisplay}`, color: '#ffe8cc', size: 'xs', margin: 'xs' }
+          {
+            type: 'box', layout: 'vertical', flex: 1,
+            contents: [
+              { type: 'text', text: '🧾 ข้อมูลสลิปโอนเงิน', color: '#ffffff', weight: 'bold', size: 'md' },
+              { type: 'text', text: `ส่งสลิปเมื่อ: ${sentDisplay}`, color: '#ffe8cc', size: 'xs', margin: 'xs' }
+            ]
+          },
+          {
+            type: 'button', flex: 0,
+            action: { type: 'postback', label: '✕ ไม่ใช่สลิป', data: `SLIP_CANCEL:${slip.id}` },
+            style: 'primary', color: '#CC0000', height: 'sm',
+          }
         ]
       },
       body: {
