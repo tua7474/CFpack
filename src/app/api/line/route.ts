@@ -1926,10 +1926,10 @@ async function handleImage(messageId: string, userId: string, replyToken: string
   }
 
   if (scanResult.error) {
-    return reply(replyToken, [{ type: 'text', text: '❓ อ่านสลิปไม่ได้ กรุณาส่งรูปสลิปที่ชัดเจนครับ' }])
+    return // ไม่ใช่สลิป — ไม่ตอบ
   }
   if (!scanResult.amount) {
-    return reply(replyToken, [{ type: 'text', text: `⚠️ อ่านยอดเงินไม่ได้ครับ\nผล: ${rawText.slice(0, 200) || '(ว่าง)'}` }])
+    return // อ่านยอดไม่ได้ — ไม่ตอบ
   }
 
   // Determine category
