@@ -573,21 +573,18 @@ function Booking2Inner() {
         const price = parseFloat(p.price ?? '0') || 0
         computedTotal += price * qty
       }
-      // รวมยอด FOY เข้าใน total ที่บันทึก
-      const foyTotalAmt = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
-      const computedWithFoy = computedTotal + foyTotalAmt
-      const totalToSave = manualTotal !== '' ? (parseFloat(manualTotal) || computedWithFoy) : computedWithFoy
-
       if (editOrderNo) {
         // ── Edit existing order ───────────────────────────────────────────────
         const res = await fetch('/api/orders', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            order_no: editOrderNo, total_amount: totalToSave, quantities,
+            order_no: editOrderNo, total_amount: effectiveTotal, quantities,
             source_type: sourceType || null, vehicle_type: vehicleType || null, branch_name: branchInfo?.name ?? null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
             withdrawal_type_id: withdrawalTypeId, priorities: productPriorities,
+            nv_total: noVatColTotal > 0 ? noVatColTotal : null,
+            v_total:  vatColTotal  > 0 ? vatColTotal  : null,
           }),
         })
         if (!res.ok) throw new Error()
@@ -610,10 +607,12 @@ function Booking2Inner() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            total_amount: totalToSave, quantities, branch_id: branchId,
+            total_amount: effectiveTotal, quantities, branch_id: branchId,
             source_type: sourceType || null, vehicle_type: vehicleType || null, branch_name: branchInfo?.name ?? null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
             withdrawal_type_id: withdrawalTypeId, priorities: productPriorities,
+            nv_total: noVatColTotal > 0 ? noVatColTotal : null,
+            v_total:  vatColTotal  > 0 ? vatColTotal  : null,
           }),
         })
         if (!res.ok) throw new Error()

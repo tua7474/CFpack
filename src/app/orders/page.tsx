@@ -41,8 +41,18 @@ interface BookingOrder {
   vehicle_type: string | null
   branch_name: string | null
   withdrawal_type_id: number | null
+  nv_total: string | null
+  v_total: string | null
   created_at: string
   updated_at: string
+}
+
+// Display row = 1 order may split into NV + V rows
+interface DisplayRow {
+  order: BookingOrder
+  displayNo: string   // "NV2504211023" | "V2504211023" | "2504211023"
+  displayAmount: number
+  vatTag: 'NV' | 'V' | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -872,7 +882,26 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {((isAdmin || isManager) ? orders : orders.filter(o => o.branch_name === branchName)).map((order, i) => {
+                  {(() => {
+                    const filteredOrders = (isAdmin || isManager) ? orders : orders.filter(o => o.branch_name === branchName)
+                    // Build display rows (1 order → 1 or 2 rows depending on nv/v totals)
+                    const displayRows: DisplayRow[] = []
+                    for (const order of filteredOrders) {
+                      const nvT = parseFloat(order.nv_total ?? '0') || 0
+                      const vT  = parseFloat(order.v_total  ?? '0') || 0
+                      if (nvT > 0 && vT > 0) {
+                        displayRows.push({ order, displayNo: `NV${order.order_no}`, displayAmount: nvT, vatTag: 'NV' })
+                        displayRows.push({ order, displayNo: `V${order.order_no}`,  displayAmount: vT,  vatTag: 'V'  })
+                      } else if (nvT > 0) {
+                        displayRows.push({ order, displayNo: `NV${order.order_no}`, displayAmount: nvT, vatTag: 'NV' })
+                      } else if (vT > 0) {
+                        displayRows.push({ order, displayNo: `V${order.order_no}`,  displayAmount: vT,  vatTag: 'V'  })
+                      } else {
+                        // legacy order: no prefix
+                        displayRows.push({ order, displayNo: order.order_no, displayAmount: parseFloat(order.total_amount), vatTag: null })
+                      }
+                    }
+                    return displayRows.map(({ order, displayNo, displayAmount, vatTag }, i) => {
                     const cancelled = order.status === 'cancelled'
                     const pickedUp  = order.pickup_status === 'picked_up'
                     const paid      = order.payment_status === 'paid'
@@ -881,16 +910,19 @@ export default function OrdersPage() {
                                       Object.keys(order.foy_item_quantities ?? {}).length > 0
 
                     return (
-                      <tr key={order.id} className={cancelled ? 'bg-red-50 opacity-60' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <tr key={`${order.id}-${vatTag ?? 'x'}`} className={cancelled ? 'bg-red-50 opacity-60' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
 
                         {/* 1. เลขที่ใบจอง */}
-                        <td className="px-4 py-3 border-r border-gray-200 font-mono font-bold text-green-400 text-base">
-                          {order.order_no}
+                        <td className="px-4 py-3 border-r border-gray-200 font-mono font-bold text-base">
+                          <span className={vatTag === 'NV' ? 'text-orange-500' : vatTag === 'V' ? 'text-green-500' : 'text-green-400'}>
+                            {displayNo}
+                          </span>
                         </td>
 
                         {/* 2. ยอดเงินรวม */}
                         <td className="px-4 py-3 border-r border-gray-200 text-right font-semibold">
-                          {fmtMoney(order.total_amount)}
+                          {fmtMoney(displayAmount)}
+                          {vatTag && <div className="text-[10px] text-gray-400 font-normal">{vatTag === 'NV' ? 'ไม่รวมแวต' : 'รวมแวต'}</div>}
                         </td>
 
                         {/* 3. วันเวลาอัพเดท */}
@@ -1097,7 +1129,8 @@ export default function OrdersPage() {
 
                       </tr>
                     )
-                  })}
+                  })
+                  })()}
                 </tbody>
               </table>
             </div>
