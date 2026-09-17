@@ -938,6 +938,7 @@ function Booking2Inner() {
     <div className="min-h-screen bg-gray-100 print:bg-white">
       <style>{`
         .foy-print-frame { display: none; }
+        .vat-split-print-frame { display: none; }
 
         /* Prevent iOS Safari text inflation/reflow during pinch-zoom */
         html, body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -1004,23 +1005,20 @@ function Booking2Inner() {
           html.compact-mode .vat-split-print-frame { display: none !important; }
 
           /* VAT split forms (NV / V) — portrait */
-          .vat-split-print-frame { display: none; }
-          @media print {
-            .vat-split-print-frame {
-              display: block !important;
-              page: portrait-p;
-              break-before: page;
-              width: 210mm !important;
-              min-height: 297mm !important;
-              padding: 8mm !important;
-              box-sizing: border-box !important;
-              background: white !important;
-              filter: grayscale(100%) !important;
-            }
-            .vat-split-print-frame * { color: black !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            .vat-split-print-frame td, .vat-split-print-frame th { background-color: transparent !important; }
-            .vat-split-print-frame .sg-header { background-color: #9b9484 !important; }
+          .vat-split-print-frame {
+            display: block !important;
+            page: portrait-p;
+            break-before: page;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            padding: 8mm !important;
+            box-sizing: border-box !important;
+            background: white !important;
+            filter: grayscale(100%) !important;
           }
+          .vat-split-print-frame * { color: black !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .vat-split-print-frame td, .vat-split-print-frame th { background-color: transparent !important; }
+          .vat-split-print-frame .sg-header { background-color: #9b9484 !important; }
 
           /* Foy page (page 2 — portrait) */
           .foy-print-frame {
