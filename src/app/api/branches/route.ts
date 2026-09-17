@@ -24,6 +24,7 @@ export async function ensureTables() {
   `)
   await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS is_manager BOOLEAN NOT NULL DEFAULT FALSE`)
   await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS allowed_pages TEXT[] NOT NULL DEFAULT '{}'`)
+  await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS line_user_id VARCHAR(100)`)
   await pool.query(`ALTER TABLE branch_phones ALTER COLUMN phone TYPE VARCHAR(50)`).catch(() => {})
   await pool.query(`
     CREATE TABLE IF NOT EXISTS branch_otps (
@@ -118,6 +119,13 @@ export async function PATCH(req: NextRequest) {
     // Remove code
     if (body.action === 'remove_phone') {
       await pool.query(`DELETE FROM branch_phones WHERE id=$1`, [body.phone_id])
+      return NextResponse.json({ ok: true })
+    }
+
+    // Update LINE user ID
+    if (body.action === 'update_line_id') {
+      const lineId = body.line_user_id ? String(body.line_user_id).trim() : null
+      await pool.query(`UPDATE branch_phones SET line_user_id=$1 WHERE id=$2`, [lineId || null, body.phone_id])
       return NextResponse.json({ ok: true })
     }
 

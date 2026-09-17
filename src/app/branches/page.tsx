@@ -517,7 +517,12 @@ function roleFromFlags(is_admin: boolean, is_manager: boolean): Role {
   return 'branch'
 }
 
-function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; onClose: () => void; onSaved: () => void; onDeleted: (id: number) => void }) {
+function ManageModal({ branch: branchProp, onClose, onSaved, onLineIdSaved, onDeleted }: {
+  branch: Branch; onClose: () => void; onSaved: () => void
+  onLineIdSaved: (phoneId: number, lineId: string | null) => void
+  onDeleted: (id: number) => void
+}) {
+  const [branch, setBranch]   = useState<Branch>(branchProp)
   const [newCode, setNewCode] = useState('')
   const [role, setRole]       = useState<Role>('branch')
   const [saving, setSaving]   = useState(false)
@@ -558,13 +563,19 @@ function ManageModal({ branch, onClose, onSaved, onDeleted }: { branch: Branch; 
 
   const saveLineId = async () => {
     if (!editLineId) return
+    const lineId = editLineId.value.trim() || null
     await fetch('/api/branches', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update_line_id', phone_id: editLineId.phoneId, line_user_id: editLineId.value }),
+      body: JSON.stringify({ action: 'update_line_id', phone_id: editLineId.phoneId, line_user_id: lineId }),
     })
+    // Update local branch state so the modal shows the new value immediately
+    setBranch(prev => ({
+      ...prev,
+      phones: prev.phones.map(p => p.id === editLineId.phoneId ? { ...p, line_user_id: lineId } : p),
+    }))
     setEditLineId(null)
-    onSaved()
+    onLineIdSaved(editLineId.phoneId, lineId)  // refresh parent list in background (no modal close)
   }
 
   return (
@@ -960,6 +971,14 @@ export default function BranchesPage() {
           branch={manageBranch}
           onClose={() => setManageBranch(null)}
           onSaved={() => { loadBranches(); setManageBranch(null) }}
+          onLineIdSaved={(phoneId, lineId) => {
+            // Refresh parent list but keep modal open; update manageBranch too so re-open shows correct data
+            loadBranches()
+            setManageBranch(prev => prev ? {
+              ...prev,
+              phones: prev.phones.map(p => p.id === phoneId ? { ...p, line_user_id: lineId } : p),
+            } : null)
+          }}
           onDeleted={(id) => { setBranches(prev => prev.filter(b => b.id !== id)); setManageBranch(null) }}
         />
       )}
