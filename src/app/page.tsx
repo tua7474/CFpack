@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 // ── Known booking2 group names (for datalist autocomplete) ────────────────────
 const BOOKING2_GROUPS = [
@@ -59,7 +60,10 @@ function fmtDate(iso: string | null): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
+
 export default function Home() {
+  const router = useRouter()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading]   = useState(true)
   const [addInputs, setAddInputs]   = useState<Record<number, string>>({})
@@ -70,16 +74,23 @@ export default function Home() {
   const [newRow, setNewRow] = useState({ group_name: '', product_name: '', price: '' })
   const [now, setNow] = useState<Date | null>(null)
   const [pageAllowed, setPageAllowed] = useState<boolean | null>(null)
+  const [session, setSession] = useState<SessionInfo | null>(null)
 
   // Check page access via branch_session
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem('branch_session') ?? 'null')
       if (!s) { setPageAllowed(true); return }  // no session = public/admin mode
+      setSession(s)
       if (s.is_admin || s.is_manager) { setPageAllowed(true); return }
       setPageAllowed((s.allowed_pages ?? []).includes('stock'))
     } catch { setPageAllowed(true) }
   }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('branch_session')
+    router.replace('/branches')
+  }
 
 
   const load = useCallback(() => {
@@ -297,7 +308,7 @@ export default function Home() {
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
-          <p className="text-orange-200 text-xs mt-0.5">ข้อมูลจาก Railway PostgreSQL</p>
+          {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
         </div>
         <div className="flex items-center gap-3">
           <button onClick={handleAddAll} disabled={!!busy.addAll}
@@ -314,6 +325,12 @@ export default function Home() {
           </Link>
           {msg && (
             <span className="text-sm px-3 py-1 rounded-full bg-green-500 text-white">{msg}</span>
+          )}
+          {session && (
+            <button onClick={handleLogout}
+              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors whitespace-nowrap">
+              ออกจากระบบ
+            </button>
           )}
         </div>
       </header>

@@ -2,27 +2,38 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 interface DeliveryMethod { id: number; name: string }
 
+interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
+
 export default function DeliveryPage() {
+  const router = useRouter()
   const [deliveries, setDeliveries]             = useState<DeliveryMethod[]>([])
   const [loading, setLoading]                   = useState(true)
   const [newDelivery, setNewDelivery]           = useState('')
   const [editDelivery, setEditDelivery]         = useState<DeliveryMethod | null>(null)
   const [busy, setBusy]                         = useState(false)
   const [confirmDel, setConfirmDel]             = useState<number | null>(null)
+  const [session, setSession]                   = useState<SessionInfo | null>(null)
 
   // Guard: เฉพาะแอดมินเท่านั้น
   useEffect(() => {
     try {
       const s = localStorage.getItem('branch_session')
       if (s) {
-        const session = JSON.parse(s)
-        if (!session.is_admin) { window.location.replace('/booking2'); return }
+        const parsed: SessionInfo = JSON.parse(s)
+        if (!parsed.is_admin) { window.location.replace('/booking2'); return }
+        setSession(parsed)
       }
     } catch { /* ignore */ }
   }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('branch_session')
+    router.replace('/branches')
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,11 +84,17 @@ export default function DeliveryPage() {
     <div className="min-h-screen bg-gray-100">
 
       {/* Header */}
-      <header className="bg-[#9b9484] text-white px-6 py-3 shadow">
+      <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
-          <p className="text-orange-200 text-xs mt-0.5">ข้อมูลจาก Railway PostgreSQL</p>
+          {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
         </div>
+        {session && (
+          <button onClick={handleLogout}
+            className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors whitespace-nowrap">
+            ออกจากระบบ
+          </button>
+        )}
       </header>
 
       {/* Tab bar */}

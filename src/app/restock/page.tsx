@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,10 +83,14 @@ function bestMatch(scanned: string, catalog: CatalogProduct[]): number | null {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
+
 export default function RestockPage() {
+  const router = useRouter()
   const [entries, setEntries]   = useState<RestockEntry[]>([])
   const [loading, setLoading]   = useState(true)
   const [catalog, setCatalog]   = useState<CatalogProduct[]>([])
+  const [session, setSession]   = useState<SessionInfo | null>(null)
 
   // scan modal state
   const [showScan, setShowScan]       = useState(false)
@@ -111,6 +116,24 @@ export default function RestockPage() {
 
   // expand/collapse
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+
+  // ── Session ─────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem('branch_session')
+      if (s) {
+        const parsed: SessionInfo = JSON.parse(s)
+        if (!parsed.is_admin) { window.location.replace('/booking2'); return }
+        setSession(parsed)
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('branch_session')
+    router.replace('/branches')
+  }
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
@@ -338,9 +361,18 @@ export default function RestockPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-[#5B4A3A] text-white px-4 py-3 flex items-center justify-between shadow">
-        <h1 className="text-base font-bold">CF ระบบจัดการข้อมูล</h1>
-      </div>
+      <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
+          {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
+        </div>
+        {session && (
+          <button onClick={handleLogout}
+            className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors whitespace-nowrap">
+            ออกจากระบบ
+          </button>
+        )}
+      </header>
 
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">

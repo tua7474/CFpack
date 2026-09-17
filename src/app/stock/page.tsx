@@ -2,6 +2,7 @@
 
 import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,10 @@ function fmtDate(iso: string | null): string {
 
 const EMPTY_NEW = { model_name: '', color_code: '', color_name: '', category: '' }
 
+interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
+
 export default function StockPage() {
+  const router = useRouter()
   const [items, setItems]               = useState<StockItem[]>([])
   const [categoryVis, setCategoryVis]   = useState<Record<string, boolean>>({})
   const [modelVis, setModelVis]         = useState<Record<string, boolean>>({})
@@ -80,16 +84,23 @@ export default function StockPage() {
   const [msg, setMsg]                   = useState<string | null>(null)
   const [now, setNow]                   = useState<Date | null>(null)
   const [pageAllowed, setPageAllowed]   = useState<boolean | null>(null)
+  const [session, setSession]           = useState<SessionInfo | null>(null)
 
   // Check page access via branch_session
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem('branch_session') ?? 'null')
       if (!s) { setPageAllowed(true); return }  // no session = public/admin mode
+      setSession(s)
       if (s.is_admin || s.is_manager) { setPageAllowed(true); return }
       setPageAllowed((s.allowed_pages ?? []).includes('stock-paper'))
     } catch { setPageAllowed(true) }
   }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('branch_session')
+    router.replace('/branches')
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -378,7 +389,7 @@ export default function StockPage() {
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
-          <p className="text-orange-200 text-xs mt-0.5">ข้อมูลจาก Railway PostgreSQL</p>
+          {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
         </div>
         {msg && (
           <span className={`text-sm px-3 py-1 rounded-full text-white ${msg.startsWith('❌') ? 'bg-red-500' : 'bg-green-500'}`}>{msg}</span>
@@ -396,6 +407,12 @@ export default function StockPage() {
             className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors">
             📋 ใบจองกระดาษฝอย
           </Link>
+          {session && (
+            <button onClick={handleLogout}
+              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors whitespace-nowrap">
+              ออกจากระบบ
+            </button>
+          )}
         </div>
       </header>
 
