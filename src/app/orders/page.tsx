@@ -828,7 +828,10 @@ export default function OrdersPage() {
           <div className="flex items-center gap-3">
             {msg && <span className="text-sm px-3 py-1 rounded-full bg-red-500 text-white">{msg}</span>}
             {(() => {
-              const unpaidOrders = orders.filter(o => o.payment_status !== 'paid' && o.status !== 'cancelled')
+              const unpaidOrders = orders.filter(o =>
+                o.payment_status !== 'paid' && o.status !== 'cancelled' &&
+                ((isAdmin || isManager) ? true : o.branch_name === branchName)
+              )
               const unpaidCount = unpaidOrders.length
               const unpaidTotal = unpaidOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
               return unpaidCount > 0 ? (
