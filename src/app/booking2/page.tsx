@@ -1414,6 +1414,10 @@ function Booking2Inner() {
                             if (isFoy) return [
                               <td key={`${si}-sg`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />,
                             ]
+                            // Compact mode: hide subgroup header if this section has no active items under it
+                            if (compactPrintMode && !compactActiveSubgroups[si].has(rowIdx)) {
+                              return [<td key={`${si}-sg`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />]
+                            }
                             const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             return [
@@ -1430,6 +1434,9 @@ function Booking2Inner() {
                           }
 
                           if (cell.type === 'foy_cat') {
+                            if (compactPrintMode && !compactActiveFoyCats[si].has(rowIdx)) {
+                              return [<td key={`${si}-fc`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />]
+                            }
                             const catBg = FOY_CAT_BG[cell.category] ?? '#e5e7eb'
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             return [
