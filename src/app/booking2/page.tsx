@@ -61,11 +61,11 @@ const SUBGROUP_COLOR: Record<string, SubgroupColor> = {
 }
 
 const SUBGROUP_BG: Record<SubgroupColor, string> = {
-  gray:   'bg-[#9b9484]   text-white    border-gray-500',
-  light:  'bg-gray-300   text-gray-500 border-gray-400',
-  orange: 'bg-orange-400 text-white    border-orange-400',
-  teal:   'bg-teal-500   text-white    border-teal-600',
-  maroon: 'bg-red-800    text-white    border-red-900',
+  gray:   'bg-[#9b9484] text-white border-gray-500',
+  light:  'bg-[#9b9484] text-white border-gray-500',
+  orange: 'bg-[#9b9484] text-white border-gray-500',
+  teal:   'bg-[#9b9484] text-white border-gray-500',
+  maroon: 'bg-[#9b9484] text-white border-gray-500',
 }
 
 // ── กระดาษฝอย groups — link to /booking-foy ──────────────────────────────────
