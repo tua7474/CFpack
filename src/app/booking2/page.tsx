@@ -1443,7 +1443,7 @@ function Booking2Inner() {
                               <td key={`${si}-fc`} colSpan={4}
                                 onClick={foyClick}
                                 style={{ backgroundColor: catBg }}
-                                className="border px-2 py-px text-[10px] font-bold text-gray-700 cursor-pointer print-sg">
+                                className="border px-2 py-px text-[10px] font-bold text-white cursor-pointer print-sg">
                                 <div className="flex items-center justify-between gap-1 w-full">
                                   <span>กระดาษฝอย {cell.category}</span>
                                   <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
@@ -1622,7 +1622,7 @@ function Booking2Inner() {
                             if (seg.kind === 'cat') {
                               return (
                                 <div key={`cat-${seg.name}`}
-                                  style={{ backgroundColor: CAT_BG[seg.name] ?? '#9b9484', color: 'rgb(55,65,81)' }}
+                                  style={{ backgroundColor: CAT_BG[seg.name] ?? '#9b9484', color: 'white' }}
                                   className={`px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-sm mb-1${si > 0 ? ' mt-2' : ''}`}>
                                   กระดาษฝอย {seg.name}
                                 </div>
