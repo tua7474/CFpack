@@ -1002,6 +1002,26 @@ function Booking2Inner() {
           html.compact-mode .a4-content { height: auto !important; }
           html.compact-mode .a4-content table { height: auto !important; }
           html.compact-mode .foy-print-frame { display: none !important; }
+          html.compact-mode .vat-split-print-frame { display: none !important; }
+
+          /* VAT split forms (NV / V) — portrait */
+          .vat-split-print-frame { display: none; }
+          @media print {
+            .vat-split-print-frame {
+              display: block !important;
+              page: portrait-p;
+              break-before: page;
+              width: 210mm !important;
+              min-height: 297mm !important;
+              padding: 8mm !important;
+              box-sizing: border-box !important;
+              background: white !important;
+              filter: grayscale(100%) !important;
+            }
+            .vat-split-print-frame * { color: black !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .vat-split-print-frame td, .vat-split-print-frame th { background-color: transparent !important; }
+            .vat-split-print-frame .sg-header { background-color: #9b9484 !important; }
+          }
 
           /* Foy page (page 2 — portrait) */
           .foy-print-frame {
@@ -1764,6 +1784,122 @@ function Booking2Inner() {
                 )
               })()}
             </div>
+
+            {/* ── Print: NV form (ไม่รวม VAT) + V form (รวม VAT) ───────────── */}
+            {(() => {
+              type PrintItem = { subgroup: string; name: string; qty: number; price: number; total: number }
+              const nvItems: PrintItem[] = []
+              const vItems: PrintItem[] = []
+
+              for (const sec of sections) {
+                let currentSg = ''
+                for (const row of sec.rows) {
+                  if (row.type === 'subgroup') { currentSg = row.name }
+                  else if (row.type === 'foy_item') {
+                    if (row.qty > 0) {
+                      const price = getFoyModelPrice(row.category, row.model_name)
+                      nvItems.push({ subgroup: `กระดาษฝอย ${row.category}`, name: row.model_name, qty: row.qty, price, total: row.amount })
+                    }
+                  } else if (row.type === 'product') {
+                    const qty = pending[row.product.id] ?? 0
+                    if (qty > 0) {
+                      const price = parseFloat(row.product.price ?? '0') || 0
+                      const item: PrintItem = { subgroup: currentSg, name: row.product.product_name, qty, price, total: price * qty }
+                      if (SWITCHABLE_SUBGROUP_NAMES.has(currentSg)) nvItems.push(item)
+                      else vItems.push(item)
+                    }
+                  }
+                }
+              }
+
+              const nvTotal = nvItems.reduce((s, it) => s + it.total, 0)
+              const vTotal  = vItems.reduce((s, it) => s + it.total, 0)
+              const orderNo = editOrderNo ?? ''
+
+              const renderSplitForm = (prefix: string, items: PrintItem[], total: number, isVat: boolean) => {
+                if (items.length === 0) return null
+                const groups = new Map<string, PrintItem[]>()
+                for (const it of items) {
+                  if (!groups.has(it.subgroup)) groups.set(it.subgroup, [])
+                  groups.get(it.subgroup)!.push(it)
+                }
+                const hdrBg = isVat ? '#9b9484' : '#f97316'
+                return (
+                  <div className="vat-split-print-frame">
+                    {/* form header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6, borderBottom: '2px solid #9b9484', paddingBottom: 4 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 'bold', color: '#333' }}>
+                          {isVat ? 'ใบจองสินค้า — รวม VAT 7%' : 'ใบจองสินค้า — ไม่รวม VAT'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
+                          สาขา: {branchInfo?.name ?? '—'} &nbsp;|&nbsp; วันที่: {today}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 11, color: '#888' }}>เลขที่ใบจอง</div>
+                        <div style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }}>{prefix}{orderNo || '—'}</div>
+                      </div>
+                    </div>
+
+                    {/* items table */}
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ backgroundColor: hdrBg }}>
+                          <th style={{ textAlign: 'left', padding: '3px 5px', border: '1px solid #bbb', color: 'white', fontWeight: 'bold' }}>ชื่อสินค้า</th>
+                          <th style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: 'white', width: 52 }}>จำนวน</th>
+                          <th style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: 'white', width: 68 }}>ราคา/หน่วย</th>
+                          <th style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: 'white', width: 82 }}>ยอดรวม (฿)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Array.from(groups.entries()).map(([sg, sgItems]) => (
+                          <Fragment key={sg}>
+                            <tr className="sg-header">
+                              <td colSpan={4} style={{ backgroundColor: hdrBg, color: 'white', fontWeight: 'bold', fontSize: 10, padding: '2px 5px', border: '1px solid #bbb' }}>
+                                {sg}
+                              </td>
+                            </tr>
+                            {sgItems.map((it, i) => (
+                              <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f7f7f5' }}>
+                                <td style={{ padding: '2px 5px', border: '1px solid #e0e0e0' }}>{it.name}</td>
+                                <td style={{ textAlign: 'right', padding: '2px 5px', border: '1px solid #e0e0e0' }}>{it.qty}</td>
+                                <td style={{ textAlign: 'right', padding: '2px 5px', border: '1px solid #e0e0e0' }}>{fmt2(it.price)}</td>
+                                <td style={{ textAlign: 'right', padding: '2px 5px', border: '1px solid #e0e0e0' }}>{fmt2(it.total)}</td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold', padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #9b9484' }}>
+                            {isVat ? 'ยอดรวม (รวม VAT 7%)' : 'ยอดรวม (ไม่รวม VAT)'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: 14, padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #9b9484' }}>
+                            {fmt2(total)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+
+                    {/* signature row */}
+                    <div style={{ display: 'flex', gap: 16, marginTop: 24 }}>
+                      <div style={{ flex: 1, borderTop: '1px solid #bbb', paddingTop: 4, textAlign: 'center', fontSize: 10, color: '#777' }}>ผู้ส่งสินค้า</div>
+                      <div style={{ flex: 1, borderTop: '1px solid #bbb', paddingTop: 4, textAlign: 'center', fontSize: 10, color: '#777' }}>ผู้รับสินค้า</div>
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <>
+                  {renderSplitForm('NV', nvItems, nvTotal, false)}
+                  {renderSplitForm('V', vItems, vTotal, true)}
+                </>
+              )
+            })()}
+
             </>
           )}
         </div>
