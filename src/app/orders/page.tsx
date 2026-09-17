@@ -12,6 +12,8 @@ interface CatalogProduct {
   price: string | null
   section_order: number
   section_name: string
+  subgroup_order: number
+  subgroup_name: string
 }
 
 interface StockItem {
