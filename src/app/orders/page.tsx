@@ -89,17 +89,35 @@ export default function OrdersPage() {
   const [payDate, setPayDate] = useState('')
   const [payBank, setPayBank] = useState('')
 
+  // Bulk payment modal
+  const [showPayModal, setShowPayModal]     = useState(false)
+  const [payModalOrders, setPayModalOrders] = useState<{ order_no: string; total_amount: string; branch_name: string | null }[]>([])
+  const [selOrderNos, setSelOrderNos]       = useState<Set<string>>(new Set())
+  const [branchSlips, setBranchSlips]       = useState<{ id: number; category: string; amount: number; account_name: string | null; slip_date: string; applied: boolean }[]>([])
+  const [appliedSlipIds, setAppliedSlipIds] = useState<Set<number>>(new Set())
+  const [payStep, setPayStep]               = useState<1 | 2>(1)
+  const [qrUrl, setQrUrl]                   = useState<string | null>(null)
+  const [qrAmount, setQrAmount]             = useState(0)
+  const [qrLoading, setQrLoading]           = useState(false)
+  const [qrSaving, setQrSaving]             = useState(false)
+
   // Print state
   const [products, setProducts]     = useState<CatalogProduct[]>([])
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [printOrder, setPrintOrder] = useState<BookingOrder | null>(null)
   const [printType, setPrintType]   = useState<'booking' | 'foy' | null>(null)
 
+  // Delivery methods + pickup dropdown
+  const [deliveries, setDeliveries]           = useState<string[]>([])
+  const [pickupOpen, setPickupOpen]           = useState<string | null>(null)  // order_no
+  const [pickupDelivery, setPickupDelivery]   = useState('')
+
   // Role
   const [isAdmin, setIsAdmin]           = useState(false)
   const [isManager, setIsManager]       = useState(false)
   const [branchName, setBranchName]     = useState<string | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
+  const [branchId, setBranchId]         = useState<number | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -111,10 +129,11 @@ export default function OrdersPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Fetch catalog + stock for print (parallel, once)
+  // Fetch catalog + stock + delivery methods (parallel, once)
   useEffect(() => {
     fetch('/api/booking2').then(r => r.json()).then(setProducts).catch(() => {})
     fetch('/api/stock').then(r => r.json()).then(setStockItems).catch(() => {})
+    fetch('/api/delivery').then(r => r.json()).then((data: { name: string }[]) => setDeliveries(data.map(d => d.name))).catch(() => {})
   }, [])
 
   // Read role + branch from branch_session
@@ -126,6 +145,7 @@ export default function OrdersPage() {
         setIsAdmin(s?.is_admin === true)
         setIsManager(s?.is_manager === true)
         if (s?.branch_name) setBranchName(s.branch_name)
+        if (s?.branch_id)   setBranchId(s.branch_id)
       } else {
         // ไม่มี session → ถือว่าเป็น admin (เข้าตรง)
         setIsAdmin(true)
@@ -133,6 +153,16 @@ export default function OrdersPage() {
     } catch { /* ignore */ }
     setSessionLoaded(true)
   }, [])
+
+  // Auto-open payment modal when ?pay=1
+  useEffect(() => {
+    if (!sessionLoaded || typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('pay') !== '1') return
+    const urlBranch = params.get('branch_name')
+    openPayModal(urlBranch ?? undefined)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionLoaded])
 
   // Auto-print when print order is set
   useEffect(() => {
@@ -168,6 +198,16 @@ export default function OrdersPage() {
     await patch(order.order_no, { pickup_status: 'pending' })
   }
 
+  const handlePickupAndPrint = async (order: BookingOrder, printAs: 'booking' | 'foy') => {
+    await patch(order.order_no, {
+      pickup_status: 'picked_up',
+      ...(pickupDelivery ? { vehicle_type: pickupDelivery } : {}),
+    })
+    setPickupOpen(null)
+    setPickupDelivery('')
+    handlePrint(order, printAs)
+  }
+
   const handlePayment = async (order_no: string) => {
     if (!payDate || !payBank.trim()) return
     await patch(order_no, {
@@ -183,6 +223,87 @@ export default function OrdersPage() {
   const handlePrint = (order: BookingOrder, type: 'booking' | 'foy') => {
     setPrintType(type)
     setPrintOrder(order)
+  }
+
+  const openPayModal = async (filterBranch?: string) => {
+    const activeBranch = filterBranch ?? branchName ?? null
+    const [ordersRes, slipsRes] = await Promise.all([
+      fetch('/api/orders').then(r => r.json()).catch(() => []),
+      activeBranch
+        ? fetch(`/api/slips?branch_name=${encodeURIComponent(activeBranch)}`).then(r => r.json()).catch(() => [])
+        : Promise.resolve([]),
+    ])
+    const allOrders: { order_no: string; total_amount: string; branch_name: string | null; payment_status: string; status: string }[] = ordersRes
+    const unpaid = allOrders.filter(o =>
+      o.payment_status !== 'paid' &&
+      o.status !== 'cancelled' &&
+      (activeBranch ? o.branch_name === activeBranch : true)
+    )
+    setPayModalOrders(unpaid)
+    setSelOrderNos(new Set(unpaid.map(o => o.order_no)))
+    setBranchSlips(slipsRes)
+    setAppliedSlipIds(new Set())
+    setPayStep(1)
+    setQrUrl(null)
+    setShowPayModal(true)
+  }
+
+  const goToStep2 = async (remaining: number) => {
+    // Mark selected slips as applied
+    if (appliedSlipIds.size > 0) {
+      await Promise.all([...appliedSlipIds].map(id =>
+        fetch('/api/slips', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, applied: true }),
+        })
+      ))
+    }
+    setPayStep(2)
+    setQrAmount(remaining)
+    if (remaining > 0) {
+      setQrLoading(true)
+      setQrUrl(null)
+      try {
+        const res = await fetch(`/api/promptpay?amount=${remaining.toFixed(2)}`)
+        if (res.ok) {
+          const data = await res.json()
+          setQrUrl(data.qrUrl ?? null)
+        }
+      } catch { /* ignore */ }
+      setQrLoading(false)
+    }
+  }
+
+  const saveQrImage = async () => {
+    if (!qrUrl || qrSaving) return
+    setQrSaving(true)
+    try {
+      const resp = await fetch(qrUrl)
+      const blob = await resp.blob()
+      const filename = `promptpay-${qrAmount.toFixed(0)}thb.png`
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        const file = new File([blob], filename, { type: 'image/png' })
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ title: `PromptPay ฿${qrAmount.toLocaleString('th-TH')}`, files: [file] })
+          setQrSaving(false)
+          setShowPayModal(false)
+          return
+        }
+      }
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000)
+    } catch {
+      window.open(qrUrl, '_blank')
+    }
+    setQrSaving(false)
+    setShowPayModal(false)
   }
 
   // ── Print render: ใบจอง ────────────────────────────────────────────────────
@@ -478,6 +599,212 @@ export default function OrdersPage() {
         {printType === 'foy'     && printOrder && <FoyPrint     order={printOrder} />}
       </div>
 
+      {/* ── Payment Modal */}
+      {showPayModal && (() => {
+        const selectedTotal = payModalOrders
+          .filter(o => selOrderNos.has(o.order_no))
+          .reduce((s, o) => s + parseFloat(o.total_amount), 0)
+        const totalDeduct = branchSlips
+          .filter(s => appliedSlipIds.has(s.id))
+          .reduce((sum, s) => sum + s.amount, 0)
+        const remaining   = Math.max(0, selectedTotal - totalDeduct)
+        const allSelected = payModalOrders.every(o => selOrderNos.has(o.order_no))
+        const SLIP_LABEL_MAP: Record<string, string> = {
+          'วรวุฒิ': 'สลิปวรวุฒิ', 'print': 'สลิปPRINT', 'pack': 'สลิปPACK', 'bb': 'สลิปBB', 'กล่อง': 'สลิปกล่อง'
+        }
+
+        const BANKS = [
+          { key: 'kbank',   label: 'กสิกรไทย',    abbr: 'KBank',  bg: '#138f2d', icon: '🟩' },
+          { key: 'scb',     label: 'ไทยพาณิชย์',  abbr: 'SCB',    bg: '#4e2d8c', icon: '🟪' },
+          { key: 'bbl',     label: 'กรุงเทพ',      abbr: 'BBL',    bg: '#1e3a8a', icon: '🟦' },
+          { key: 'ktb',     label: 'กรุงไทย',      abbr: 'KTB',    bg: '#0284c7', icon: '🔵' },
+          { key: 'bay',     label: 'กรุงศรี',       abbr: 'BAY',    bg: '#fbbf24', icon: '🟡' },
+          { key: 'ttb',     label: 'ทหารไทยธนชาต', abbr: 'TTB',    bg: '#f97316', icon: '🟠' },
+          { key: 'gsb',     label: 'ออมสิน',       abbr: 'GSB',    bg: '#ec4899', icon: '🩷' },
+          { key: 'promptpay', label: 'PromptPay',  abbr: 'QR',     bg: '#7c3aed', icon: '📱' },
+        ]
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto flex flex-col">
+              {/* header */}
+              <div className="bg-orange-500 text-white px-5 py-4 rounded-t-2xl flex items-center justify-between">
+                <div>
+                  <div className="text-lg font-bold">
+                    💳 แจ้งชำระเงิน
+                    {payStep === 2 && <span className="ml-2 text-base font-normal">— QR PromptPay</span>}
+                  </div>
+                  <div className="text-orange-100 text-xs mt-0.5">
+                    {branchName ? `สาขา: ${branchName}` : 'ทุกสาขา'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {payStep === 2 && (
+                    <button onClick={() => setPayStep(1)} className="text-white/80 hover:text-white text-sm px-2 py-1 rounded border border-white/30">← กลับ</button>
+                  )}
+                  <button onClick={() => setShowPayModal(false)} className="text-white/70 hover:text-white text-2xl leading-none">✕</button>
+                </div>
+              </div>
+
+              {/* STEP 1 */}
+              {payStep === 1 && (
+                <div className="p-5 flex flex-col gap-5">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-semibold text-gray-700">ใบจองค้างชำระ</div>
+                      <button
+                        onClick={() => setSelOrderNos(allSelected ? new Set() : new Set(payModalOrders.map(o => o.order_no)))}
+                        className="text-xs px-2 py-1 rounded border border-orange-300 text-orange-600 hover:bg-orange-50 transition-colors"
+                      >
+                        {allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                      </button>
+                    </div>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-100">
+                      {payModalOrders.length === 0 && (
+                        <div className="px-4 py-3 text-sm text-gray-400 text-center">ไม่มียอดค้างชำระ</div>
+                      )}
+                      {payModalOrders.map(o => {
+                        const checked = selOrderNos.has(o.order_no)
+                        return (
+                          <label key={o.order_no} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-orange-50' : 'hover:bg-gray-50'}`}>
+                            <input type="checkbox" checked={checked} onChange={() => {
+                              const next = new Set(selOrderNos)
+                              checked ? next.delete(o.order_no) : next.add(o.order_no)
+                              setSelOrderNos(next)
+                            }} className="accent-orange-500 w-4 h-4 flex-shrink-0" />
+                            <span className="font-mono text-sm font-bold text-green-600 flex-shrink-0">{o.order_no}</span>
+                            <span className="text-xs text-gray-500 flex-1 truncate">{o.branch_name ?? ''}</span>
+                            <span className="text-sm font-semibold text-gray-800 flex-shrink-0">
+                              ฿{parseFloat(o.total_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex justify-between items-center">
+                    <span className="text-sm font-semibold text-orange-800">ยอดรวมที่เลือก ({selOrderNos.size} ใบ)</span>
+                    <span className="text-xl font-bold text-orange-700">฿{selectedTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  {branchSlips.length > 0 && (
+                    <div>
+                      <div className="text-sm font-semibold text-gray-700 mb-2">มียอดโอนตรงเข้าบัญชีดังนี้</div>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-100">
+                        {branchSlips.map(slip => {
+                          const isChecked = appliedSlipIds.has(slip.id)
+                          return (
+                            <div key={slip.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isChecked ? 'bg-blue-50' : slip.applied ? 'bg-gray-50 opacity-50' : 'hover:bg-gray-50'}`}>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-blue-700">{SLIP_LABEL_MAP[slip.category] ?? slip.category}</span>
+                                  <span className="text-xs text-gray-400">{slip.slip_date}</span>
+                                  {slip.applied && <span className="text-xs text-gray-400">(ใช้แล้ว)</span>}
+                                </div>
+                                {slip.account_name && <div className="text-xs text-gray-500 truncate">{slip.account_name}</div>}
+                              </div>
+                              <span className="text-sm font-bold text-gray-800 flex-shrink-0">
+                                ฿{slip.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  const next = new Set(appliedSlipIds)
+                                  isChecked ? next.delete(slip.id) : next.add(slip.id)
+                                  setAppliedSlipIds(next)
+                                }}
+                                disabled={slip.applied}
+                                className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors
+                                  ${slip.applied
+                                    ? 'border-gray-200 text-gray-400 bg-gray-100 cursor-not-allowed'
+                                    : isChecked
+                                      ? 'border-blue-500 text-blue-700 bg-blue-100 hover:bg-blue-200'
+                                      : 'border-gray-300 text-gray-600 bg-white hover:border-blue-400 hover:text-blue-600'
+                                  }`}
+                              >
+                                {isChecked ? '✓ หักยอด' : 'หักยอด'}
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex flex-col gap-1.5">
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>ยอดรวม</span>
+                      <span>฿{selectedTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    {totalDeduct > 0 && (
+                      <div className="flex justify-between text-sm text-blue-600">
+                        <span>หักยอดโอนตรง</span>
+                        <span>- ฿{totalDeduct.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-gray-300 mt-1 pt-1.5 flex justify-between items-center">
+                      <span className="text-base font-bold text-gray-800">ยอดคงเหลือต้องโอน</span>
+                      <span className={`text-xl font-bold ${remaining <= 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                        ฿{remaining.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => goToStep2(remaining)}
+                    disabled={selOrderNos.size === 0}
+                    className="w-full py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-base font-bold shadow transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ถัดไป: สร้าง QR →
+                  </button>
+                  <p className="text-center text-xs text-orange-600 font-medium pt-1">
+                    📌 อย่าลืมส่งสลิปเข้ากลุ่ม เพื่อตัดยอดบิลด้วยนะคะ
+                  </p>
+                </div>
+              )}
+
+              {/* STEP 2 */}
+              {payStep === 2 && (
+                <div className="p-5 flex flex-col items-center gap-5">
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-center w-full">
+                    <div className="text-xs text-orange-700 font-semibold mb-1">ยอดคงเหลือต้องโอน</div>
+                    <div className="text-3xl font-bold text-orange-600">฿{remaining.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</div>
+                    <div className="text-xs text-orange-500 mt-1">{selOrderNos.size} ใบจอง</div>
+                  </div>
+                  {remaining > 0 ? (
+                    <>
+                      <div className="border-2 border-purple-200 rounded-2xl p-3 bg-white shadow">
+                        {qrLoading ? (
+                          <div className="w-52 h-52 flex items-center justify-center text-gray-400 text-sm">กำลังสร้าง QR...</div>
+                        ) : qrUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={qrUrl} alt="PromptPay QR" width={208} height={208} className="rounded-lg" />
+                        ) : (
+                          <div className="w-52 h-52 flex flex-col items-center justify-center text-gray-400 text-sm text-center gap-2">
+                            <span className="text-3xl">⚠️</span>
+                            <span>ยังไม่ได้ตั้งค่า PROMPTPAY_ID<br/>ใน Railway environment</span>
+                          </div>
+                        )}
+                      </div>
+                      {qrUrl && (
+                        <button
+                          onClick={saveQrImage}
+                          disabled={qrSaving}
+                          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-base font-semibold shadow transition-colors disabled:opacity-60"
+                        >
+                          {qrSaving ? '⏳ กำลังบันทึก...' : '💾 บันทึกรูป QR'}
+                        </button>
+                      )}
+                      <p className="text-center text-xs text-orange-600 font-medium">
+                        📌 อย่าลืมส่งสลิปเข้ากลุ่ม เพื่อตัดยอดบิลด้วยนะคะ
+                      </p>
+                    </>
+                  ) : (
+                    <div className="text-green-600 font-semibold text-center py-4">ไม่มียอดคงค้าง ✅</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Screen area */}
       <div className="no-print min-h-screen bg-gray-100">
 
@@ -492,9 +819,25 @@ export default function OrdersPage() {
               <p className="text-orange-200 text-xs mt-0.5">ประวัติรายการทั้งหมด</p>
             </div>
           </div>
-          {msg && (
-            <span className="text-sm px-3 py-1 rounded-full bg-red-500 text-white">{msg}</span>
-          )}
+          <div className="flex items-center gap-3">
+            {msg && <span className="text-sm px-3 py-1 rounded-full bg-red-500 text-white">{msg}</span>}
+            {(() => {
+              const unpaidOrders = orders.filter(o => o.payment_status !== 'paid' && o.status !== 'cancelled')
+              const unpaidCount = unpaidOrders.length
+              const unpaidTotal = unpaidOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
+              return unpaidCount > 0 ? (
+                <button
+                  onClick={() => openPayModal()}
+                  className="px-3 py-1.5 text-sm rounded bg-orange-500 hover:bg-orange-600 text-white font-semibold transition-colors shadow leading-tight text-left"
+                >
+                  <div className="text-xs font-bold">💳 แจ้งชำระเงิน ({unpaidCount} ใบ)</div>
+                  <div className="text-[11px] text-orange-100 font-normal">
+                    ฿{unpaidTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                  </div>
+                </button>
+              ) : null
+            })()}
+          </div>
         </header>
 
         {/* Main */}
@@ -512,10 +855,9 @@ export default function OrdersPage() {
                     <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 text-right">ยอดเงินรวม (฿)</th>
                     <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">วันเวลาอัพเดทล่าสุด</th>
                     <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">สถานะใบจอง</th>
-                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">ขึ้นของ</th>
                     <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">แจ้งชื่อตัวแทนสาขา</th>
                     <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">สถานะการชำระเงิน</th>
-                    <th className="px-4 py-2 whitespace-nowrap text-center">พิมพ์</th>
+                    <th className="px-4 py-2 whitespace-nowrap text-center">ขึ้นของ / พิมพ์</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -561,7 +903,7 @@ export default function OrdersPage() {
                                 ✕ ยกเลิกแล้ว
                               </span>
                             ) : pickedUp ? (
-                              <span className="inline-block px-2 py-1 text-xs rounded border border-red-200 bg-red-50 text-red-400 cursor-not-allowed select-none w-fit">
+                              <span className="inline-block px-2 py-1 text-xs rounded border border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed select-none w-fit">
                                 ✎ แก้ไขไม่ได้
                               </span>
                             ) : (
@@ -575,42 +917,12 @@ export default function OrdersPage() {
                           </div>
                         </td>
 
-                        {/* 5. ขึ้นของ */}
-                        <td className="px-4 py-3 border-r border-gray-200 text-center">
-                          {cancelled ? (
-                            <span className="text-gray-300 text-xs">—</span>
-                          ) : pickedUp ? (
-                            <div className="flex flex-col items-center gap-1">
-                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-400">
-                                ✅ ขึ้นของแล้ว
-                              </span>
-                              {(isAdmin || isManager) && (
-                                <button
-                                  onClick={() => handleResetPickup(order)}
-                                  className="text-[10px] text-gray-400 hover:text-red-500 hover:underline transition-colors"
-                                >
-                                  รีเซ็ต
-                                </button>
-                              )}
-                            </div>
-                          ) : (isAdmin || isManager) ? (
-                            <button
-                              onClick={() => handlePickup(order)}
-                              className="px-3 py-1 text-xs rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 transition-colors font-medium"
-                            >
-                              📦 ขึ้นของ
-                            </button>
-                          ) : (
-                            <span className="text-gray-300 text-xs">รอดำเนินการ</span>
-                          )}
-                        </td>
-
-                        {/* 6. แจ้งชื่อตัวแทนสาขา */}
+                        {/* 5. แจ้งชื่อตัวแทนสาขา */}
                         <td className="px-4 py-3 border-r border-gray-200 text-sm text-gray-500 whitespace-nowrap">
                           {order.branch_name ?? <span className="text-gray-300 text-xs">—</span>}
                         </td>
 
-                        {/* 7. สถานะการชำระเงิน */}
+                        {/* 6. สถานะการชำระเงิน */}
                         <td className="px-4 py-3 border-r border-gray-200">
                           {cancelled ? (
                             <span className="text-gray-300 text-xs">—</span>
@@ -672,23 +984,104 @@ export default function OrdersPage() {
                           )}
                         </td>
 
-                        {/* 8. ปุ่มพิมพ์ */}
-                        <td className="px-3 py-3 text-center">
-                          <div className="flex flex-col gap-1.5 items-center">
-                            <button
-                              onClick={() => handlePrint(order, 'booking')}
-                              className="px-2 py-1 text-xs rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-colors whitespace-nowrap font-medium"
-                            >
-                              🖨️ ใบจอง
-                            </button>
-                            <button
-                              onClick={() => handlePrint(order, 'foy')}
-                              disabled={!hasFoy}
-                              className="px-2 py-1 text-xs rounded bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 transition-colors whitespace-nowrap font-medium disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                              🖨️ ฝอย
-                            </button>
-                          </div>
+                        {/* 7. ขึ้นของ / พิมพ์ (combined) */}
+                        <td className="px-3 py-3 text-center min-w-[140px]">
+                          {cancelled ? (
+                            <span className="text-gray-300 text-xs">—</span>
+                          ) : pickedUp ? (
+                            /* ── หลังขึ้นของแล้ว: แสดงสถานะ + ปุ่มพิมพ์ซ้ำ ── */
+                            <div className="flex flex-col items-center gap-1.5">
+                              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-600">
+                                ✅ ขึ้นของแล้ว
+                              </span>
+                              {order.vehicle_type && (
+                                <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{order.vehicle_type}</span>
+                              )}
+                              <div className="flex gap-1 mt-0.5">
+                                <button onClick={() => handlePrint(order, 'booking')}
+                                  className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
+                                  🖨️ ใบจอง
+                                </button>
+                                {hasFoy && (
+                                  <button onClick={() => handlePrint(order, 'foy')}
+                                    className="px-2 py-0.5 text-[10px] rounded bg-teal-50 hover:bg-teal-100 text-teal-600 border border-teal-200 transition-colors whitespace-nowrap">
+                                    🖨️ ฝอย
+                                  </button>
+                                )}
+                              </div>
+                              {(isAdmin || isManager) && (
+                                <button onClick={() => handleResetPickup(order)}
+                                  className="text-[10px] text-gray-400 hover:text-red-500 hover:underline transition-colors">
+                                  รีเซ็ต
+                                </button>
+                              )}
+                            </div>
+                          ) : (isAdmin || isManager) ? (
+                            /* ── ก่อนขึ้นของ (admin/manager): ปุ่มรวม + dropdown จัดส่ง ── */
+                            pickupOpen === order.order_no ? (
+                              <div className="flex flex-col gap-1.5 text-left min-w-[160px]">
+                                <div className="text-[10px] font-semibold text-gray-600">เลือกช่องทางจัดส่ง</div>
+                                <select
+                                  value={pickupDelivery}
+                                  onChange={e => setPickupDelivery(e.target.value)}
+                                  className="w-full text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                >
+                                  <option value="">— เลือกการจัดส่ง —</option>
+                                  {deliveries.map(d => (
+                                    <option key={d} value={d}>{d}</option>
+                                  ))}
+                                </select>
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => handlePickupAndPrint(order, 'booking')}
+                                    disabled={!pickupDelivery}
+                                    className="flex-1 px-2 py-1 text-[10px] rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                                  >
+                                    📦 ยืนยัน+พิมพ์
+                                  </button>
+                                  <button
+                                    onClick={() => { setPickupOpen(null); setPickupDelivery('') }}
+                                    className="px-2 py-1 text-[10px] rounded bg-gray-100 hover:bg-gray-200 text-gray-500 border border-gray-300 transition-colors"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                                {hasFoy && (
+                                  <button
+                                    onClick={() => handlePickupAndPrint(order, 'foy')}
+                                    disabled={!pickupDelivery}
+                                    className="w-full px-2 py-1 text-[10px] rounded bg-teal-600 hover:bg-teal-700 text-white font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                                  >
+                                    📦 ยืนยัน+พิมพ์ฝอย
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setPickupOpen(order.order_no); setPickupDelivery('') }}
+                                className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 transition-colors font-semibold shadow-sm whitespace-nowrap"
+                              >
+                                📦 ขึ้นของ / สั่งพิมพ์
+                              </button>
+                            )
+                          ) : (
+                            /* ── สาขา/ตัวแทน: แสดงสถานะ + พิมพ์ ── */
+                            <div className="flex flex-col items-center gap-1.5">
+                              <span className="text-gray-400 text-xs">รอดำเนินการ</span>
+                              <div className="flex gap-1">
+                                <button onClick={() => handlePrint(order, 'booking')}
+                                  className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
+                                  🖨️ ใบจอง
+                                </button>
+                                {hasFoy && (
+                                  <button onClick={() => handlePrint(order, 'foy')}
+                                    className="px-2 py-0.5 text-[10px] rounded bg-teal-50 hover:bg-teal-100 text-teal-600 border border-teal-200 transition-colors whitespace-nowrap">
+                                    🖨️ ฝอย
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </td>
 
                       </tr>
