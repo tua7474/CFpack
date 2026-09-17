@@ -77,6 +77,7 @@ function sortAndGroup(branches: Branch[]): { color: ColorGroup; items: Branch[] 
 }
 interface BranchOrder {
   id: number; order_no: string; total_amount: string
+  nv_total: string | null; v_total: string | null
   status: string; payment_status: string; created_at: string; updated_at: string
 }
 
@@ -97,7 +98,7 @@ const SLIP_CATS = [
 ] as const
 
 interface WithdrawalType { id: number; name: string }
-interface UnpaidOrder { id: number; order_no: string; total_amount: string }
+interface UnpaidOrder { id: number; order_no: string; total_amount: string; nv_total: string | null; v_total: string | null }
 
 interface BranchSession {
   branch_id: number; branch_name: string; phone: string
@@ -407,36 +408,54 @@ function BranchRow({
             </div>
             {weekOrders.length === 0 ? (
               <div className="text-gray-400">ไม่มีรายการ</div>
-            ) : weekOrders.map(o => (
-              <div key={o.id} className={`flex items-start gap-1.5 py-1 border-b border-gray-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium">#{o.order_no}</div>
-                  <div className="text-[9px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
-                  {session?.is_admin && o.payment_status === 'paid' && (
-                    <button onClick={() => handleResetPaid(o.id)}
-                      className="text-[9px] text-gray-400 hover:text-red-500 hover:underline">
-                      รีเซ็ต
-                    </button>
-                  )}
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-gray-500">฿{fmtMoney(o.total_amount)}</div>
-                  {o.payment_status === 'paid' ? (
-                    <div>
-                      <div className="text-[10px] text-green-500 font-medium">ชำระแล้ว</div>
-                      <div className="text-[9px] text-green-400">{fmtDateShort(o.updated_at)}</div>
+            ) : weekOrders.flatMap(o => {
+                const nvT = parseFloat(o.nv_total ?? '0') || 0
+                const vT  = parseFloat(o.v_total  ?? '0') || 0
+                const rows: { key: string; prefix: string; tag: 'NV'|'V'|null; amount: number }[] =
+                  nvT > 0 && vT > 0
+                    ? [{ key: `${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT },
+                       { key: `${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
+                    : nvT > 0
+                    ? [{ key: `${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT }]
+                    : vT > 0
+                    ? [{ key: `${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
+                    : [{ key: `${o.id}-x`,  prefix: '',   tag: null,  amount: parseFloat(o.total_amount) }]
+                return rows.map(row => (
+                <div key={row.key} className={`flex items-start gap-1.5 py-1 border-b border-gray-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">
+                      <span className={row.tag === 'NV' ? 'text-orange-500' : row.tag === 'V' ? 'text-green-500' : ''}>
+                        #{row.prefix}{o.order_no}
+                      </span>
                     </div>
-                  ) : session?.is_admin ? (
-                    <button onClick={() => handleMarkPaid(o.id)}
-                      className="text-[10px] text-red-500 font-medium hover:text-red-700 hover:underline">
-                      รอชำระ
-                    </button>
-                  ) : (
-                    <div className="text-[10px] text-red-500 font-medium">รอชำระ</div>
-                  )}
+                    <div className="text-[9px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
+                    {session?.is_admin && o.payment_status === 'paid' && row.tag !== 'V' && (
+                      <button onClick={() => handleResetPaid(o.id)}
+                        className="text-[9px] text-gray-400 hover:text-red-500 hover:underline">
+                        รีเซ็ต
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-gray-500">฿{fmtMoney(row.amount)}</div>
+                    {row.tag && <div className={`text-[9px] ${row.tag === 'NV' ? 'text-orange-400' : 'text-green-400'}`}>{row.tag === 'NV' ? 'ไม่รวมแวต' : 'รวมแวต'}</div>}
+                    {o.payment_status === 'paid' ? (
+                      <div>
+                        <div className="text-[10px] text-green-500 font-medium">ชำระแล้ว</div>
+                        <div className="text-[9px] text-green-400">{fmtDateShort(o.updated_at)}</div>
+                      </div>
+                    ) : session?.is_admin ? (
+                      <button onClick={() => handleMarkPaid(o.id)}
+                        className="text-[10px] text-red-500 font-medium hover:text-red-700 hover:underline">
+                        รอชำระ
+                      </button>
+                    ) : (
+                      <div className="text-[10px] text-red-500 font-medium">รอชำระ</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+                ))
+              })}
             </div>
           )}
         </td>
@@ -450,12 +469,25 @@ function BranchRow({
               <span className="text-[10px] text-gray-300">-</span>
             ) : (
               <div className="flex flex-col gap-0.5">
-                {orders.map(o => (
-                  <div key={o.id} className="text-[10px] whitespace-nowrap">
-                    <span className="text-gray-500">#{o.order_no}</span>
-                    <span className="text-orange-500 ml-1">฿{fmtMoney(o.total_amount)}</span>
-                  </div>
-                ))}
+                {orders.flatMap(o => {
+                  const nvT = parseFloat(o.nv_total ?? '0') || 0
+                  const vT  = parseFloat(o.v_total  ?? '0') || 0
+                  const rows: { key: string; prefix: string; tag: 'NV'|'V'|null; amount: number }[] =
+                    nvT > 0 && vT > 0
+                      ? [{ key: `${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT },
+                         { key: `${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
+                      : nvT > 0 ? [{ key: `${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT }]
+                      : vT > 0  ? [{ key: `${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
+                      : [{ key: `${o.id}-x`, prefix: '', tag: null, amount: parseFloat(o.total_amount) }]
+                  return rows.map(row => (
+                    <div key={row.key} className="text-[10px] whitespace-nowrap">
+                      <span className={row.tag === 'NV' ? 'text-orange-500' : row.tag === 'V' ? 'text-green-500' : 'text-gray-500'}>
+                        #{row.prefix}{o.order_no}
+                      </span>
+                      <span className="text-gray-500 ml-1">฿{fmtMoney(row.amount)}</span>
+                    </div>
+                  ))
+                })}
               </div>
             )}
           </td>
