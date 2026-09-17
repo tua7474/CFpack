@@ -831,12 +831,14 @@ function Booking2Inner() {
   const foyTotal = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
   // switchableTotal = 6 switchable subgroups + กระดาษฝอย
   const switchableTotal = switchableProductTotal + foyTotal
+  // fixedTotal = หมวดแถบเทาที่สวิสไม่ได้ (ราคารวม VAT อยู่แล้ว) → ไปอยู่ฝั่งขวาเสมอ
   const fixedTotal      = grayTotal + orangeTotal - switchableProductTotal
   const couponVal       = parseFloat(couponAmount) || 0
-  // Split: left = no-VAT, right = VAT (×1.07)
-  const noVatColTotal   = fixedTotal + (vatMode === 'no-vat' ? switchableTotal : 0) - couponVal
-  const vatColTotal     = vatMode === 'vat' ? Math.round(switchableTotal * 1.07 * 100) / 100 : 0
-  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal)
+  // ซ้าย (โนแวต): เฉพาะ switchable เมื่อ mode=โนแวต
+  const noVatColTotal   = vatMode === 'no-vat' ? switchableTotal : 0
+  // ขวา (รวมแวต): fixedTotal เสมอ + switchable×1.07 เมื่อ mode=รวมแวต
+  const vatColTotal     = fixedTotal + (vatMode === 'vat' ? Math.round(switchableTotal * 1.07 * 100) / 100 : 0)
+  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - couponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
 
   const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น'])
