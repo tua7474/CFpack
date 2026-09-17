@@ -75,10 +75,10 @@ const FOY_GROUP_NAMES    = new Set(['กระดาษฝอย'])
 
 const FOY_CATS_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
 const FOY_CAT_BG: Record<string, string> = {
-  '2 มิล':   '#F1C40F',
-  '4 มิล':   '#E67E22',
-  '1.5 มิล': '#E74C3C',
-  'ฝอยหยัก': '#9B59B6',
+  '2 มิล':   '#9b9484',
+  '4 มิล':   '#9b9484',
+  '1.5 มิล': '#9b9484',
+  'ฝอยหยัก': '#9b9484',
 }
 
 const FOY_ITEM_BG: Record<string, string> = {
@@ -1580,7 +1580,7 @@ function Booking2Inner() {
             <div className="foy-print-frame bg-white">
               {(() => {
                 const FOY_CATS  = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
-                const CAT_BG:   Record<string, string> = { '2 มิล': '#F1C40F', '4 มิล': '#E67E22', '1.5 มิล': '#E74C3C', 'ฝอยหยัก': '#9B59B6' }
+                const CAT_BG:   Record<string, string> = { '2 มิล': '#9b9484', '4 มิล': '#9b9484', '1.5 มิล': '#9b9484', 'ฝอยหยัก': '#9b9484' }
                 const MODEL_BG: Record<string, string> = { '2 มิล': '#F7DC6F', '4 มิล': '#F0B27A', '1.5 มิล': '#F1948A', 'ฝอยหยัก': '#C39BD3' }
                 const ROW_BG:   Record<string, string> = { '2 มิล': '#FCF3CF', '4 มิล': '#FAE5D3', '1.5 มิล': '#FADBD8', 'ฝอยหยัก': '#FBDEF0' }
 
