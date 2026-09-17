@@ -38,6 +38,7 @@ interface BookingOrder {
   source_type: string | null
   vehicle_type: string | null
   branch_name: string | null
+  withdrawal_type_id: number | null
   created_at: string
   updated_at: string
 }
@@ -107,6 +108,9 @@ export default function OrdersPage() {
   const [printOrder, setPrintOrder] = useState<BookingOrder | null>(null)
   const [printType, setPrintType]   = useState<'booking' | 'foy' | null>(null)
 
+  // Withdrawal types for display
+  const [withdrawalTypes, setWithdrawalTypes] = useState<{ id: number; name: string }[]>([])
+
   // Delivery methods + pickup dropdown
   const [deliveries, setDeliveries]           = useState<string[]>([])
   const [pickupOpen, setPickupOpen]           = useState<string | null>(null)  // order_no
@@ -134,6 +138,7 @@ export default function OrdersPage() {
     fetch('/api/booking2').then(r => r.json()).then(setProducts).catch(() => {})
     fetch('/api/stock').then(r => r.json()).then(setStockItems).catch(() => {})
     fetch('/api/delivery').then(r => r.json()).then((data: { name: string }[]) => setDeliveries(data.map(d => d.name))).catch(() => {})
+    fetch('/api/withdrawal').then(r => r.json()).then(setWithdrawalTypes).catch(() => {})
   }, [])
 
   // Read role + branch from branch_session
@@ -346,7 +351,7 @@ export default function OrdersPage() {
         {/* Info bar */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f9fafb', fontSize: '8.5pt' }}>
           <div><strong>วันที่:</strong> {orderDate}</div>
-          <div><strong>เบิกของ:</strong> {order.source_type ?? '—'}</div>
+          <div><strong>เบิกของ:</strong> {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}</div>
           <div><strong>รถ:</strong> {order.vehicle_type ?? '—'}</div>
           <div><strong>สาขา/ตัวแทน:</strong> {order.branch_name ?? '—'}</div>
         </div>
@@ -477,7 +482,7 @@ export default function OrdersPage() {
         {/* Info bar */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f0fdfa', fontSize: '8.5pt' }}>
           <div><strong>วันที่:</strong> {orderDate}</div>
-          <div><strong>เบิกของ:</strong> {order.source_type ?? '—'}</div>
+          <div><strong>เบิกของ:</strong> {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}</div>
           <div><strong>รถ:</strong> {order.vehicle_type ?? '—'}</div>
           <div><strong>สาขา/ตัวแทน:</strong> {order.branch_name ?? '—'}</div>
         </div>
@@ -894,8 +899,8 @@ export default function OrdersPage() {
                               <span className={order.vehicle_type ? (order.vehicle_type === 'จองรถ60000' ? 'text-blue-700 font-medium' : 'text-green-400 font-medium') : 'text-gray-300'}>
                                 {order.vehicle_type === 'จองรถ60000' ? 'เต็มคัน 25k' : order.vehicle_type === 'รอพ่วง' ? 'รอพ่วง' : order.vehicle_type === 'รับเอง' ? 'รับเอง' : order.vehicle_type === 'รถโรงงาน' ? 'รถโรงงาน' : '—'}
                               </span>
-                              <span className={order.source_type ? 'text-gray-500 font-medium' : 'text-gray-300'}>
-                                {order.source_type ?? '—'}
+                              <span className={order.withdrawal_type_id || order.source_type ? 'text-gray-500 font-medium' : 'text-gray-300'}>
+                                {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}
                               </span>
                             </div>
                             {cancelled ? (
