@@ -316,21 +316,22 @@ export default function OrdersPage() {
   function BookingPrint({ order }: { order: BookingOrder }) {
     type BookedItem = { product: CatalogProduct; qty: number; total: number }
     const productMap = new Map(products.map(p => [p.id, p]))
-    const sectionMap = new Map<string, { order: number; items: BookedItem[] }>()
+    const sectionMap = new Map<string, { order: number; subOrder: number; items: BookedItem[] }>()
 
     for (const [idStr, qty] of Object.entries(order.quantities ?? {})) {
       if (!qty) continue
       const p = productMap.get(Number(idStr))
       if (!p) continue
       const price = parseFloat(p.price ?? '0') || 0
-      if (!sectionMap.has(p.section_name)) {
-        sectionMap.set(p.section_name, { order: p.section_order, items: [] })
+      const key = p.subgroup_name || p.section_name
+      if (!sectionMap.has(key)) {
+        sectionMap.set(key, { order: p.section_order, subOrder: p.subgroup_order, items: [] })
       }
-      sectionMap.get(p.section_name)!.items.push({ product: p, qty, total: price * qty })
+      sectionMap.get(key)!.items.push({ product: p, qty, total: price * qty })
     }
 
     const sections = Array.from(sectionMap.entries())
-      .sort(([, a], [, b]) => a.order - b.order)
+      .sort(([, a], [, b]) => a.order !== b.order ? a.order - b.order : a.subOrder - b.subOrder)
 
     const foyEntries = Object.entries(order.foy_quantities ?? {}).filter(([, d]) => d.qty > 0)
     const grandTotal = parseFloat(order.total_amount)
