@@ -18,6 +18,14 @@ async function reply(replyToken: string, messages: object[]) {
   })
 }
 
+export async function push(to: string, messages: object[]) {
+  await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+    body: JSON.stringify({ to, messages }),
+  })
+}
+
 function verifySignature(body: string, sig: string) {
   const hash = crypto.createHmac('sha256', SECRET).update(body).digest('base64')
   return hash === sig
@@ -184,6 +192,16 @@ async function findBranchByGroupName(groupName: string): Promise<{ id: number; n
     )
     return rows[0] ?? null
   } catch { return null }
+}
+
+// บันทึก LINE group ID ให้สาขา (ครั้งแรกที่เจอ หรืออัปเดตถ้าเปลี่ยน)
+async function saveGroupId(branchId: number, groupId: string) {
+  try {
+    await pool.query(
+      `UPDATE branches SET line_group_id = $1 WHERE id = $2`,
+      [groupId, branchId]
+    )
+  } catch { /* ignore */ }
 }
 
 // ── Branch / Orders helpers ───────────────────────────────────────────────────
@@ -1469,6 +1487,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           bookingUrl  = `${BASE_URL}/booking2?branch_id=${branch.id}&branch_name=${encodeURIComponent(branch.name)}`
           branchLabel = `สาขา: ${branch.name}`
           branchId    = branch.id
+          saveGroupId(branch.id, source.groupId)  // บันทึก group ID ไว้สำหรับส่งแจ้งเตือน
         }
       }
     }
@@ -1902,7 +1921,10 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     const groupName = await getGroupName(source.groupId)
     if (groupName) {
       const branch = await findBranchByGroupName(groupName)
-      if (branch) branchId = branch.id
+      if (branch) {
+        branchId = branch.id
+        saveGroupId(branch.id, source.groupId)  // บันทึก group ID ไว้สำหรับส่งแจ้งเตือน
+      }
     }
   }
   if (!branchId) {

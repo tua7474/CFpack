@@ -26,6 +26,7 @@ export async function ensureTables() {
   await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS allowed_pages TEXT[] NOT NULL DEFAULT '{}'`)
   await pool.query(`ALTER TABLE branch_phones ADD COLUMN IF NOT EXISTS line_user_id VARCHAR(100)`)
   await pool.query(`ALTER TABLE branch_phones ALTER COLUMN phone TYPE VARCHAR(50)`).catch(() => {})
+  await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS line_group_id VARCHAR(100)`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS branch_otps (
       id         SERIAL PRIMARY KEY,

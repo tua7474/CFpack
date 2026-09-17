@@ -1,6 +1,52 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 
+// ── LINE push notification ────────────────────────────────────────────────────
+
+const LINE_TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN!
+const BASE_URL    = process.env.RAILWAY_PUBLIC_DOMAIN
+
+async function notifyNewBooking(branch_id: number | null, order_no: string) {
+  if (!branch_id || !LINE_TOKEN || !BASE_URL) return
+  try {
+    const { rows } = await pool.query(
+      `SELECT line_group_id FROM branches WHERE id = $1`, [branch_id]
+    )
+    const groupId = rows[0]?.line_group_id
+    if (!groupId) return
+
+    const ordersUrl = `${BASE_URL}/orders`
+    await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
+      body: JSON.stringify({
+        to: groupId,
+        messages: [{
+          type: 'flex',
+          altText: `เช็คด่วน ใบจองใหม่ #${order_no}`,
+          contents: {
+            type: 'bubble',
+            body: {
+              type: 'box', layout: 'vertical', spacing: 'sm',
+              contents: [
+                { type: 'text', text: '🔔 เช็คด่วน ใบจองใหม่', weight: 'bold', size: 'lg', color: '#CC0000' },
+                { type: 'text', text: `เลขที่ใบจอง: ${order_no}`, size: 'sm', color: '#555555' },
+              ],
+            },
+            footer: {
+              type: 'box', layout: 'vertical',
+              contents: [{
+                type: 'button', style: 'primary', color: '#CC0000',
+                action: { type: 'uri', label: '📋 ดูประวัติใบจอง', uri: ordersUrl },
+              }],
+            },
+          },
+        }],
+      }),
+    })
+  } catch { /* non-critical — don't fail the order */ }
+}
+
 // ── Table ─────────────────────────────────────────────────────────────────────
 
 const CREATE_TABLE = `
@@ -97,6 +143,7 @@ export async function POST(request: Request) {
        JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {})]
     )
     await deductStock(quantities ?? {})
+    notifyNewBooking(branch_id ?? null, rows[0].order_no)
     return NextResponse.json(rows[0], { status: 201 })
   } catch (e: unknown) {
     if ((e as { code?: string }).code === '23505') {
@@ -108,6 +155,7 @@ export async function POST(request: Request) {
          JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {})]
       )
       await deductStock(quantities ?? {})
+      notifyNewBooking(branch_id ?? null, rows[0].order_no)
       return NextResponse.json(rows[0], { status: 201 })
     }
     throw e
