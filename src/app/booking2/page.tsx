@@ -1288,17 +1288,11 @@ function Booking2Inner() {
                                 // left: no-VAT
                                 <td key={`${si}-ip4a`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'no-vat' ? 'bg-orange-50' : 'bg-gray-50'} align-middle`}>
                                   <div className="flex flex-col items-center justify-center h-full gap-0.5">
-                                    {/* toggle buttons */}
-                                    <div className="flex gap-1 self-start no-print">
+                                    <div className="no-print self-start">
                                       <button
                                         onClick={() => setVatMode('no-vat')}
                                         className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'no-vat' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                                         โนแวต
-                                      </button>
-                                      <button
-                                        onClick={() => setVatMode('vat')}
-                                        className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'vat' ? 'bg-[#9b9484] text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
-                                        รวมแวต
                                       </button>
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
@@ -1310,6 +1304,13 @@ function Booking2Inner() {
                                 // right: VAT
                                 <td key={`${si}-ip4b`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'vat' ? 'bg-green-50' : 'bg-gray-50'} align-middle`}>
                                   <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                    <div className="no-print self-start">
+                                      <button
+                                        onClick={() => setVatMode('vat')}
+                                        className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'vat' ? 'bg-[#9b9484] text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
+                                        รวมแวต
+                                      </button>
+                                    </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
                                       {fmt2(vatColTotal > 0 ? vatColTotal : 0)}
