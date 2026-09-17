@@ -68,6 +68,11 @@ const SUBGROUP_BG: Record<SubgroupColor, string> = {
   maroon: 'bg-[#9b9484] text-white border-gray-500',
 }
 
+// 6 subgroups that can toggle between no-VAT (orange) and VAT (gray)
+const SWITCHABLE_SUBGROUP_NAMES = new Set([
+  'ซองPPกันกระแทก', 'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
+])
+
 // ── กระดาษฝอย groups — link to /booking-foy ──────────────────────────────────
 // ทุก model จาก paper_stock จะมี group_name='กระดาษฝอย' และ subgroup_name='กระดาษฝอย'
 const FOY_SUBGROUP_NAMES = new Set(['กระดาษฝอย'])
@@ -265,6 +270,7 @@ function Booking2Inner() {
   const [withdrawalTypeId, setWithdrawalTypeId] = useState<number | null>(null)
   const [priorityMode, setPriorityMode]         = useState<PriorityLevel | null>(null)
   const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
+  const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
 
   // Load foy result from booking-foy (new order mode only)
   useEffect(() => {
@@ -788,6 +794,7 @@ function Booking2Inner() {
   })
 
   let grayTotal = 0, orangeTotal = 0
+  let switchableProductTotal = 0
   const sectionTotals  = new Map<number, number>()
   const subgroupTotals = new Map<string, number>()   // key = `${sec.order}-${subgroup.name}`
   for (const sec of sections) {
@@ -812,6 +819,7 @@ function Booking2Inner() {
         if (sec.is_vat_included) grayTotal += val
         else orangeTotal += val
         secTotal += val
+        if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
         if (currentSubgroup !== null) {
           const sgKey = `${sec.order}-${currentSubgroup}`
           subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + val)
@@ -821,8 +829,14 @@ function Booking2Inner() {
     sectionTotals.set(sec.order, secTotal)
   }
   const foyTotal = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
+  // switchableTotal = 6 switchable subgroups + กระดาษฝอย
+  const switchableTotal = switchableProductTotal + foyTotal
+  const fixedTotal      = grayTotal + orangeTotal - switchableProductTotal
   const couponVal       = parseFloat(couponAmount) || 0
-  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (grayTotal + orangeTotal + foyTotal - couponVal)
+  // Split: left = no-VAT, right = VAT (×1.07)
+  const noVatColTotal   = fixedTotal + (vatMode === 'no-vat' ? switchableTotal : 0) - couponVal
+  const vatColTotal     = vatMode === 'vat' ? Math.round(switchableTotal * 1.07 * 100) / 100 : 0
+  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
 
   const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น'])
@@ -1258,7 +1272,7 @@ function Booking2Inner() {
                             ]
                             if (pr === 4) return []
 
-                            // pr 5-6: ยอดรวม — rowSpan=2, large editable
+                            // pr 5-6: ยอดรวม — rowSpan=2, split no-VAT (left) + VAT (right)
                             if (pr === 5) {
                               if (stockPrintMode) return [
                                 <td key={`${si}-ip4`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-blue-50 align-middle`}>
@@ -1268,20 +1282,36 @@ function Booking2Inner() {
                                   </div>
                                 </td>,
                               ]
-                              const autoVal = grayTotal + orangeTotal + foyTotal - couponVal
-                              const displayVal = manualTotal !== '' ? manualTotal : autoVal.toFixed(2)
                               return [
-                                <td key={`${si}-ip4`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-green-50 align-middle`}>
-                                  <div className="flex flex-col items-center justify-center h-full px-1 py-0">
-                                    <div className="text-[11px] font-extrabold text-gray-500 self-start leading-none mb-0.5">ยอดเงินรวม (฿)</div>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      max="999999.99"
-                                      value={displayVal}
-                                      onChange={e => setManualTotal(e.target.value)}
-                                      className="w-full text-2xl font-extrabold text-green-500 text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-gray-400 rounded leading-none"
-                                    />
+                                // left: no-VAT
+                                <td key={`${si}-ip4a`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'no-vat' ? 'bg-orange-50' : 'bg-gray-50'} align-middle`}>
+                                  <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                    {/* toggle buttons */}
+                                    <div className="flex gap-1 self-start no-print">
+                                      <button
+                                        onClick={() => setVatMode('no-vat')}
+                                        className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'no-vat' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
+                                        โนแวต
+                                      </button>
+                                      <button
+                                        onClick={() => setVatMode('vat')}
+                                        className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'vat' ? 'bg-[#9b9484] text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
+                                        รวมแวต
+                                      </button>
+                                    </div>
+                                    <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
+                                    <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>
+                                      {fmt2(noVatColTotal > 0 ? noVatColTotal : 0)}
+                                    </div>
+                                  </div>
+                                </td>,
+                                // right: VAT
+                                <td key={`${si}-ip4b`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'vat' ? 'bg-green-50' : 'bg-gray-50'} align-middle`}>
+                                  <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                    <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
+                                    <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
+                                      {fmt2(vatColTotal > 0 ? vatColTotal : 0)}
+                                    </div>
                                   </div>
                                 </td>,
                               ]
@@ -1420,9 +1450,13 @@ function Booking2Inner() {
                             }
                             const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
+                            const isSwitchableSg = SWITCHABLE_SUBGROUP_NAMES.has(cell.name)
+                            const sgBgClass = isSwitchableSg && vatMode === 'no-vat'
+                              ? 'bg-orange-500 text-white border-orange-600'
+                              : SUBGROUP_BG[cell.color]
                             return [
                               <td key={`${si}-sg`} colSpan={4}
-                                className={`border px-2 py-px text-[11px] font-bold print-sg ${SUBGROUP_BG[cell.color]} sg-gray-${sgGray}`}>
+                                className={`border px-2 py-px text-[11px] font-bold print-sg ${sgBgClass} sg-gray-${sgGray}`}>
                                 <div className="flex items-center justify-between gap-1">
                                   <span>{cell.name}</span>
                                   {sgTotal > 0 && (
@@ -1437,7 +1471,7 @@ function Booking2Inner() {
                             if (compactPrintMode && !compactActiveFoyCats[si].has(rowIdx)) {
                               return [<td key={`${si}-fc`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />]
                             }
-                            const catBg = FOY_CAT_BG[cell.category] ?? '#e5e7eb'
+                            const catBg = vatMode === 'no-vat' ? '#f97316' : (FOY_CAT_BG[cell.category] ?? '#9b9484')
                             const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             return [
                               <td key={`${si}-fc`} colSpan={4}
@@ -1580,7 +1614,8 @@ function Booking2Inner() {
             <div className="foy-print-frame bg-white">
               {(() => {
                 const FOY_CATS  = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
-                const CAT_BG:   Record<string, string> = { '2 มิล': '#9b9484', '4 มิล': '#9b9484', '1.5 มิล': '#9b9484', 'ฝอยหยัก': '#9b9484' }
+                const catBgColor = vatMode === 'no-vat' ? '#f97316' : '#9b9484'
+                const CAT_BG:   Record<string, string> = { '2 มิล': catBgColor, '4 มิล': catBgColor, '1.5 มิล': catBgColor, 'ฝอยหยัก': catBgColor }
                 const MODEL_BG: Record<string, string> = { '2 มิล': '#F7DC6F', '4 มิล': '#F0B27A', '1.5 มิล': '#F1948A', 'ฝอยหยัก': '#C39BD3' }
                 const ROW_BG:   Record<string, string> = { '2 มิล': '#FCF3CF', '4 มิล': '#FAE5D3', '1.5 มิล': '#FADBD8', 'ฝอยหยัก': '#FBDEF0' }
 
