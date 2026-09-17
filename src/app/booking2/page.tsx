@@ -551,6 +551,8 @@ function Booking2Inner() {
 
   const handleSave = async () => {
     if (!pendingCount && !hasFoyPending && !editOrderNo) return
+    if (vehicleType === '') { setSaveMsg('⚠ กรุณาเลือก รถ ก่อนบันทึก'); return }
+    if (!isAutoForced && withdrawalTypeId === null) { setSaveMsg('⚠ กรุณาเลือก เบิกของ ก่อนบันทึก'); return }
     setSaving(true)
     setSaveMsg(null)
     try {
@@ -1091,11 +1093,13 @@ function Booking2Inner() {
                 )}
                 <button
                   onClick={handleSave}
-                  disabled={saving || cannotBook25k || vehicleType === '' || sourceType === '' || bubbleBlocking}
+                  disabled={saving || cannotBook25k || vehicleType === '' || (!isAutoForced && withdrawalTypeId === null) || bubbleBlocking}
                   className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors disabled:opacity-50"
                 >
                   {saving ? 'กำลังบันทึก...' : '💾 บันทึกการจอง'}
                 </button>
+                {!isAutoForced && withdrawalTypeId === null && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก เบิกของ</span>}
+                {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รถ</span>}
                 {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
               </>
@@ -1112,11 +1116,13 @@ function Booking2Inner() {
                 )}
                 <button
                   onClick={handleSave}
-                  disabled={saving || cannotBook25k || vehicleType === '' || sourceType === '' || bubbleBlocking}
+                  disabled={saving || cannotBook25k || vehicleType === '' || (!isAutoForced && withdrawalTypeId === null) || bubbleBlocking}
                   className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-semibold transition-colors disabled:opacity-50"
                 >
                   {saving ? 'กำลังบันทึก...' : '💾 อัพเดทการจอง'}
                 </button>
+                {!isAutoForced && withdrawalTypeId === null && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก เบิกของ</span>}
+                {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รถ</span>}
                 {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
                 {pendingCount === 0 && !hasFoyPending && (
