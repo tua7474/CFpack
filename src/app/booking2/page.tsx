@@ -883,12 +883,17 @@ function Booking2Inner() {
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   // ── Viewport scale for screen display (fits A4 width in window) ─────────────
+  // NOTE: listen to orientationchange only, NOT resize.
+  // On iOS Safari, pinch-zoom changes window.innerWidth → resize fires → viewScale shrinks
+  // progressively until the document disappears. orientationchange only fires on actual rotation.
   const [viewScale, setViewScale] = useState(1)
   useEffect(() => {
     const calc = () => setViewScale(Math.min(1, (window.innerWidth - 16) / A4_W_PX))
     calc()
-    window.addEventListener('resize', calc)
-    return () => window.removeEventListener('resize', calc)
+    // Wait 150 ms after rotation so the viewport has finished resizing
+    const onOrient = () => setTimeout(calc, 150)
+    window.addEventListener('orientationchange', onOrient)
+    return () => window.removeEventListener('orientationchange', onOrient)
   }, [])
 
   // ── iOS-safe scaling: measure content height so transform layout collapses ───
