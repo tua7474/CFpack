@@ -104,7 +104,7 @@ export default function OrdersPage() {
 
   // Bulk payment modal
   const [showPayModal, setShowPayModal]     = useState(false)
-  const [payModalOrders, setPayModalOrders] = useState<{ order_no: string; total_amount: string; branch_name: string | null }[]>([])
+  const [payModalOrders, setPayModalOrders] = useState<{ display_no: string; order_no: string; total_amount: string; branch_name: string | null; vat_tag: 'NV' | 'V' | null }[]>([])
   const [selOrderNos, setSelOrderNos]       = useState<Set<string>>(new Set())
   const [branchSlips, setBranchSlips]       = useState<{ id: number; category: string; amount: number; account_name: string | null; slip_date: string; applied: boolean }[]>([])
   const [appliedSlipIds, setAppliedSlipIds] = useState<Set<number>>(new Set())
@@ -251,15 +251,31 @@ export default function OrdersPage() {
           ? fetch(`/api/slips?branch_name=${encodeURIComponent(activeBranch)}`).then(r => r.json()).catch(() => [])
           : Promise.resolve([]),
       ])
-      const allOrders: { order_no: string; total_amount: string; branch_name: string | null; payment_status: string; status: string }[] =
+      const allOrders: { order_no: string; total_amount: string; nv_total: string | null; v_total: string | null; branch_name: string | null; payment_status: string; status: string }[] =
         Array.isArray(ordersRes) ? ordersRes : []
       const unpaid = allOrders.filter(o =>
         o.payment_status !== 'paid' &&
         o.status !== 'cancelled' &&
         (activeBranch ? o.branch_name === activeBranch : true)
       )
-      setPayModalOrders(unpaid)
-      setSelOrderNos(new Set(unpaid.map(o => o.order_no)))
+      // Expand into NV/V entries for independent payment selection
+      const payEntries: { display_no: string; order_no: string; total_amount: string; branch_name: string | null; vat_tag: 'NV' | 'V' | null }[] = []
+      for (const o of unpaid) {
+        const nvT = parseFloat(o.nv_total ?? '0') || 0
+        const vT  = parseFloat(o.v_total  ?? '0') || 0
+        if (nvT > 0 && vT > 0) {
+          payEntries.push({ display_no: `NV${o.order_no}`, order_no: o.order_no, total_amount: String(nvT), branch_name: o.branch_name, vat_tag: 'NV' })
+          payEntries.push({ display_no: `V${o.order_no}`,  order_no: o.order_no, total_amount: String(vT),  branch_name: o.branch_name, vat_tag: 'V'  })
+        } else if (nvT > 0) {
+          payEntries.push({ display_no: `NV${o.order_no}`, order_no: o.order_no, total_amount: String(nvT), branch_name: o.branch_name, vat_tag: 'NV' })
+        } else if (vT > 0) {
+          payEntries.push({ display_no: `V${o.order_no}`,  order_no: o.order_no, total_amount: String(vT),  branch_name: o.branch_name, vat_tag: 'V'  })
+        } else {
+          payEntries.push({ display_no: o.order_no, order_no: o.order_no, total_amount: o.total_amount, branch_name: o.branch_name, vat_tag: null })
+        }
+      }
+      setPayModalOrders(payEntries)
+      setSelOrderNos(new Set(payEntries.map(e => e.display_no)))
       setBranchSlips(Array.isArray(slipsRes) ? slipsRes : [])
       setAppliedSlipIds(new Set())
       setPayStep(1)
@@ -330,8 +346,15 @@ export default function OrdersPage() {
 
   function BookingPrint({ order }: { order: BookingOrder }) {
     type BookedItem = { product: CatalogProduct; qty: number; total: number }
+
+    // Switchable subgroup names → NV form; all others → V form
+    const SWITCHABLE_SG = new Set(['ซองPPกันกระแทก', 'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก'])
+
     const productMap = new Map(products.map(p => [p.id, p]))
-    const sectionMap = new Map<string, { order: number; subOrder: number; items: BookedItem[] }>()
+
+    type SectionMap = Map<string, { order: number; subOrder: number; items: BookedItem[] }>
+    const nvSectionMap: SectionMap = new Map()
+    const vSectionMap:  SectionMap = new Map()
 
     for (const [idStr, qty] of Object.entries(order.quantities ?? {})) {
       if (!qty) continue
@@ -339,122 +362,157 @@ export default function OrdersPage() {
       if (!p) continue
       const price = parseFloat(p.price ?? '0') || 0
       const key = p.subgroup_name || p.section_name
-      if (!sectionMap.has(key)) {
-        sectionMap.set(key, { order: p.section_order, subOrder: p.subgroup_order, items: [] })
+      const targetMap = SWITCHABLE_SG.has(p.subgroup_name) ? nvSectionMap : vSectionMap
+      if (!targetMap.has(key)) {
+        targetMap.set(key, { order: p.section_order, subOrder: p.subgroup_order, items: [] })
       }
-      sectionMap.get(key)!.items.push({ product: p, qty, total: price * qty })
+      targetMap.get(key)!.items.push({ product: p, qty, total: price * qty })
     }
 
-    const sections = Array.from(sectionMap.entries())
-      .sort(([, a], [, b]) => a.order !== b.order ? a.order - b.order : a.subOrder - b.subOrder)
+    const sortSections = (m: SectionMap) =>
+      Array.from(m.entries()).sort(([, a], [, b]) => a.order !== b.order ? a.order - b.order : a.subOrder - b.subOrder)
+
+    const nvSections = sortSections(nvSectionMap)
+    const vSections  = sortSections(vSectionMap)
+    const allSections = sortSections(new Map([...nvSectionMap, ...vSectionMap]))
 
     const foyEntries = Object.entries(order.foy_quantities ?? {}).filter(([, d]) => d.qty > 0)
-    const grandTotal = parseFloat(order.total_amount)
-    const orderDate  = fmtOrderDate(order.updated_at)
+    const nvTotal = parseFloat(order.nv_total ?? '0') || 0
+    const vTotal  = parseFloat(order.v_total  ?? '0') || 0
+    const orderDate = fmtOrderDate(order.updated_at)
 
     const tdBase: React.CSSProperties = { padding: '1.5mm 2mm', border: '1px solid #ccc', fontSize: '8.5pt' }
-    const thBase: React.CSSProperties = { padding: '2mm', border: '1px solid #888', fontSize: '8.5pt', backgroundColor: '#9b9484', color: 'white' }
 
-    return (
-      <div style={{ width: '210mm', height: '297mm', padding: '8mm', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
+    const renderSingleForm = (
+      displayOrderNo: string,
+      sections: [string, { order: number; subOrder: number; items: BookedItem[] }][],
+      foyRows: [string, { qty: number; amount: number }][],
+      grandTotal: number,
+      accentColor: string,
+      vatLabel: string | null,
+      wrapperStyle?: React.CSSProperties,
+    ) => {
+      const thBase: React.CSSProperties = { padding: '2mm', border: '1px solid #888', fontSize: '8.5pt', backgroundColor: '#9b9484', color: 'white' }
+      return (
+        <div style={{ width: '210mm', height: '297mm', padding: '8mm', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif', ...wrapperStyle }}>
 
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '3mm' }}>
-          <div style={{ fontSize: '16pt', fontWeight: 'bold', color: '#4ade80' }}>ใบจองสินค้า</div>
-          <div style={{ fontSize: '9pt', color: '#555' }}>เลขที่: {order.order_no}</div>
-        </div>
-
-        {/* Info bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f9fafb', fontSize: '8.5pt' }}>
-          <div><strong>วันที่:</strong> {orderDate}</div>
-          <div><strong>เบิกของ:</strong> {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}</div>
-          <div><strong>รถ:</strong> {order.vehicle_type ?? '—'}</div>
-          <div><strong>สาขา/ตัวแทน:</strong> {order.branch_name ?? '—'}</div>
-        </div>
-
-        {/* Product table */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: '28mm' }} />
-              <col />
-              <col style={{ width: '22mm' }} />
-              <col style={{ width: '14mm' }} />
-              <col style={{ width: '24mm' }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th style={{ ...thBase, textAlign: 'left' }}>หมวดหมู่</th>
-                <th style={{ ...thBase, textAlign: 'left' }}>ชื่อสินค้า</th>
-                <th style={{ ...thBase, textAlign: 'right' }}>ราคา/หน่วย</th>
-                <th style={{ ...thBase, textAlign: 'right' }}>จำนวน</th>
-                <th style={{ ...thBase, textAlign: 'right' }}>รวม (฿)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sections.flatMap(([sectionName, { items }]) =>
-                items.map((item, idx) => (
-                  <tr key={`${sectionName}-${idx}`} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5' }}>
-                    {idx === 0 && (
-                      <td rowSpan={items.length} style={{ ...tdBase, fontWeight: 'bold', color: '#444', textAlign: 'center', verticalAlign: 'middle', backgroundColor: '#e8f5e9', fontSize: '7.5pt' }}>
-                        {sectionName}
-                      </td>
-                    )}
-                    <td style={{ ...tdBase }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        {(() => {
-                          const prio = (order.priorities ?? {})[String(item.product.id)]
-                          if (prio === 'critical')  return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#000', flexShrink: 0 }} />
-                          if (prio === 'important') return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#888', border: '1px solid #000', flexShrink: 0 }} />
-                          return null
-                        })()}
-                        {item.product.product_name}
-                      </span>
-                    </td>
-                    <td style={{ ...tdBase, textAlign: 'right' }}>
-                      {item.product.price ? parseFloat(item.product.price).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '—'}
-                    </td>
-                    <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold' }}>{item.qty}</td>
-                    <td style={{ ...tdBase, textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                ))
-              )}
-
-              {/* FOY summary rows */}
-              {foyEntries.map(([model, data]) => (
-                <tr key={`foy-${model}`} style={{ backgroundColor: '#f0fdf4' }}>
-                  <td style={{ ...tdBase, fontWeight: 'bold', color: '#166534', textAlign: 'center', fontSize: '7.5pt' }}>กระดาษฝอย</td>
-                  <td style={{ ...tdBase, color: '#166534' }}>{model}</td>
-                  <td style={{ ...tdBase, textAlign: 'right', color: '#166534' }}>—</td>
-                  <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', color: '#166534' }}>{data.qty}</td>
-                  <td style={{ ...tdBase, textAlign: 'right', color: '#166534' }}>{data.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ backgroundColor: '#d1fae5' }}>
-                <td colSpan={4} style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', borderColor: '#888' }}>ยอดเงินรวม</td>
-                <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', color: '#14532d', borderColor: '#888' }}>
-                  {fmtMoney(grandTotal)} บาท
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {/* Signature area */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
-          {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
-            <div key={label} style={{ border: '1px solid #ccc', padding: '3mm', borderRadius: '1mm' }}>
-              <div style={{ fontSize: '8pt', color: '#666', marginBottom: '10mm' }}>{label}</div>
-              <div style={{ borderTop: '1px solid #aaa', paddingTop: '1.5mm', fontSize: '7.5pt', color: '#888' }}>
-                ลงชื่อ _________________________ วันที่ _____________
-              </div>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: '3mm' }}>
+            <div style={{ fontSize: '16pt', fontWeight: 'bold', color: accentColor }}>
+              ใบจองสินค้า{vatLabel ? ` (${vatLabel})` : ''}
             </div>
-          ))}
+            <div style={{ fontSize: '9pt', color: '#555' }}>เลขที่: {displayOrderNo}</div>
+          </div>
+
+          {/* Info bar */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f9fafb', fontSize: '8.5pt' }}>
+            <div><strong>วันที่:</strong> {orderDate}</div>
+            <div><strong>เบิกของ:</strong> {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}</div>
+            <div><strong>รถ:</strong> {order.vehicle_type ?? '—'}</div>
+            <div><strong>สาขา/ตัวแทน:</strong> {order.branch_name ?? '—'}</div>
+          </div>
+
+          {/* Product table */}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '28mm' }} />
+                <col />
+                <col style={{ width: '22mm' }} />
+                <col style={{ width: '14mm' }} />
+                <col style={{ width: '24mm' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={{ ...thBase, textAlign: 'left' }}>หมวดหมู่</th>
+                  <th style={{ ...thBase, textAlign: 'left' }}>ชื่อสินค้า</th>
+                  <th style={{ ...thBase, textAlign: 'right' }}>ราคา/หน่วย</th>
+                  <th style={{ ...thBase, textAlign: 'right' }}>จำนวน</th>
+                  <th style={{ ...thBase, textAlign: 'right' }}>รวม (฿)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sections.flatMap(([sectionName, { items }]) =>
+                  items.map((item, idx) => (
+                    <tr key={`${sectionName}-${idx}`} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5' }}>
+                      {idx === 0 && (
+                        <td rowSpan={items.length} style={{ ...tdBase, fontWeight: 'bold', color: '#444', textAlign: 'center', verticalAlign: 'middle', backgroundColor: '#e8f5e9', fontSize: '7.5pt' }}>
+                          {sectionName}
+                        </td>
+                      )}
+                      <td style={{ ...tdBase }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          {(() => {
+                            const prio = (order.priorities ?? {})[String(item.product.id)]
+                            if (prio === 'critical')  return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#000', flexShrink: 0 }} />
+                            if (prio === 'important') return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#888', border: '1px solid #000', flexShrink: 0 }} />
+                            return null
+                          })()}
+                          {item.product.product_name}
+                        </span>
+                      </td>
+                      <td style={{ ...tdBase, textAlign: 'right' }}>
+                        {item.product.price ? parseFloat(item.product.price).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '—'}
+                      </td>
+                      <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold' }}>{item.qty}</td>
+                      <td style={{ ...tdBase, textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))
+                )}
+
+                {/* FOY summary rows (NV form only) */}
+                {foyRows.map(([model, data]) => (
+                  <tr key={`foy-${model}`} style={{ backgroundColor: '#f0fdf4' }}>
+                    <td style={{ ...tdBase, fontWeight: 'bold', color: '#166534', textAlign: 'center', fontSize: '7.5pt' }}>กระดาษฝอย</td>
+                    <td style={{ ...tdBase, color: '#166534' }}>{model}</td>
+                    <td style={{ ...tdBase, textAlign: 'right', color: '#166534' }}>—</td>
+                    <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', color: '#166534' }}>{data.qty}</td>
+                    <td style={{ ...tdBase, textAlign: 'right', color: '#166534' }}>{data.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ backgroundColor: '#d1fae5' }}>
+                  <td colSpan={4} style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', borderColor: '#888' }}>ยอดเงินรวม</td>
+                  <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', color: '#14532d', borderColor: '#888' }}>
+                    {fmtMoney(grandTotal)} บาท
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Signature area */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
+            {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
+              <div key={label} style={{ border: '1px solid #ccc', padding: '3mm', borderRadius: '1mm' }}>
+                <div style={{ fontSize: '8pt', color: '#666', marginBottom: '10mm' }}>{label}</div>
+                <div style={{ borderTop: '1px solid #aaa', paddingTop: '1.5mm', fontSize: '7.5pt', color: '#888' }}>
+                  ลงชื่อ _________________________ วันที่ _____________
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
+
+    // Determine which forms to render
+    if (nvTotal > 0 && vTotal > 0) {
+      return (
+        <>
+          {renderSingleForm(`NV${order.order_no}`, nvSections, foyEntries, nvTotal, '#f97316', 'NV', { pageBreakAfter: 'always' })}
+          {renderSingleForm(`V${order.order_no}`,  vSections,  [],         vTotal,  '#4ade80', 'V')}
+        </>
+      )
+    } else if (nvTotal > 0) {
+      return renderSingleForm(`NV${order.order_no}`, nvSections, foyEntries, nvTotal, '#f97316', 'NV')
+    } else if (vTotal > 0) {
+      return renderSingleForm(`V${order.order_no}`, vSections, [], vTotal, '#4ade80', 'V')
+    } else {
+      // Legacy: both totals are 0 — combined form
+      return renderSingleForm(order.order_no, allSections, foyEntries, parseFloat(order.total_amount), '#4ade80', null)
+    }
   }
 
   // ── Print render: ใบจองกระดาษฝอย ──────────────────────────────────────────
@@ -623,14 +681,14 @@ export default function OrdersPage() {
       {/* ── Payment Modal */}
       {showPayModal && (() => {
         const selectedTotal = payModalOrders
-          .filter(o => selOrderNos.has(o.order_no))
+          .filter(o => selOrderNos.has(o.display_no))
           .reduce((s, o) => s + parseFloat(o.total_amount), 0)
         const safeSlips = Array.isArray(branchSlips) ? branchSlips : []
         const totalDeduct = safeSlips
           .filter(s => appliedSlipIds.has(s.id))
           .reduce((sum, s) => sum + s.amount, 0)
         const remaining   = Math.max(0, selectedTotal - totalDeduct)
-        const allSelected = payModalOrders.every(o => selOrderNos.has(o.order_no))
+        const allSelected = payModalOrders.every(o => selOrderNos.has(o.display_no))
         const SLIP_LABEL_MAP: Record<string, string> = {
           'วรวุฒิ': 'สลิปวรวุฒิ', 'print': 'สลิปPRINT', 'pack': 'สลิปPACK', 'bb': 'สลิปBB', 'กล่อง': 'สลิปกล่อง'
         }
@@ -675,7 +733,7 @@ export default function OrdersPage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm font-semibold text-gray-700">ใบจองค้างชำระ</div>
                       <button
-                        onClick={() => setSelOrderNos(allSelected ? new Set() : new Set(payModalOrders.map(o => o.order_no)))}
+                        onClick={() => setSelOrderNos(allSelected ? new Set() : new Set(payModalOrders.map(o => o.display_no)))}
                         className="text-xs px-2 py-1 rounded border border-orange-300 text-orange-600 hover:bg-orange-50 transition-colors"
                       >
                         {allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
@@ -686,15 +744,15 @@ export default function OrdersPage() {
                         <div className="px-4 py-3 text-sm text-gray-400 text-center">ไม่มียอดค้างชำระ</div>
                       )}
                       {payModalOrders.map(o => {
-                        const checked = selOrderNos.has(o.order_no)
+                        const checked = selOrderNos.has(o.display_no)
                         return (
-                          <label key={o.order_no} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-orange-50' : 'hover:bg-gray-50'}`}>
+                          <label key={o.display_no} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-orange-50' : 'hover:bg-gray-50'}`}>
                             <input type="checkbox" checked={checked} onChange={() => {
                               const next = new Set(selOrderNos)
-                              checked ? next.delete(o.order_no) : next.add(o.order_no)
+                              checked ? next.delete(o.display_no) : next.add(o.display_no)
                               setSelOrderNos(next)
                             }} className="accent-orange-500 w-4 h-4 flex-shrink-0" />
-                            <span className="font-mono text-sm font-bold text-green-600 flex-shrink-0">{o.order_no}</span>
+                            <span className={`font-mono text-sm font-bold flex-shrink-0 ${o.vat_tag === 'NV' ? 'text-orange-500' : o.vat_tag === 'V' ? 'text-green-600' : 'text-green-600'}`}>{o.display_no}</span>
                             <span className="text-xs text-gray-500 flex-1 truncate">{o.branch_name ?? ''}</span>
                             <span className="text-sm font-semibold text-gray-800 flex-shrink-0">
                               ฿{parseFloat(o.total_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
