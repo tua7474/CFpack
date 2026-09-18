@@ -243,25 +243,28 @@ export default function OrdersPage() {
   }
 
   const openPayModal = async (filterBranch?: string) => {
-    const activeBranch = filterBranch ?? branchName ?? null
-    const [ordersRes, slipsRes] = await Promise.all([
-      fetch('/api/orders').then(r => r.json()).catch(() => []),
-      activeBranch
-        ? fetch(`/api/slips?branch_name=${encodeURIComponent(activeBranch)}`).then(r => r.json()).catch(() => [])
-        : Promise.resolve([]),
-    ])
-    const allOrders: { order_no: string; total_amount: string; branch_name: string | null; payment_status: string; status: string }[] = ordersRes
-    const unpaid = allOrders.filter(o =>
-      o.payment_status !== 'paid' &&
-      o.status !== 'cancelled' &&
-      (activeBranch ? o.branch_name === activeBranch : true)
-    )
-    setPayModalOrders(unpaid)
-    setSelOrderNos(new Set(unpaid.map(o => o.order_no)))
-    setBranchSlips(slipsRes)
-    setAppliedSlipIds(new Set())
-    setPayStep(1)
-    setQrUrl(null)
+    try {
+      const activeBranch = filterBranch ?? branchName ?? null
+      const [ordersRes, slipsRes] = await Promise.all([
+        fetch('/api/orders').then(r => r.json()).catch(() => []),
+        activeBranch
+          ? fetch(`/api/slips?branch_name=${encodeURIComponent(activeBranch)}`).then(r => r.json()).catch(() => [])
+          : Promise.resolve([]),
+      ])
+      const allOrders: { order_no: string; total_amount: string; branch_name: string | null; payment_status: string; status: string }[] =
+        Array.isArray(ordersRes) ? ordersRes : []
+      const unpaid = allOrders.filter(o =>
+        o.payment_status !== 'paid' &&
+        o.status !== 'cancelled' &&
+        (activeBranch ? o.branch_name === activeBranch : true)
+      )
+      setPayModalOrders(unpaid)
+      setSelOrderNos(new Set(unpaid.map(o => o.order_no)))
+      setBranchSlips(Array.isArray(slipsRes) ? slipsRes : [])
+      setAppliedSlipIds(new Set())
+      setPayStep(1)
+      setQrUrl(null)
+    } catch { /* ignore fetch errors — still open modal */ }
     setShowPayModal(true)
   }
 
@@ -622,7 +625,8 @@ export default function OrdersPage() {
         const selectedTotal = payModalOrders
           .filter(o => selOrderNos.has(o.order_no))
           .reduce((s, o) => s + parseFloat(o.total_amount), 0)
-        const totalDeduct = branchSlips
+        const safeSlips = Array.isArray(branchSlips) ? branchSlips : []
+        const totalDeduct = safeSlips
           .filter(s => appliedSlipIds.has(s.id))
           .reduce((sum, s) => sum + s.amount, 0)
         const remaining   = Math.max(0, selectedTotal - totalDeduct)
@@ -704,11 +708,11 @@ export default function OrdersPage() {
                     <span className="text-sm font-semibold text-orange-800">ยอดรวมที่เลือก ({selOrderNos.size} ใบ)</span>
                     <span className="text-xl font-bold text-orange-700">฿{selectedTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                   </div>
-                  {branchSlips.length > 0 && (
+                  {safeSlips.length > 0 && (
                     <div>
                       <div className="text-sm font-semibold text-gray-700 mb-2">มียอดโอนตรงเข้าบัญชีดังนี้</div>
                       <div className="border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-100">
-                        {branchSlips.map(slip => {
+                        {safeSlips.map(slip => {
                           const isChecked = appliedSlipIds.has(slip.id)
                           return (
                             <div key={slip.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isChecked ? 'bg-blue-50' : slip.applied ? 'bg-gray-50 opacity-50' : 'hover:bg-gray-50'}`}>
