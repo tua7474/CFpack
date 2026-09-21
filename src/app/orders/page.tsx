@@ -388,7 +388,30 @@ export default function OrdersPage() {
       vatLabel: string | null,
       wrapperStyle?: React.CSSProperties,
     ) => {
-      const rowBase: React.CSSProperties = { display: 'flex', alignItems: 'baseline', padding: '0.8mm 2mm', fontSize: '7pt', gap: '2mm' }
+      // Build foy color-level data (NV and legacy combined only)
+      type FoyCI = { item: StockItem; qty: number; total: number }
+      const foyModelMap = new Map<string, FoyCI[]>()
+      if (vatLabel !== 'V') {
+        const foyStockMap = new Map(stockItems.map(s => [s.id, s]))
+        for (const [idStr, qtyVal] of Object.entries(order.foy_item_quantities ?? {})) {
+          if (!qtyVal) continue
+          const s = foyStockMap.get(Number(idStr))
+          if (!s) continue
+          const price = parseFloat(s.warehouse_price ?? '0') || 0
+          if (!foyModelMap.has(s.model_name)) foyModelMap.set(s.model_name, [])
+          foyModelMap.get(s.model_name)!.push({ item: s, qty: qtyVal, total: price * qtyVal })
+        }
+      }
+
+      const rowBase: React.CSSProperties = {
+        display: 'flex', alignItems: 'baseline',
+        padding: '0.6mm 2mm', fontSize: '7pt', gap: '2mm',
+        borderBottom: '1px solid #eee',
+      }
+      const catHdr: React.CSSProperties = {
+        padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold',
+      }
+
       return (
         <div style={{ width: '210mm', padding: '8mm', boxSizing: 'border-box', fontFamily: 'sans-serif', ...wrapperStyle }}>
 
@@ -408,110 +431,58 @@ export default function OrdersPage() {
             <div><strong>สาขา/ตัวแทน:</strong> {order.branch_name ?? '—'}</div>
           </div>
 
-          {/* Categories with 2-column product grid */}
-          {sections.map(([sectionName, { items }]) => (
-            <div key={sectionName} style={{ marginBottom: '1.5mm' }}>
-              {/* Category header — breakAfter:avoid keeps it glued to the first product row */}
-              <div style={{ backgroundColor: '#9b9484', color: 'white', padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}>
-                {sectionName}
-              </div>
-              {/* 2-column product list (table-based so rows cross page boundaries cleanly) */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #ddd', borderTop: 'none' }}>
-                <colgroup>
-                  <col style={{ width: '50%' }} />
-                  <col style={{ width: '50%' }} />
-                </colgroup>
-                <tbody>
-                  {Array.from({ length: Math.ceil(items.length / 2) }, (_, rowIdx) => {
-                    const left  = items[rowIdx * 2]
-                    const right = items[rowIdx * 2 + 1]
-                    const renderCell = (item: BookedItem | undefined, cellIdx: number) => {
-                      if (!item) return <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0' }} />
-                      const prio = (order.priorities ?? {})[String(item.product.id)]
-                      const textColor = prio === 'critical' ? '#cc0000' : prio === 'important' ? '#1d4ed8' : '#222'
-                      const bg = rowIdx % 2 === 0 ? 'white' : '#f5f5f5'
-                      return (
-                        <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0', borderLeft: cellIdx === 1 ? '1px solid #ddd' : undefined }}>
-                          <div style={{ ...rowBase, backgroundColor: bg, color: textColor }}>
-                            <span style={{ flex: 1 }}>{item.product.product_name}</span>
-                            <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{item.qty}</span>
-                            <span style={{ flexShrink: 0, color: textColor === '#222' ? '#555' : textColor, minWidth: '16mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
-                          </div>
-                        </td>
-                      )
-                    }
+          {/*
+            2-column layout: all category blocks + foy blocks flow left→right.
+            columnCount:2 fills left column first, then right column.
+            breakInside:avoid on each block keeps header+rows together.
+            Products are single-column rows within each ~90mm-wide column.
+          */}
+          <div style={{ columnCount: 2, columnGap: '5mm' }}>
+
+            {/* Product category sections */}
+            {sections.map(([sectionName, { items }]) => (
+              <div key={sectionName} style={{ breakInside: 'avoid', pageBreakInside: 'avoid', marginBottom: '1.5mm' }}>
+                <div style={{ ...catHdr, backgroundColor: '#9b9484', color: 'white' }}>
+                  {sectionName}
+                </div>
+                <div style={{ border: '1px solid #ddd', borderTop: 'none' }}>
+                  {items.map((item, idx) => {
+                    const prio = (order.priorities ?? {})[String(item.product.id)]
+                    const textColor = prio === 'critical' ? '#cc0000' : prio === 'important' ? '#1d4ed8' : '#222'
                     return (
-                      <tr key={rowIdx}>
-                        {renderCell(left, 0)}
-                        {renderCell(right, 1)}
-                      </tr>
+                      <div key={idx} style={{ ...rowBase, backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5', color: textColor }}>
+                        <span style={{ flex: 1 }}>{item.product.product_name}</span>
+                        <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{item.qty}</span>
+                        <span style={{ flexShrink: 0, color: textColor === '#222' ? '#555' : textColor, minWidth: '13mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                      </div>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
-          ))}
-
-          {/* FOY section — detailed color-level, NV form and legacy combined only */}
-          {vatLabel !== 'V' && (() => {
-            type FoyCI = { item: StockItem; qty: number; total: number }
-            const foyStockMap = new Map(stockItems.map(s => [s.id, s]))
-            const foyModelMap = new Map<string, FoyCI[]>()
-            for (const [idStr, qtyVal] of Object.entries(order.foy_item_quantities ?? {})) {
-              if (!qtyVal) continue
-              const s = foyStockMap.get(Number(idStr))
-              if (!s) continue
-              const price = parseFloat(s.warehouse_price ?? '0') || 0
-              if (!foyModelMap.has(s.model_name)) foyModelMap.set(s.model_name, [])
-              foyModelMap.get(s.model_name)!.push({ item: s, qty: qtyVal, total: price * qtyVal })
-            }
-            if (foyModelMap.size === 0) return null
-            return (
-              <div style={{ marginBottom: '1.5mm' }}>
-                <div style={{ backgroundColor: '#0f766e', color: 'white', padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}>
-                  กระดาษฝอย
                 </div>
-                {Array.from(foyModelMap.entries()).map(([modelName, colorItems]) => (
-                  <div key={modelName}>
-                    <div style={{ backgroundColor: '#ccfbf1', color: '#134e4a', padding: '0.6mm 2mm', fontSize: '7pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid', borderLeft: '1px solid #ddd', borderRight: '1px solid #ddd' }}>
-                      {modelName}
-                    </div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #ddd', borderTop: 'none' }}>
-                      <colgroup><col style={{ width: '50%' }} /><col style={{ width: '50%' }} /></colgroup>
-                      <tbody>
-                        {Array.from({ length: Math.ceil(colorItems.length / 2) }, (_, rowIdx) => {
-                          const left  = colorItems[rowIdx * 2]
-                          const right = colorItems[rowIdx * 2 + 1]
-                          const renderFCI = (fi: FoyCI | undefined, cellIdx: number) => {
-                            if (!fi) return <td key={cellIdx} style={{ padding: '0', borderBottom: '1px solid #eee' }} />
-                            const bg = rowIdx % 2 === 0 ? '#f0fdf4' : '#dcfce7'
-                            return (
-                              <td key={cellIdx} style={{ padding: '0', borderLeft: cellIdx === 1 ? '1px solid #ddd' : undefined, borderBottom: '1px solid #eee' }}>
-                                <div style={{ ...rowBase, backgroundColor: bg, color: '#166534' }}>
-                                  <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#888', fontSize: '6.5pt', minWidth: '10mm' }}>{fi.item.color_code}</span>
-                                  <span style={{ flex: 1 }}>{fi.item.color_name}</span>
-                                  <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
-                                  <span style={{ flexShrink: 0, minWidth: '14mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
-                                </div>
-                              </td>
-                            )
-                          }
-                          return (
-                            <tr key={rowIdx}>
-                              {renderFCI(left, 0)}
-                              {renderFCI(right, 1)}
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
               </div>
-            )
-          })()}
+            ))}
 
-          {/* Grand total + signature — keep together, never split across pages */}
+            {/* Foy model sections — each model flows as its own column block */}
+            {Array.from(foyModelMap.entries()).map(([modelName, colorItems]) => (
+              <div key={`foy-${modelName}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid', marginBottom: '1.5mm' }}>
+                <div style={{ ...catHdr, backgroundColor: '#0f766e', color: 'white' }}>
+                  ฝอย: {modelName}
+                </div>
+                <div style={{ border: '1px solid #0d9488', borderTop: 'none' }}>
+                  {colorItems.map((fi, idx) => (
+                    <div key={idx} style={{ ...rowBase, backgroundColor: idx % 2 === 0 ? '#f0fdf4' : '#dcfce7', color: '#166534' }}>
+                      <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#888', fontSize: '6.5pt', minWidth: '8mm' }}>{fi.item.color_code}</span>
+                      <span style={{ flex: 1 }}>{fi.item.color_name}</span>
+                      <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
+                      <span style={{ flexShrink: 0, minWidth: '12mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+          </div>{/* end 2-column */}
+
+          {/* Grand total + signature — full width, never split */}
           <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm', marginTop: '3mm', borderTop: '2px solid #888', paddingTop: '2mm' }}>
               <span style={{ fontSize: '10pt', fontWeight: 'bold', color: '#333' }}>ยอดเงินรวม</span>
