@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -97,6 +97,10 @@ export default function BookingFoyPage() {
   const [editOrderNo, setEditOrderNo]         = useState<string | null>(null)
   const [originalItems, setOriginalItems]     = useState<Record<number, number>>({})
   const [zoom, setZoom]           = useState(1)
+  const [resetKey, setResetKey]   = useState(0)
+  const [qtyPopup, setQtyPopup]   = useState<{ id: number; name: string; colorCode: string } | null>(null)
+  const [popupVal, setPopupVal]   = useState('')
+  const popupInputRef             = useRef<HTMLInputElement>(null)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | ''>('')
   const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
   const [manualTotal, setManualTotal] = useState('')
@@ -198,6 +202,26 @@ export default function BookingFoyPage() {
         : (() => { const n = { ...prev }; delete n[id]; return n })()
     )
   }, [])
+
+  // ── Qty popup (auto-focus + confirm) ─────────────────────────────────────
+  useEffect(() => {
+    if (qtyPopup) {
+      setPopupVal(String(pending[qtyPopup.id] || ''))
+      const t = setTimeout(() => {
+        popupInputRef.current?.focus()
+        popupInputRef.current?.select()
+      }, 40)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qtyPopup?.id])
+
+  const confirmPopup = useCallback(() => {
+    if (!qtyPopup) return
+    handleQtyChange(qtyPopup.id, popupVal)
+    setResetKey(k => k + 1)
+    setQtyPopup(null)
+  }, [qtyPopup, popupVal, handleQtyChange])
 
   // ── จอง: call stock API action='book' for each pending item ───────────────
 
@@ -403,9 +427,11 @@ export default function BookingFoyPage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     defaultValue={qty || ''}
-                    key={`qty-${item.id}`}
-                    onChange={e => handleQtyChange(item.id, e.target.value)}
-                    className={`w-full px-1 py-px text-[9px] text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400 ${hasPending ? 'font-semibold' : ''}`}
+                    key={`qty-${item.id}-${resetKey}`}
+                    readOnly
+                    onFocus={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code })}
+                    onClick={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code })}
+                    className={`w-full px-1 py-px text-[9px] text-gray-900 text-right bg-transparent focus:outline-none cursor-pointer ${hasPending ? 'font-semibold' : ''}`}
                   />
                 </td>
                 {/* รวม */}
@@ -696,6 +722,39 @@ export default function BookingFoyPage() {
           )}
         </div>
       </main>
+
+      {/* ── Qty popup ─────────────────────────────────────────────────────── */}
+      {qtyPopup && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center sm:items-center no-print"
+          onClick={() => setQtyPopup(null)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl px-6 pt-5 pb-8 sm:pb-6 w-full max-w-sm"
+            onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4 sm:hidden" />
+            <div className="text-xs text-gray-400 mb-0.5 font-mono">{qtyPopup.colorCode}</div>
+            <div className="text-lg font-bold text-gray-800 mb-4 truncate">{qtyPopup.name}</div>
+            <input
+              ref={popupInputRef}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={popupVal}
+              onChange={e => setPopupVal(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => { if (e.key === 'Enter') confirmPopup(); if (e.key === 'Escape') setQtyPopup(null) }}
+              className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 border-indigo-400 rounded-2xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50"
+            />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setQtyPopup(null)}
+                className="flex-1 py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-base transition-colors">
+                ยกเลิก
+              </button>
+              <button onClick={confirmPopup}
+                className="flex-[2] py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base transition-colors">
+                ✓ ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

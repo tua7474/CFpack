@@ -250,6 +250,9 @@ function Booking2Inner() {
   const [saving, setSaving]         = useState(false)
   const [saveMsg, setSaveMsg]       = useState<string | null>(null)
   const [resetKey, setResetKey]     = useState(0)
+  const [qtyPopup, setQtyPopup]     = useState<{ id: number; name: string } | null>(null)
+  const [popupVal, setPopupVal]     = useState('')
+  const popupInputRef               = useRef<HTMLInputElement>(null)
   const [pending, setPending]       = useState<Record<number, number>>({})
   const [foyPending, setFoyPending]         = useState<Record<string, { qty: number; amount: number }>>({})
   const [foyItemPending, setFoyItemPending] = useState<Record<number, number>>({})
@@ -517,6 +520,26 @@ function Booking2Inner() {
       return next
     })
   }, [editOrderNo])
+
+  // ── Qty popup (auto-focus + confirm) ─────────────────────────────────────
+  useEffect(() => {
+    if (qtyPopup) {
+      setPopupVal(String(pending[qtyPopup.id] || ''))
+      const t = setTimeout(() => {
+        popupInputRef.current?.focus()
+        popupInputRef.current?.select()
+      }, 40)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qtyPopup?.id])
+
+  const confirmPopup = useCallback(() => {
+    if (!qtyPopup) return
+    handleQtyChange(qtyPopup.id, popupVal)
+    setResetKey(k => k + 1)
+    setQtyPopup(null)
+  }, [qtyPopup, popupVal, handleQtyChange])
 
   const pendingCount = Object.values(pending).filter(q => q > 0).length
   const hasFoyPending = Object.keys(foyPending).length > 0
@@ -1606,8 +1629,10 @@ function Booking2Inner() {
                                     pattern="[0-9]*"
                                     defaultValue={qty || ''}
                                     key={`qty-${p.id}-${resetKey}`}
-                                    onChange={e => handleQtyChange(p.id, e.target.value)}
-                                    className={`w-full px-1 py-px text-[13px] text-right bg-transparent focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400 ${hasPending ? 'font-semibold' : ''}`}
+                                    readOnly
+                                    onFocus={() => setQtyPopup({ id: p.id, name: p.product_name })}
+                                    onClick={() => setQtyPopup({ id: p.id, name: p.product_name })}
+                                    className={`w-full px-1 py-px text-[13px] text-gray-900 text-right bg-transparent focus:outline-none cursor-pointer ${hasPending ? 'font-semibold' : ''}`}
                                   />
                                 )
                               )}
@@ -1902,6 +1927,37 @@ function Booking2Inner() {
         </div>
       </main>
 
+      {/* ── Qty popup ─────────────────────────────────────────────────────── */}
+      {qtyPopup && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center sm:items-center"
+          onClick={() => setQtyPopup(null)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl px-6 pt-5 pb-8 sm:pb-6 w-full max-w-sm"
+            onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4 sm:hidden" />
+            <div className="text-sm font-bold text-gray-800 mb-4 truncate">{qtyPopup.name}</div>
+            <input
+              ref={popupInputRef}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={popupVal}
+              onChange={e => setPopupVal(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => { if (e.key === 'Enter') confirmPopup(); if (e.key === 'Escape') setQtyPopup(null) }}
+              className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 border-indigo-400 rounded-2xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50"
+            />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setQtyPopup(null)}
+                className="flex-1 py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-base transition-colors">
+                ยกเลิก
+              </button>
+              <button onClick={confirmPopup}
+                className="flex-[2] py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base transition-colors">
+                ✓ ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
