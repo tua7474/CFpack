@@ -417,6 +417,17 @@ export default function OrdersPage() {
         padding: '0.8mm 1.5mm', fontSize: '7pt', fontWeight: 'bold',
       }
 
+      // Priority symbol: ● filled = critical, ○ hollow thick = important
+      const PrioSymbol = ({ prio }: { prio: string | undefined }) => {
+        if (prio === 'critical') return (
+          <span style={{ flexShrink: 0, display: 'inline-block', width: '2.8mm', height: '2.8mm', borderRadius: '50%', backgroundColor: '#111', verticalAlign: 'middle', marginRight: '0.5mm' }} />
+        )
+        if (prio === 'important') return (
+          <span style={{ flexShrink: 0, display: 'inline-block', width: '2.8mm', height: '2.8mm', borderRadius: '50%', border: '0.6mm solid #111', backgroundColor: 'white', verticalAlign: 'middle', marginRight: '0.5mm' }} />
+        )
+        return null
+      }
+
       return (
         <div style={{ width: '210mm', padding: '8mm', boxSizing: 'border-box', fontFamily: 'sans-serif', ...wrapperStyle }}>
 
@@ -455,7 +466,8 @@ export default function OrdersPage() {
                     const prio = (order.priorities ?? {})[String(item.product.id)]
                     const textColor = prio === 'critical' ? '#cc0000' : prio === 'important' ? '#1d4ed8' : '#222'
                     return (
-                      <div key={idx} style={{ ...rowBase, backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5', color: textColor }}>
+                      <div key={idx} style={{ ...rowBase, alignItems: 'center', backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5', color: textColor }}>
+                        <PrioSymbol prio={prio} />
                         <span style={{ flex: 1 }}>{item.product.product_name}</span>
                         <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{item.qty}</span>
                         <span style={{ flexShrink: 0, color: textColor === '#222' ? '#555' : textColor, minWidth: '10mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
@@ -473,14 +485,18 @@ export default function OrdersPage() {
                   ฝอย: {modelName}
                 </div>
                 <div style={{ border: '1px solid #0d9488', borderTop: 'none' }}>
-                  {colorItems.map((fi, idx) => (
-                    <div key={idx} style={{ ...rowBase, backgroundColor: idx % 2 === 0 ? '#f0fdf4' : '#dcfce7', color: '#166534' }}>
-                      <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#888', fontSize: '6.5pt', minWidth: '8mm' }}>{fi.item.color_code}</span>
-                      <span style={{ flex: 1 }}>{fi.item.color_name}</span>
-                      <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
-                      <span style={{ flexShrink: 0, minWidth: '10mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  ))}
+                  {colorItems.map((fi, idx) => {
+                    const foyPrio = (order.priorities ?? {})[`foy_${fi.item.id}`]
+                    return (
+                      <div key={idx} style={{ ...rowBase, alignItems: 'center', backgroundColor: idx % 2 === 0 ? '#f0fdf4' : '#dcfce7', color: '#166534' }}>
+                        <PrioSymbol prio={foyPrio} />
+                        <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#888', fontSize: '6.5pt', minWidth: '8mm' }}>{fi.item.color_code}</span>
+                        <span style={{ flex: 1 }}>{fi.item.color_name}</span>
+                        <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
+                        <span style={{ flexShrink: 0, minWidth: '10mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             ))}
