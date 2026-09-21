@@ -148,7 +148,7 @@ export default function OrdersPage() {
   // Fetch catalog + stock + delivery methods (parallel, once)
   useEffect(() => {
     fetch('/api/booking2').then(r => r.json()).then(setProducts).catch(() => {})
-    fetch('/api/stock').then(r => r.json()).then(setStockItems).catch(() => {})
+    fetch('/api/stock').then(r => r.json()).then((data: { items: StockItem[] }) => setStockItems(data.items ?? [])).catch(() => {})
     fetch('/api/delivery').then(r => r.json()).then((data: { name: string }[]) => setDeliveries(data.map(d => d.name))).catch(() => {})
     fetch('/api/withdrawal').then(r => r.json()).then(setWithdrawalTypes).catch(() => {})
   }, [])
@@ -564,7 +564,7 @@ export default function OrdersPage() {
     const thBase: React.CSSProperties = { padding: '2mm', border: '1px solid #888', fontSize: '8.5pt', backgroundColor: '#0f766e', color: 'white' }
 
     return (
-      <div style={{ width: '210mm', height: '297mm', padding: '8mm', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
+      <div style={{ width: '210mm', padding: '8mm', boxSizing: 'border-box', fontFamily: 'sans-serif' }}>
 
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '3mm' }}>
@@ -581,7 +581,7 @@ export default function OrdersPage() {
         </div>
 
         {/* FOY table */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div>
           {hasFoyItems ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <colgroup>
@@ -661,8 +661,8 @@ export default function OrdersPage() {
           )}
         </div>
 
-        {/* Signature area */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
+        {/* Signature area — keep together, never split */}
+        <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
           {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
             <div key={label} style={{ border: '1px solid #ccc', padding: '3mm', borderRadius: '1mm' }}>
               <div style={{ fontSize: '8pt', color: '#666', marginBottom: '10mm' }}>{label}</div>
