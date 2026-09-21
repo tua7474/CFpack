@@ -1959,7 +1959,7 @@ function Booking2Inner() {
           <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center sm:items-center"
             onClick={() => setQtyPopup(null)}>
             <div className="rounded-t-3xl sm:rounded-3xl shadow-2xl px-5 pt-4 pb-8 sm:pb-5 w-full max-w-sm border-t-4"
-              style={{ backgroundColor: qtyPopup.accent, borderColor: '#6366f1' }}
+              style={{ backgroundColor: qtyPopup.accent, borderColor: '#9b9484' }}
               onClick={e => e.stopPropagation()}>
 
               {/* Drag handle */}
@@ -1993,7 +1993,7 @@ function Booking2Inner() {
                 onChange={e => setPopupVal(e.target.value.replace(/\D/g, ''))}
                 onKeyDown={e => { if (e.key === 'Enter') confirmPopup(); if (e.key === 'Escape') setQtyPopup(null) }}
                 className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 rounded-2xl px-4 py-3 focus:outline-none bg-white"
-                style={{ borderColor: overStock ? '#ef4444' : exact ? '#f97316' : '#6366f1' }}
+                style={{ borderColor: overStock ? '#ef4444' : exact ? '#f97316' : '#9b9484' }}
               />
 
               {/* Feedback */}
@@ -2049,7 +2049,7 @@ function Booking2Inner() {
                 </button>
                 <button onClick={confirmPopup}
                   className="flex-[2] py-3 rounded-2xl text-white font-bold text-base transition-colors shadow"
-                  style={{ backgroundColor: '#6366f1' }}>
+                  style={{ backgroundColor: '#f97316' }}>
                   ✓ ยืนยัน
                 </button>
               </div>
