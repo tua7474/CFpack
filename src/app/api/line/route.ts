@@ -2021,5 +2021,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ ok: true, service: 'LINE webhook active' })
+  return NextResponse.json({
+    ok: true,
+    service: 'LINE webhook active',
+    env: {
+      PROMPTPAY_ID:              !!process.env.PROMPTPAY_ID,
+      PROMPTPAY_ID_length:       process.env.PROMPTPAY_ID?.length ?? 0,
+      ANTHROPIC_API_KEY:         !!process.env.ANTHROPIC_API_KEY,
+      LINE_CHANNEL_ACCESS_TOKEN: !!process.env.LINE_CHANNEL_ACCESS_TOKEN,
+      LINE_CHANNEL_SECRET:       !!process.env.LINE_CHANNEL_SECRET,
+      RAILWAY_PUBLIC_DOMAIN:     process.env.RAILWAY_PUBLIC_DOMAIN ?? '(not set)',
+    }
+  })
 }
