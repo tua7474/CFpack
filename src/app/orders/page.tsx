@@ -410,11 +410,11 @@ export default function OrdersPage() {
 
       const rowBase: React.CSSProperties = {
         display: 'flex', alignItems: 'baseline',
-        padding: '0.5mm 1.5mm', fontSize: '6.5pt', gap: '1.5mm',
+        padding: '0.7mm 1.5mm', fontSize: '8pt', gap: '1.5mm',
         borderBottom: '1px solid #eee',
       }
       const catHdr: React.CSSProperties = {
-        padding: '0.8mm 1.5mm', fontSize: '7pt', fontWeight: 'bold',
+        padding: '1mm 1.5mm', fontSize: '9pt', fontWeight: 'bold',
       }
 
       // Priority symbol: ● filled = critical, ○ hollow thick = important
@@ -436,11 +436,11 @@ export default function OrdersPage() {
             <div style={{ fontSize: '16pt', fontWeight: 'bold', color: accentColor }}>
               ใบจองสินค้า{vatLabel ? ` (${vatLabel})` : ''}
             </div>
-            <div style={{ fontSize: '9pt', color: '#555' }}>เลขที่: {displayOrderNo}</div>
+            <div style={{ fontSize: '10pt', color: '#333' }}>เลขที่: {displayOrderNo}</div>
           </div>
 
           {/* Info bar */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f9fafb', fontSize: '8pt' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f9fafb', fontSize: '9pt', color: '#111' }}>
             <div><strong>วันที่:</strong> {orderDate}</div>
             <div><strong>เบิกของ:</strong> {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}</div>
             <div><strong>รถ:</strong> {order.vehicle_type ?? '—'}</div>
@@ -464,13 +464,12 @@ export default function OrdersPage() {
                 <div style={{ border: '1px solid #ddd', borderTop: 'none' }}>
                   {items.map((item, idx) => {
                     const prio = (order.priorities ?? {})[String(item.product.id)]
-                    const textColor = prio === 'critical' ? '#cc0000' : prio === 'important' ? '#1d4ed8' : '#222'
                     return (
-                      <div key={idx} style={{ ...rowBase, alignItems: 'center', backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5', color: textColor }}>
+                      <div key={idx} style={{ ...rowBase, alignItems: 'center', backgroundColor: idx % 2 === 0 ? 'white' : '#f0f0f0', color: '#111' }}>
                         <PrioSymbol prio={prio} />
                         <span style={{ flex: 1 }}>{item.product.product_name}</span>
                         <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{item.qty}</span>
-                        <span style={{ flexShrink: 0, color: textColor === '#222' ? '#555' : textColor, minWidth: '10mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                        <span style={{ flexShrink: 0, color: '#333', minWidth: '10mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )
                   })}
@@ -488,12 +487,12 @@ export default function OrdersPage() {
                   {colorItems.map((fi, idx) => {
                     const foyPrio = (order.priorities ?? {})[`foy_${fi.item.id}`]
                     return (
-                      <div key={idx} style={{ ...rowBase, alignItems: 'center', backgroundColor: idx % 2 === 0 ? '#f0fdf4' : '#dcfce7', color: '#166534' }}>
+                      <div key={idx} style={{ ...rowBase, alignItems: 'center', backgroundColor: idx % 2 === 0 ? 'white' : '#f0f0f0', color: '#111' }}>
                         <PrioSymbol prio={foyPrio} />
-                        <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#888', fontSize: '6.5pt', minWidth: '8mm' }}>{fi.item.color_code}</span>
+                        <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#555', fontSize: '7.5pt', minWidth: '8mm' }}>{fi.item.color_code}</span>
                         <span style={{ flex: 1 }}>{fi.item.color_name}</span>
                         <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
-                        <span style={{ flexShrink: 0, minWidth: '10mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                        <span style={{ flexShrink: 0, color: '#333', minWidth: '10mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )
                   })}
@@ -506,8 +505,8 @@ export default function OrdersPage() {
           {/* Grand total + signature — full width, never split */}
           <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm', marginTop: '3mm', borderTop: '2px solid #888', paddingTop: '2mm' }}>
-              <span style={{ fontSize: '10pt', fontWeight: 'bold', color: '#333' }}>ยอดเงินรวม</span>
-              <span style={{ fontSize: '11pt', fontWeight: 'bold', color: '#14532d' }}>{fmtMoney(grandTotal)} บาท</span>
+              <span style={{ fontSize: '11pt', fontWeight: 'bold', color: '#111' }}>ยอดเงินรวม</span>
+              <span style={{ fontSize: '12pt', fontWeight: 'bold', color: '#111' }}>{fmtMoney(grandTotal)} บาท</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
               {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
