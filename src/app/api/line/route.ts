@@ -1059,6 +1059,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
   if (data.startsWith('PAY_QR:')) {
     const branchId = parseInt(data.split(':')[1])
     const promptPayId = process.env.PROMPTPAY_ID
+    console.log('[PAY_QR] PROMPTPAY_ID set:', !!promptPayId, '| length:', promptPayId?.length ?? 0, '| PROMPTPAY_NAME:', process.env.PROMPTPAY_NAME)
     if (!promptPayId) return reply(replyToken, [{ type: 'text', text: '⚠️ ยังไม่ได้ตั้งค่า PROMPTPAY_ID' }])
 
     const [pending, sel] = await Promise.all([getPendingOrders(branchId), getPaySelection(userId)])
