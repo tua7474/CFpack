@@ -6,6 +6,8 @@ import Link from 'next/link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type PriorityLevel = 'critical' | 'important'
+
 interface StockItem {
   id: number
   model_name: string
@@ -97,8 +99,9 @@ export default function BookingFoyPage() {
   const [editOrderNo, setEditOrderNo]         = useState<string | null>(null)
   const [originalItems, setOriginalItems]     = useState<Record<number, number>>({})
   const [zoom, setZoom]           = useState(1)
-  const [resetKey, setResetKey]   = useState(0)
-  const [qtyPopup, setQtyPopup]   = useState<{ id: number; name: string; colorCode: string; stockQty: number; accent: string } | null>(null)
+  const [resetKey, setResetKey]           = useState(0)
+  const [foyPriorities, setFoyPriorities] = useState<Record<number, PriorityLevel | null>>({})
+  const [qtyPopup, setQtyPopup]           = useState<{ id: number; name: string; colorCode: string; stockQty: number; accent: string } | null>(null)
   const [popupVal, setPopupVal]   = useState('')
   const popupInputRef             = useRef<HTMLInputElement>(null)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | ''>('')
@@ -292,6 +295,12 @@ export default function BookingFoyPage() {
       }
       // บันทึก item-level quantities (อาจเป็น {} ถ้าลดเป็น 0)
       localStorage.setItem('cf_foy_items', JSON.stringify(itemQty))
+      // บันทึก foy priorities (ใช้ key 'foy_ID' เพื่อ merge กับ catalog priorities ใน booking2)
+      const fooPrioToSave: Record<string, PriorityLevel> = {}
+      for (const [k, v] of Object.entries(foyPriorities)) {
+        if (v) fooPrioToSave[`foy_${k}`] = v
+      }
+      localStorage.setItem('cf_foy_priorities', JSON.stringify(fooPrioToSave))
 
       setSaveMsg(entries.length > 0 ? `จองสำเร็จ ${entries.length} รายการ` : 'ยกเลิกกระดาษฝอยสำเร็จ')
       setPending({})
@@ -725,11 +734,24 @@ export default function BookingFoyPage() {
 
       {/* ── Qty popup ─────────────────────────────────────────────────────── */}
       {qtyPopup && (() => {
-        const entered   = parseInt(popupVal) || 0
-        const stock     = qtyPopup.stockQty
-        const remaining = stock - entered
-        const overStock = entered > stock
-        const exact     = !overStock && entered === stock && stock > 0
+        const entered       = parseInt(popupVal) || 0
+        const stock         = qtyPopup.stockQty
+        const remaining     = stock - entered
+        const overStock     = entered > stock
+        const exact         = !overStock && entered === stock && stock > 0
+        const currentPrio   = foyPriorities[qtyPopup.id] ?? null
+        const criticalCount = Object.values(foyPriorities).filter(v => v === 'critical').length
+        const importantCount = Object.values(foyPriorities).filter(v => v === 'important').length
+        const togglePrio = (level: PriorityLevel) => {
+          const isCurrent = currentPrio === level
+          if (isCurrent) {
+            setFoyPriorities(prev => { const n = { ...prev }; delete n[qtyPopup.id]; return n })
+          } else if (level === 'critical' && criticalCount < 5) {
+            setFoyPriorities(prev => ({ ...prev, [qtyPopup.id]: 'critical' }))
+          } else if (level === 'important' && importantCount < 10) {
+            setFoyPriorities(prev => ({ ...prev, [qtyPopup.id]: 'important' }))
+          }
+        }
         return (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center sm:items-center no-print"
             onClick={() => setQtyPopup(null)}>
@@ -762,38 +784,54 @@ export default function BookingFoyPage() {
                 placeholder="0"
                 onChange={e => setPopupVal(e.target.value.replace(/\D/g, ''))}
                 onKeyDown={e => { if (e.key === 'Enter') confirmPopup(); if (e.key === 'Escape') setQtyPopup(null) }}
-                className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 bg-white"
-                style={{ borderColor: overStock ? '#ef4444' : exact ? '#f97316' : '#6366f1', outline: 'none', '--tw-ring-color': overStock ? '#ef4444' : '#6366f1' } as React.CSSProperties}
+                className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 rounded-2xl px-4 py-3 focus:outline-none bg-white"
+                style={{ borderColor: overStock ? '#ef4444' : exact ? '#f97316' : '#6366f1' }}
               />
 
               {/* Feedback */}
               <div className={`text-center mt-2 text-sm font-bold h-5 ${overStock ? 'text-red-600' : exact ? 'text-orange-600' : popupVal ? 'text-green-700' : 'text-transparent'}`}>
                 {popupVal
-                  ? overStock
-                    ? `${entered} / ${stock} ⚠ เกินสต็อค`
-                    : exact
-                      ? `${entered} / ${stock} · หมดพอดี`
-                      : `${entered} / ${stock} · เหลือ ${remaining}`
+                  ? overStock  ? `${entered} / ${stock} ⚠ เกินสต็อค`
+                    : exact    ? `${entered} / ${stock} · หมดพอดี`
+                               : `${entered} / ${stock} · เหลือ ${remaining}`
                   : '·'}
               </div>
 
-              {/* Quick-fill buttons */}
-              {stock > 0 && (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={() => setPopupVal(String(stock))}
-                    className="flex-1 py-2.5 rounded-xl text-white font-extrabold text-sm transition-all active:scale-95 shadow-sm"
-                    style={{ backgroundColor: '#ef4444' }}>
-                    {stock} ต้องครบ
-                  </button>
-                  <button
-                    onClick={() => setPopupVal(String(stock))}
-                    className="flex-1 py-2.5 rounded-xl text-white font-extrabold text-sm transition-all active:scale-95 shadow-sm"
-                    style={{ backgroundColor: '#3b82f6' }}>
-                    {stock} เท่าที่มี
-                  </button>
-                </div>
-              )}
+              {/* Priority buttons */}
+              <div className="flex gap-2 mt-3">
+                {/* Red — ต้องครบ */}
+                <button
+                  onClick={() => togglePrio('critical')}
+                  disabled={currentPrio !== 'critical' && criticalCount >= 5}
+                  className={`flex-1 py-2 rounded-xl font-extrabold text-sm transition-all active:scale-95 border-2 flex flex-col items-center leading-tight ${
+                    currentPrio === 'critical'
+                      ? 'bg-red-600 text-white border-red-700 shadow-md ring-2 ring-red-300'
+                      : criticalCount >= 5
+                        ? 'bg-red-50 text-red-300 border-red-200 cursor-not-allowed'
+                        : 'bg-red-500 text-white border-red-600 hover:bg-red-600 shadow-sm'
+                  }`}>
+                  <span>{currentPrio === 'critical' ? '✓ ต้องครบ' : 'ต้องครบ'}</span>
+                  <span className="text-[10px] font-normal mt-0.5 opacity-80">
+                    {currentPrio === 'critical' ? 'คลิกเพื่อยกเลิก' : criticalCount >= 5 ? 'เต็มแล้ว (5/5)' : `เหลือ ${5 - criticalCount} สิทธิ์`}
+                  </span>
+                </button>
+                {/* Blue — เท่าที่มี */}
+                <button
+                  onClick={() => togglePrio('important')}
+                  disabled={currentPrio !== 'important' && importantCount >= 10}
+                  className={`flex-1 py-2 rounded-xl font-extrabold text-sm transition-all active:scale-95 border-2 flex flex-col items-center leading-tight ${
+                    currentPrio === 'important'
+                      ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-300'
+                      : importantCount >= 10
+                        ? 'bg-blue-50 text-blue-300 border-blue-200 cursor-not-allowed'
+                        : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 shadow-sm'
+                  }`}>
+                  <span>{currentPrio === 'important' ? '✓ เท่าที่มี' : 'เท่าที่มี'}</span>
+                  <span className="text-[10px] font-normal mt-0.5 opacity-80">
+                    {currentPrio === 'important' ? 'คลิกเพื่อยกเลิก' : importantCount >= 10 ? 'เต็มแล้ว (10/10)' : `เหลือ ${10 - importantCount} สิทธิ์`}
+                  </span>
+                </button>
+              </div>
 
               {/* Confirm/cancel */}
               <div className="flex gap-3 mt-3">

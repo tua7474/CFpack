@@ -283,6 +283,12 @@ function Booking2Inner() {
       if (stored) setFoyPending(JSON.parse(stored))
       const storedItems = localStorage.getItem('cf_foy_items')
       if (storedItems) setFoyItemPending(JSON.parse(storedItems))
+      // Merge foy priorities set in booking-foy into productPriorities
+      const storedFooPrio = localStorage.getItem('cf_foy_priorities')
+      if (storedFooPrio) {
+        const fooPrio = JSON.parse(storedFooPrio) as Record<string, PriorityLevel>
+        setProductPriorities(prev => ({ ...prev, ...fooPrio }))
+      }
     } catch { /* ignore */ }
   }, [editOrderNo])
 
@@ -617,6 +623,7 @@ function Booking2Inner() {
         setResetKey(k => k + 1)
         localStorage.removeItem('cf_foy_result')
         localStorage.removeItem('cf_foy_items')
+        localStorage.removeItem('cf_foy_priorities')
         setSaveMsg(`อัพเดทใบจอง ${editOrderNo} สำเร็จ`)
         clearAllPriorities()
       } else {
@@ -646,6 +653,7 @@ function Booking2Inner() {
         localStorage.removeItem(DRAFT_KEY)
         localStorage.removeItem('cf_foy_result')
         localStorage.removeItem('cf_foy_items')
+        localStorage.removeItem('cf_foy_priorities')
         const totalItems = pendingCount + Object.keys(foyPending).length
         setSaveMsg(`บันทึกสำเร็จ ${totalItems} รายการ`)
         clearAllPriorities()
@@ -1929,11 +1937,24 @@ function Booking2Inner() {
 
       {/* ── Qty popup ─────────────────────────────────────────────────────── */}
       {qtyPopup && (() => {
-        const entered   = parseInt(popupVal) || 0
-        const stock     = qtyPopup.stockQty
-        const remaining = stock - entered
-        const overStock = entered > stock
-        const exact     = !overStock && entered === stock && stock > 0
+        const entered        = parseInt(popupVal) || 0
+        const stock          = qtyPopup.stockQty
+        const remaining      = stock - entered
+        const overStock      = entered > stock
+        const exact          = !overStock && entered === stock && stock > 0
+        const currentPrio    = productPriorities[qtyPopup.id] ?? null
+        const criticalCount  = priorityCounts.critical
+        const importantCount = priorityCounts.important
+        const togglePrio = (level: PriorityLevel) => {
+          const isCurrent = currentPrio === level
+          if (isCurrent) {
+            setProductPriorities(prev => { const n = { ...prev }; delete n[qtyPopup.id]; return n })
+          } else if (level === 'critical' && criticalCount < PRIORITY_LIMITS.critical) {
+            setProductPriorities(prev => ({ ...prev, [qtyPopup.id]: 'critical' }))
+          } else if (level === 'important' && importantCount < PRIORITY_LIMITS.important) {
+            setProductPriorities(prev => ({ ...prev, [qtyPopup.id]: 'important' }))
+          }
+        }
         return (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center sm:items-center"
             onClick={() => setQtyPopup(null)}>
@@ -1972,31 +1993,47 @@ function Booking2Inner() {
               {/* Feedback */}
               <div className={`text-center mt-2 text-sm font-bold h-5 ${overStock ? 'text-red-600' : exact ? 'text-orange-600' : popupVal ? 'text-green-700' : 'text-transparent'}`}>
                 {popupVal
-                  ? overStock
-                    ? `${entered} / ${stock} ⚠ เกินสต็อค`
-                    : exact
-                      ? `${entered} / ${stock} · หมดพอดี`
-                      : `${entered} / ${stock} · เหลือ ${remaining}`
+                  ? overStock  ? `${entered} / ${stock} ⚠ เกินสต็อค`
+                    : exact    ? `${entered} / ${stock} · หมดพอดี`
+                               : `${entered} / ${stock} · เหลือ ${remaining}`
                   : '·'}
               </div>
 
-              {/* Quick-fill buttons */}
-              {stock > 0 && (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={() => setPopupVal(String(stock))}
-                    className="flex-1 py-2.5 rounded-xl text-white font-extrabold text-sm transition-all active:scale-95 shadow-sm"
-                    style={{ backgroundColor: '#ef4444' }}>
-                    {stock} ต้องครบ
-                  </button>
-                  <button
-                    onClick={() => setPopupVal(String(stock))}
-                    className="flex-1 py-2.5 rounded-xl text-white font-extrabold text-sm transition-all active:scale-95 shadow-sm"
-                    style={{ backgroundColor: '#3b82f6' }}>
-                    {stock} เท่าที่มี
-                  </button>
-                </div>
-              )}
+              {/* Priority buttons */}
+              <div className="flex gap-2 mt-3">
+                {/* Red — ต้องครบ */}
+                <button
+                  onClick={() => togglePrio('critical')}
+                  disabled={currentPrio !== 'critical' && criticalCount >= PRIORITY_LIMITS.critical}
+                  className={`flex-1 py-2 rounded-xl font-extrabold text-sm transition-all active:scale-95 border-2 flex flex-col items-center leading-tight ${
+                    currentPrio === 'critical'
+                      ? 'bg-red-600 text-white border-red-700 shadow-md ring-2 ring-red-300'
+                      : criticalCount >= PRIORITY_LIMITS.critical
+                        ? 'bg-red-50 text-red-300 border-red-200 cursor-not-allowed'
+                        : 'bg-red-500 text-white border-red-600 hover:bg-red-600 shadow-sm'
+                  }`}>
+                  <span>{currentPrio === 'critical' ? '✓ ต้องครบ' : 'ต้องครบ'}</span>
+                  <span className="text-[10px] font-normal mt-0.5 opacity-80">
+                    {currentPrio === 'critical' ? 'คลิกเพื่อยกเลิก' : criticalCount >= PRIORITY_LIMITS.critical ? `เต็มแล้ว (${PRIORITY_LIMITS.critical}/${PRIORITY_LIMITS.critical})` : `เหลือ ${PRIORITY_LIMITS.critical - criticalCount} สิทธิ์`}
+                  </span>
+                </button>
+                {/* Blue — เท่าที่มี */}
+                <button
+                  onClick={() => togglePrio('important')}
+                  disabled={currentPrio !== 'important' && importantCount >= PRIORITY_LIMITS.important}
+                  className={`flex-1 py-2 rounded-xl font-extrabold text-sm transition-all active:scale-95 border-2 flex flex-col items-center leading-tight ${
+                    currentPrio === 'important'
+                      ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-300'
+                      : importantCount >= PRIORITY_LIMITS.important
+                        ? 'bg-blue-50 text-blue-300 border-blue-200 cursor-not-allowed'
+                        : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 shadow-sm'
+                  }`}>
+                  <span>{currentPrio === 'important' ? '✓ เท่าที่มี' : 'เท่าที่มี'}</span>
+                  <span className="text-[10px] font-normal mt-0.5 opacity-80">
+                    {currentPrio === 'important' ? 'คลิกเพื่อยกเลิก' : importantCount >= PRIORITY_LIMITS.important ? `เต็มแล้ว (${PRIORITY_LIMITS.important}/${PRIORITY_LIMITS.important})` : `เหลือ ${PRIORITY_LIMITS.important - importantCount} สิทธิ์`}
+                  </span>
+                </button>
+              </div>
 
               {/* Confirm/cancel */}
               <div className="flex gap-3 mt-3">
