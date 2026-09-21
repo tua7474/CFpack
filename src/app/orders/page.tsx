@@ -376,7 +376,6 @@ export default function OrdersPage() {
     const vSections  = sortSections(vSectionMap)
     const allSections = sortSections(new Map([...nvSectionMap, ...vSectionMap]))
 
-    const foyEntries = Object.entries(order.foy_quantities ?? {}).filter(([, d]) => d.qty > 0)
     const nvTotal = parseFloat(order.nv_total ?? '0') || 0
     const vTotal  = parseFloat(order.v_total  ?? '0') || 0
     const orderDate = fmtOrderDate(order.updated_at)
@@ -384,7 +383,6 @@ export default function OrdersPage() {
     const renderSingleForm = (
       displayOrderNo: string,
       sections: [string, { order: number; subOrder: number; items: BookedItem[] }][],
-      foyRows: [string, { qty: number; amount: number }][],
       grandTotal: number,
       accentColor: string,
       vatLabel: string | null,
@@ -454,46 +452,64 @@ export default function OrdersPage() {
             </div>
           ))}
 
-          {/* FOY rows (NV form only) */}
-          {foyRows.length > 0 && (
-            <div style={{ marginBottom: '1.5mm' }}>
-              <div style={{ backgroundColor: '#9b9484', color: 'white', padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}>
-                กระดาษฝอย
+          {/* FOY section — detailed color-level, NV form and legacy combined only */}
+          {vatLabel !== 'V' && (() => {
+            type FoyCI = { item: StockItem; qty: number; total: number }
+            const foyStockMap = new Map(stockItems.map(s => [s.id, s]))
+            const foyModelMap = new Map<string, FoyCI[]>()
+            for (const [idStr, qtyVal] of Object.entries(order.foy_item_quantities ?? {})) {
+              if (!qtyVal) continue
+              const s = foyStockMap.get(Number(idStr))
+              if (!s) continue
+              const price = parseFloat(s.warehouse_price ?? '0') || 0
+              if (!foyModelMap.has(s.model_name)) foyModelMap.set(s.model_name, [])
+              foyModelMap.get(s.model_name)!.push({ item: s, qty: qtyVal, total: price * qtyVal })
+            }
+            if (foyModelMap.size === 0) return null
+            return (
+              <div style={{ marginBottom: '1.5mm' }}>
+                <div style={{ backgroundColor: '#0f766e', color: 'white', padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}>
+                  กระดาษฝอย
+                </div>
+                {Array.from(foyModelMap.entries()).map(([modelName, colorItems]) => (
+                  <div key={modelName}>
+                    <div style={{ backgroundColor: '#ccfbf1', color: '#134e4a', padding: '0.6mm 2mm', fontSize: '7pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid', borderLeft: '1px solid #ddd', borderRight: '1px solid #ddd' }}>
+                      {modelName}
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #ddd', borderTop: 'none' }}>
+                      <colgroup><col style={{ width: '50%' }} /><col style={{ width: '50%' }} /></colgroup>
+                      <tbody>
+                        {Array.from({ length: Math.ceil(colorItems.length / 2) }, (_, rowIdx) => {
+                          const left  = colorItems[rowIdx * 2]
+                          const right = colorItems[rowIdx * 2 + 1]
+                          const renderFCI = (fi: FoyCI | undefined, cellIdx: number) => {
+                            if (!fi) return <td key={cellIdx} style={{ padding: '0', borderBottom: '1px solid #eee' }} />
+                            const bg = rowIdx % 2 === 0 ? '#f0fdf4' : '#dcfce7'
+                            return (
+                              <td key={cellIdx} style={{ padding: '0', borderLeft: cellIdx === 1 ? '1px solid #ddd' : undefined, borderBottom: '1px solid #eee' }}>
+                                <div style={{ ...rowBase, backgroundColor: bg, color: '#166534' }}>
+                                  <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#888', fontSize: '6.5pt', minWidth: '10mm' }}>{fi.item.color_code}</span>
+                                  <span style={{ flex: 1 }}>{fi.item.color_name}</span>
+                                  <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
+                                  <span style={{ flexShrink: 0, minWidth: '14mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              </td>
+                            )
+                          }
+                          return (
+                            <tr key={rowIdx}>
+                              {renderFCI(left, 0)}
+                              {renderFCI(right, 1)}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #ddd', borderTop: 'none' }}>
-                <colgroup>
-                  <col style={{ width: '50%' }} />
-                  <col style={{ width: '50%' }} />
-                </colgroup>
-                <tbody>
-                  {Array.from({ length: Math.ceil(foyRows.length / 2) }, (_, rowIdx) => {
-                    const left  = foyRows[rowIdx * 2]
-                    const right = foyRows[rowIdx * 2 + 1]
-                    const renderFoyCell = (entry: [string, { qty: number; amount: number }] | undefined, cellIdx: number) => {
-                      if (!entry) return <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0' }} />
-                      const [model, data] = entry
-                      const bg = rowIdx % 2 === 0 ? '#f0fdf4' : '#dcfce7'
-                      return (
-                        <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0', borderLeft: cellIdx === 1 ? '1px solid #ddd' : undefined }}>
-                          <div style={{ ...rowBase, backgroundColor: bg, color: '#166534' }}>
-                            <span style={{ flex: 1 }}>{model}</span>
-                            <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{data.qty}</span>
-                            <span style={{ flexShrink: 0, minWidth: '16mm', textAlign: 'right' }}>{data.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
-                          </div>
-                        </td>
-                      )
-                    }
-                    return (
-                      <tr key={rowIdx}>
-                        {renderFoyCell(left, 0)}
-                        {renderFoyCell(right, 1)}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Grand total + signature — keep together, never split across pages */}
           <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
@@ -520,17 +536,17 @@ export default function OrdersPage() {
     if (nvTotal > 0 && vTotal > 0) {
       return (
         <>
-          {renderSingleForm(`NV${order.order_no}`, nvSections, foyEntries, nvTotal, '#f97316', 'NV', { pageBreakAfter: 'always' })}
-          {renderSingleForm(`V${order.order_no}`,  vSections,  [],         vTotal,  '#4ade80', 'V')}
+          {renderSingleForm(`NV${order.order_no}`, nvSections, nvTotal, '#f97316', 'NV', { pageBreakAfter: 'always' })}
+          {renderSingleForm(`V${order.order_no}`,  vSections,  vTotal,  '#4ade80', 'V')}
         </>
       )
     } else if (nvTotal > 0) {
-      return renderSingleForm(`NV${order.order_no}`, nvSections, foyEntries, nvTotal, '#f97316', 'NV')
+      return renderSingleForm(`NV${order.order_no}`, nvSections, nvTotal, '#f97316', 'NV')
     } else if (vTotal > 0) {
-      return renderSingleForm(`V${order.order_no}`, vSections, [], vTotal, '#4ade80', 'V')
+      return renderSingleForm(`V${order.order_no}`, vSections, vTotal, '#4ade80', 'V')
     } else {
       // Legacy: both totals are 0 — combined form
-      return renderSingleForm(order.order_no, allSections, foyEntries, parseFloat(order.total_amount), '#4ade80', null)
+      return renderSingleForm(order.order_no, allSections, parseFloat(order.total_amount), '#4ade80', null)
     }
   }
 
@@ -1130,7 +1146,7 @@ export default function OrdersPage() {
                                 <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{order.vehicle_type}</span>
                               )}
                               <div className="flex gap-1 mt-0.5">
-                                <button onClick={() => handlePrint(order, 'all')}
+                                <button onClick={() => handlePrint(order, 'booking')}
                                   className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
                                   🖨️ ใบจอง
                                 </button>
@@ -1201,7 +1217,7 @@ export default function OrdersPage() {
                             <div className="flex flex-col items-center gap-1.5">
                               <span className="text-gray-400 text-xs">รอดำเนินการ</span>
                               <div className="flex gap-1">
-                                <button onClick={() => handlePrint(order, 'all')}
+                                <button onClick={() => handlePrint(order, 'booking')}
                                   className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
                                   🖨️ ใบจอง
                                 </button>
