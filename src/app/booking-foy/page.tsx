@@ -67,6 +67,7 @@ const TOTAL_W    = NUM_COLS * COL_W + (NUM_COLS - 1) * COL_GAP      // 731
 
 // A4 portrait px dimensions
 const A4_W_PX    = 210 * (96 / 25.4)   // ≈ 793.7
+const A4_H_PX    = 297 * (96 / 25.4)   // ≈ 1122.5
 const A4_PAD_PX  = 8   * (96 / 25.4)   // ≈ 30.2
 const CONTENT_SCALE = Math.min(1, (A4_W_PX - A4_PAD_PX * 2) / TOTAL_W)  // ≈ 1.0
 
@@ -133,9 +134,12 @@ export default function BookingFoyPage() {
     setEditFoyMode(isEditFoy)
   }, [])
 
-  // Scale A4 portrait frame to fit narrow screens
+  // Scale A4 portrait frame to fit narrow screens.
+  // Use document.documentElement.clientWidth (layout viewport) NOT window.innerWidth —
+  // on iOS Safari, window.innerWidth tracks the *visual* viewport which shrinks on
+  // pinch-zoom, causing a feedback loop. clientWidth stays constant during pinch-zoom.
   useEffect(() => {
-    const calc = () => setZoom(Math.min(1, window.innerWidth / (A4_W_PX + 32)))
+    const calc = () => setZoom(Math.min(1, document.documentElement.clientWidth / (A4_W_PX + 32)))
     calc()
     window.addEventListener('resize', calc)
     return () => window.removeEventListener('resize', calc)
@@ -432,9 +436,10 @@ export default function BookingFoyPage() {
             zoom: 1 !important;
             padding: 0 !important;
             display: block !important;
+            overflow: visible !important;
           }
 
-          /* A4 portrait: 2 หน้า — ปล่อย content ไหลตามธรรมชาติ */
+          /* A4 portrait: ปล่อย content ไหลตามธรรมชาติ */
           .a4-frame {
             width: 100% !important;
             height: auto !important;
@@ -451,6 +456,19 @@ export default function BookingFoyPage() {
 
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .a4-frame { filter: grayscale(100%) !important; }
+        }
+
+        /*
+          iOS Safari auto-zooms when focusing an input with font-size < 16px.
+          CSS zoom scales layout proportionally so 16px DOM still renders correctly
+          within the zoomed frame. Only applies on narrow screens (mobile).
+        */
+        @media screen and (max-width: 850px) {
+          .a4-frame input,
+          .a4-frame select,
+          .a4-frame textarea {
+            font-size: 16px !important;
+          }
         }
       `}</style>
 
@@ -509,6 +527,13 @@ export default function BookingFoyPage() {
 
       {/* ── Main ──────────────────────────────────────────────────────────── */}
       <main>
+        {/*
+          CSS zoom (not transform:scale) — zoom works at layout level so borders render
+          correctly at all scroll positions on iOS Safari. The feedback-loop bug that
+          previously caused zoom to shrink on pinch-zoom is fixed by using
+          document.documentElement.clientWidth (layout viewport, constant during pinch-zoom)
+          instead of window.innerWidth (visual viewport, shrinks on pinch-zoom).
+        */}
         <div
           className="screen-zoom-wrapper p-4 flex justify-center"
           style={{ zoom: zoom < 1 ? zoom : undefined }}
@@ -520,10 +545,7 @@ export default function BookingFoyPage() {
               className="a4-frame bg-white shadow-xl"
               style={{ width: '210mm', minHeight: '297mm', padding: '8mm', boxSizing: 'border-box' }}
             >
-              <div
-                className="a4-content"
-                style={{ zoom: CONTENT_SCALE, transformOrigin: 'top left' }}
-              >
+              <div className="a4-content">
                 {/* Title */}
                 <div className="text-center text-sm font-bold text-gray-500 mb-2 tracking-wide">
                   ใบจองกระดาษฝอย

@@ -41,6 +41,7 @@ async function ensureTable() {
       created_at    TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `)
+  await pool.query(`ALTER TABLE slips ADD COLUMN IF NOT EXISTS applied BOOLEAN NOT NULL DEFAULT FALSE`)
 }
 
 // ── Date range helpers (Bangkok time) ─────────────────────────────────────────
@@ -77,6 +78,20 @@ export async function GET(req: NextRequest) {
     await ensureTable()
     const url = new URL(req.url)
 
+    // Return individual confirmed slips for a branch (by name)
+    const branchName = url.searchParams.get('branch_name')
+    if (branchName) {
+      const { rows } = await pool.query(`
+        SELECT s.id, s.category, s.amount::float, s.account_name,
+               s.slip_date::text, s.applied
+        FROM slips s
+        JOIN branches b ON b.id = s.branch_id
+        WHERE s.status = 'confirmed' AND b.name = $1
+        ORDER BY s.slip_date DESC, s.created_at DESC
+      `, [branchName])
+      return NextResponse.json(rows)
+    }
+
     // Return pending slips
     if (url.searchParams.get('pending') === 'true') {
       const { rows } = await pool.query(`
@@ -97,7 +112,9 @@ export async function GET(req: NextRequest) {
           branch_id,
           category,
           COALESCE(SUM(amount) FILTER (WHERE slip_date >= $1 AND slip_date <= $2), 0)::float AS month_total,
-          COALESCE(SUM(amount) FILTER (WHERE slip_date >= $3 AND slip_date <= $4), 0)::float AS week_total
+          COALESCE(SUM(amount) FILTER (WHERE slip_date >= $3 AND slip_date <= $4), 0)::float AS week_total,
+          COALESCE(SUM(amount) FILTER (WHERE slip_date >= $1 AND slip_date <= $2 AND applied = true), 0)::float AS applied_month_total,
+          COALESCE(SUM(amount) FILTER (WHERE slip_date >= $3 AND slip_date <= $4 AND applied = true), 0)::float AS applied_week_total
         FROM slips
         WHERE status = 'confirmed' AND branch_id IS NOT NULL
         GROUP BY branch_id, category
@@ -150,7 +167,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, slip_date, account_name, category, status } = await req.json()
+    const { id, slip_date, account_name, category, status, applied } = await req.json()
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
     const sets: string[] = []
@@ -160,6 +177,7 @@ export async function PATCH(req: NextRequest) {
     if (account_name !== undefined) { sets.push(`account_name=$${i++}`); vals.push(account_name) }
     if (category     !== undefined) { sets.push(`category=$${i++}`);     vals.push(category) }
     if (status       !== undefined) { sets.push(`status=$${i++}`);       vals.push(status) }
+    if (applied      !== undefined) { sets.push(`applied=$${i++}`);      vals.push(applied) }
     if (!sets.length) return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
 
     vals.push(id)

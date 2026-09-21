@@ -118,7 +118,7 @@ export default function OrdersPage() {
   const [products, setProducts]     = useState<CatalogProduct[]>([])
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [printOrder, setPrintOrder] = useState<BookingOrder | null>(null)
-  const [printType, setPrintType]   = useState<'booking' | 'foy' | null>(null)
+  const [printType, setPrintType]   = useState<'booking' | 'foy' | 'all' | null>(null)
 
   // Withdrawal types for display
   const [withdrawalTypes, setWithdrawalTypes] = useState<{ id: number; name: string }[]>([])
@@ -237,7 +237,7 @@ export default function OrdersPage() {
     setPayBank('')
   }
 
-  const handlePrint = (order: BookingOrder, type: 'booking' | 'foy') => {
+  const handlePrint = (order: BookingOrder, type: 'booking' | 'foy' | 'all') => {
     setPrintType(type)
     setPrintOrder(order)
   }
@@ -381,8 +381,6 @@ export default function OrdersPage() {
     const vTotal  = parseFloat(order.v_total  ?? '0') || 0
     const orderDate = fmtOrderDate(order.updated_at)
 
-    const tdBase: React.CSSProperties = { padding: '1.5mm 2mm', border: '1px solid #ccc', fontSize: '8.5pt' }
-
     const renderSingleForm = (
       displayOrderNo: string,
       sections: [string, { order: number; subOrder: number; items: BookedItem[] }][],
@@ -392,9 +390,9 @@ export default function OrdersPage() {
       vatLabel: string | null,
       wrapperStyle?: React.CSSProperties,
     ) => {
-      const thBase: React.CSSProperties = { padding: '2mm', border: '1px solid #888', fontSize: '8.5pt', backgroundColor: '#9b9484', color: 'white' }
+      const rowBase: React.CSSProperties = { display: 'flex', alignItems: 'baseline', padding: '0.8mm 2mm', fontSize: '7pt', gap: '2mm' }
       return (
-        <div style={{ width: '210mm', height: '297mm', padding: '8mm', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif', ...wrapperStyle }}>
+        <div style={{ width: '210mm', padding: '8mm', boxSizing: 'border-box', fontFamily: 'sans-serif', ...wrapperStyle }}>
 
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: '3mm' }}>
@@ -405,93 +403,114 @@ export default function OrdersPage() {
           </div>
 
           {/* Info bar */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f9fafb', fontSize: '8.5pt' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f9fafb', fontSize: '8pt' }}>
             <div><strong>วันที่:</strong> {orderDate}</div>
             <div><strong>เบิกของ:</strong> {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}</div>
             <div><strong>รถ:</strong> {order.vehicle_type ?? '—'}</div>
             <div><strong>สาขา/ตัวแทน:</strong> {order.branch_name ?? '—'}</div>
           </div>
 
-          {/* Product table */}
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-              <colgroup>
-                <col style={{ width: '28mm' }} />
-                <col />
-                <col style={{ width: '22mm' }} />
-                <col style={{ width: '14mm' }} />
-                <col style={{ width: '24mm' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={{ ...thBase, textAlign: 'left' }}>หมวดหมู่</th>
-                  <th style={{ ...thBase, textAlign: 'left' }}>ชื่อสินค้า</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>ราคา/หน่วย</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>จำนวน</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>รวม (฿)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sections.flatMap(([sectionName, { items }]) =>
-                  items.map((item, idx) => (
-                    <tr key={`${sectionName}-${idx}`} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5' }}>
-                      {idx === 0 && (
-                        <td rowSpan={items.length} style={{ ...tdBase, fontWeight: 'bold', color: '#444', textAlign: 'center', verticalAlign: 'middle', backgroundColor: '#e8f5e9', fontSize: '7.5pt' }}>
-                          {sectionName}
-                        </td>
-                      )}
-                      <td style={{ ...tdBase }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          {(() => {
-                            const prio = (order.priorities ?? {})[String(item.product.id)]
-                            if (prio === 'critical')  return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#000', flexShrink: 0 }} />
-                            if (prio === 'important') return <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#888', border: '1px solid #000', flexShrink: 0 }} />
-                            return null
-                          })()}
-                          {item.product.product_name}
-                        </span>
-                      </td>
-                      <td style={{ ...tdBase, textAlign: 'right' }}>
-                        {item.product.price ? parseFloat(item.product.price).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '—'}
-                      </td>
-                      <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold' }}>{item.qty}</td>
-                      <td style={{ ...tdBase, textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  ))
-                )}
-
-                {/* FOY summary rows (NV form only) */}
-                {foyRows.map(([model, data]) => (
-                  <tr key={`foy-${model}`} style={{ backgroundColor: '#f0fdf4' }}>
-                    <td style={{ ...tdBase, fontWeight: 'bold', color: '#166534', textAlign: 'center', fontSize: '7.5pt' }}>กระดาษฝอย</td>
-                    <td style={{ ...tdBase, color: '#166534' }}>{model}</td>
-                    <td style={{ ...tdBase, textAlign: 'right', color: '#166534' }}>—</td>
-                    <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', color: '#166534' }}>{data.qty}</td>
-                    <td style={{ ...tdBase, textAlign: 'right', color: '#166534' }}>{data.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ backgroundColor: '#d1fae5' }}>
-                  <td colSpan={4} style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', borderColor: '#888' }}>ยอดเงินรวม</td>
-                  <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', color: '#14532d', borderColor: '#888' }}>
-                    {fmtMoney(grandTotal)} บาท
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          {/* Signature area */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
-            {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
-              <div key={label} style={{ border: '1px solid #ccc', padding: '3mm', borderRadius: '1mm' }}>
-                <div style={{ fontSize: '8pt', color: '#666', marginBottom: '10mm' }}>{label}</div>
-                <div style={{ borderTop: '1px solid #aaa', paddingTop: '1.5mm', fontSize: '7.5pt', color: '#888' }}>
-                  ลงชื่อ _________________________ วันที่ _____________
-                </div>
+          {/* Categories with 2-column product grid */}
+          {sections.map(([sectionName, { items }]) => (
+            <div key={sectionName} style={{ marginBottom: '1.5mm' }}>
+              {/* Category header — breakAfter:avoid keeps it glued to the first product row */}
+              <div style={{ backgroundColor: '#9b9484', color: 'white', padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}>
+                {sectionName}
               </div>
-            ))}
+              {/* 2-column product list (table-based so rows cross page boundaries cleanly) */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #ddd', borderTop: 'none' }}>
+                <colgroup>
+                  <col style={{ width: '50%' }} />
+                  <col style={{ width: '50%' }} />
+                </colgroup>
+                <tbody>
+                  {Array.from({ length: Math.ceil(items.length / 2) }, (_, rowIdx) => {
+                    const left  = items[rowIdx * 2]
+                    const right = items[rowIdx * 2 + 1]
+                    const renderCell = (item: BookedItem | undefined, cellIdx: number) => {
+                      if (!item) return <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0' }} />
+                      const prio = (order.priorities ?? {})[String(item.product.id)]
+                      const textColor = prio === 'critical' ? '#cc0000' : prio === 'important' ? '#1d4ed8' : '#222'
+                      const bg = rowIdx % 2 === 0 ? 'white' : '#f5f5f5'
+                      return (
+                        <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0', borderLeft: cellIdx === 1 ? '1px solid #ddd' : undefined }}>
+                          <div style={{ ...rowBase, backgroundColor: bg, color: textColor }}>
+                            <span style={{ flex: 1 }}>{item.product.product_name}</span>
+                            <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{item.qty}</span>
+                            <span style={{ flexShrink: 0, color: textColor === '#222' ? '#555' : textColor, minWidth: '16mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </td>
+                      )
+                    }
+                    return (
+                      <tr key={rowIdx}>
+                        {renderCell(left, 0)}
+                        {renderCell(right, 1)}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+          {/* FOY rows (NV form only) */}
+          {foyRows.length > 0 && (
+            <div style={{ marginBottom: '1.5mm' }}>
+              <div style={{ backgroundColor: '#9b9484', color: 'white', padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}>
+                กระดาษฝอย
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #ddd', borderTop: 'none' }}>
+                <colgroup>
+                  <col style={{ width: '50%' }} />
+                  <col style={{ width: '50%' }} />
+                </colgroup>
+                <tbody>
+                  {Array.from({ length: Math.ceil(foyRows.length / 2) }, (_, rowIdx) => {
+                    const left  = foyRows[rowIdx * 2]
+                    const right = foyRows[rowIdx * 2 + 1]
+                    const renderFoyCell = (entry: [string, { qty: number; amount: number }] | undefined, cellIdx: number) => {
+                      if (!entry) return <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0' }} />
+                      const [model, data] = entry
+                      const bg = rowIdx % 2 === 0 ? '#f0fdf4' : '#dcfce7'
+                      return (
+                        <td key={cellIdx} style={{ borderBottom: '1px solid #eee', padding: '0', borderLeft: cellIdx === 1 ? '1px solid #ddd' : undefined }}>
+                          <div style={{ ...rowBase, backgroundColor: bg, color: '#166534' }}>
+                            <span style={{ flex: 1 }}>{model}</span>
+                            <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{data.qty}</span>
+                            <span style={{ flexShrink: 0, minWidth: '16mm', textAlign: 'right' }}>{data.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </td>
+                      )
+                    }
+                    return (
+                      <tr key={rowIdx}>
+                        {renderFoyCell(left, 0)}
+                        {renderFoyCell(right, 1)}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Grand total + signature — keep together, never split across pages */}
+          <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm', marginTop: '3mm', borderTop: '2px solid #888', paddingTop: '2mm' }}>
+              <span style={{ fontSize: '10pt', fontWeight: 'bold', color: '#333' }}>ยอดเงินรวม</span>
+              <span style={{ fontSize: '11pt', fontWeight: 'bold', color: '#14532d' }}>{fmtMoney(grandTotal)} บาท</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
+              {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
+                <div key={label} style={{ border: '1px solid #ccc', padding: '3mm', borderRadius: '1mm' }}>
+                  <div style={{ fontSize: '8pt', color: '#666', marginBottom: '10mm' }}>{label}</div>
+                  <div style={{ borderTop: '1px solid #aaa', paddingTop: '1.5mm', fontSize: '7.5pt', color: '#888' }}>
+                    ลงชื่อ _________________________ วันที่ _____________
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )
@@ -676,6 +695,14 @@ export default function OrdersPage() {
       <div className="print-only">
         {printType === 'booking' && printOrder && <BookingPrint order={printOrder} />}
         {printType === 'foy'     && printOrder && <FoyPrint     order={printOrder} />}
+        {printType === 'all'     && printOrder && (
+          <>
+            <div style={{ pageBreakAfter: 'always', breakAfter: 'page' }}>
+              <BookingPrint order={printOrder} />
+            </div>
+            <FoyPrint order={printOrder} />
+          </>
+        )}
       </div>
 
       {/* ── Payment Modal */}
@@ -1103,7 +1130,7 @@ export default function OrdersPage() {
                                 <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{order.vehicle_type}</span>
                               )}
                               <div className="flex gap-1 mt-0.5">
-                                <button onClick={() => handlePrint(order, 'booking')}
+                                <button onClick={() => handlePrint(order, 'all')}
                                   className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
                                   🖨️ ใบจอง
                                 </button>
@@ -1174,7 +1201,7 @@ export default function OrdersPage() {
                             <div className="flex flex-col items-center gap-1.5">
                               <span className="text-gray-400 text-xs">รอดำเนินการ</span>
                               <div className="flex gap-1">
-                                <button onClick={() => handlePrint(order, 'booking')}
+                                <button onClick={() => handlePrint(order, 'all')}
                                   className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
                                   🖨️ ใบจอง
                                 </button>
