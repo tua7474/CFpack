@@ -405,11 +405,11 @@ export default function OrdersPage() {
 
       const rowBase: React.CSSProperties = {
         display: 'flex', alignItems: 'baseline',
-        padding: '0.6mm 2mm', fontSize: '7pt', gap: '2mm',
+        padding: '0.5mm 1.5mm', fontSize: '6.5pt', gap: '1.5mm',
         borderBottom: '1px solid #eee',
       }
       const catHdr: React.CSSProperties = {
-        padding: '1mm 2mm', fontSize: '7.5pt', fontWeight: 'bold',
+        padding: '0.8mm 1.5mm', fontSize: '7pt', fontWeight: 'bold',
       }
 
       return (
@@ -437,7 +437,7 @@ export default function OrdersPage() {
             breakInside:avoid on each block keeps header+rows together.
             Products are single-column rows within each ~90mm-wide column.
           */}
-          <div style={{ columnCount: 2, columnGap: '5mm' }}>
+          <div style={{ columnCount: 3, columnGap: '4mm' }}>
 
             {/* Product category sections */}
             {sections.map(([sectionName, { items }]) => (
@@ -453,7 +453,7 @@ export default function OrdersPage() {
                       <div key={idx} style={{ ...rowBase, backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5', color: textColor }}>
                         <span style={{ flex: 1 }}>{item.product.product_name}</span>
                         <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{item.qty}</span>
-                        <span style={{ flexShrink: 0, color: textColor === '#222' ? '#555' : textColor, minWidth: '13mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                        <span style={{ flexShrink: 0, color: textColor === '#222' ? '#555' : textColor, minWidth: '10mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )
                   })}
@@ -473,7 +473,7 @@ export default function OrdersPage() {
                       <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#888', fontSize: '6.5pt', minWidth: '8mm' }}>{fi.item.color_code}</span>
                       <span style={{ flex: 1 }}>{fi.item.color_name}</span>
                       <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
-                      <span style={{ flexShrink: 0, minWidth: '12mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                      <span style={{ flexShrink: 0, minWidth: '10mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                     </div>
                   ))}
                 </div>
