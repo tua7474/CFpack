@@ -250,7 +250,7 @@ function Booking2Inner() {
   const [saving, setSaving]         = useState(false)
   const [saveMsg, setSaveMsg]       = useState<string | null>(null)
   const [resetKey, setResetKey]     = useState(0)
-  const [qtyPopup, setQtyPopup]     = useState<{ id: number; name: string; stockQty: number; accent: string } | null>(null)
+  const [qtyPopup, setQtyPopup]     = useState<{ id: number; name: string; subgroupName: string; stockQty: number; accent: string } | null>(null)
   const [popupVal, setPopupVal]     = useState('')
   const popupInputRef               = useRef<HTMLInputElement>(null)
   const [pending, setPending]       = useState<Record<number, number>>({})
@@ -1638,8 +1638,8 @@ function Booking2Inner() {
                                     defaultValue={qty || ''}
                                     key={`qty-${p.id}-${resetKey}`}
                                     readOnly
-                                    onFocus={() => setQtyPopup({ id: p.id, name: p.product_name, stockQty: parseFloat(String(p.stock_qty ?? '0')) || 0, accent: sec.is_vat_included ? '#f0f9ff' : '#fff7ed' })}
-                                    onClick={() => setQtyPopup({ id: p.id, name: p.product_name, stockQty: parseFloat(String(p.stock_qty ?? '0')) || 0, accent: sec.is_vat_included ? '#f0f9ff' : '#fff7ed' })}
+                                    onFocus={() => setQtyPopup({ id: p.id, name: p.product_name, subgroupName: p.subgroup_name, stockQty: parseFloat(String(p.stock_qty ?? '0')) || 0, accent: sec.is_vat_included ? '#f0f9ff' : '#fff7ed' })}
+                                    onClick={() => setQtyPopup({ id: p.id, name: p.product_name, subgroupName: p.subgroup_name, stockQty: parseFloat(String(p.stock_qty ?? '0')) || 0, accent: sec.is_vat_included ? '#f0f9ff' : '#fff7ed' })}
                                     className={`w-full px-1 py-px text-[13px] text-gray-900 text-right bg-transparent focus:outline-none cursor-pointer ${hasPending ? 'font-semibold' : ''}`}
                                   />
                                 )
@@ -1968,6 +1968,12 @@ function Booking2Inner() {
               {/* Product name + stock */}
               <div className="flex items-start justify-between mb-3 gap-3">
                 <div className="min-w-0 flex-1">
+                  {/* หมวดสินค้า */}
+                  <div className="text-base font-extrabold px-2 py-0.5 rounded-lg inline-block mb-1.5"
+                    style={{ backgroundColor: qtyPopup.accent === '#f0f9ff' ? '#bae6fd' : '#fed7aa', color: '#374151' }}>
+                    {qtyPopup.subgroupName}
+                  </div>
+                  {/* ชื่อสินค้า */}
                   <div className="text-xl font-extrabold text-gray-900 leading-tight">{qtyPopup.name}</div>
                 </div>
                 <div className="shrink-0 text-right bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5">

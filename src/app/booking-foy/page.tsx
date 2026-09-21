@@ -101,7 +101,7 @@ export default function BookingFoyPage() {
   const [zoom, setZoom]           = useState(1)
   const [resetKey, setResetKey]           = useState(0)
   const [foyPriorities, setFoyPriorities] = useState<Record<number, PriorityLevel | null>>({})
-  const [qtyPopup, setQtyPopup]           = useState<{ id: number; name: string; colorCode: string; stockQty: number; accent: string } | null>(null)
+  const [qtyPopup, setQtyPopup]           = useState<{ id: number; name: string; colorCode: string; category: string; modelName: string; stockQty: number; accent: string } | null>(null)
   const [popupVal, setPopupVal]   = useState('')
   const popupInputRef             = useRef<HTMLInputElement>(null)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | ''>('')
@@ -438,8 +438,8 @@ export default function BookingFoyPage() {
                     defaultValue={qty || ''}
                     key={`qty-${item.id}-${resetKey}`}
                     readOnly
-                    onFocus={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code, stockQty: parseInt(item.stock_qty) || 0, accent: CATEGORY_ROW_BG[catName] ?? '#f3f4f6' })}
-                    onClick={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code, stockQty: parseInt(item.stock_qty) || 0, accent: CATEGORY_ROW_BG[catName] ?? '#f3f4f6' })}
+                    onFocus={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code, category: catName, modelName: g.name, stockQty: parseInt(item.stock_qty) || 0, accent: CATEGORY_ROW_BG[catName] ?? '#f3f4f6' })}
+                    onClick={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code, category: catName, modelName: g.name, stockQty: parseInt(item.stock_qty) || 0, accent: CATEGORY_ROW_BG[catName] ?? '#f3f4f6' })}
                     className={`w-full px-1 py-px text-[9px] text-gray-900 text-right bg-transparent focus:outline-none cursor-pointer ${hasPending ? 'font-semibold' : ''}`}
                   />
                 </td>
@@ -765,7 +765,16 @@ export default function BookingFoyPage() {
               {/* Product info row */}
               <div className="flex items-start justify-between mb-3 gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="text-[11px] text-gray-500 font-mono leading-none mb-1">{qtyPopup.colorCode}</div>
+                  {/* หมวด + รุ่น */}
+                  <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                    <span className="text-base font-extrabold px-2 py-0.5 rounded-lg"
+                      style={{ backgroundColor: CATEGORY_MODEL_BG[qtyPopup.category] ?? '#9b9484', color: '#374151' }}>
+                      {qtyPopup.category}
+                    </span>
+                    <span className="text-base font-extrabold text-gray-700">{qtyPopup.modelName}</span>
+                  </div>
+                  {/* รหัสสี + ชื่อสี */}
+                  <div className="text-[11px] text-gray-500 font-mono leading-none mb-0.5">{qtyPopup.colorCode}</div>
                   <div className="text-xl font-extrabold text-gray-900 leading-tight">{qtyPopup.name}</div>
                 </div>
                 <div className="shrink-0 text-right bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5">
