@@ -98,7 +98,7 @@ export default function BookingFoyPage() {
   const [originalItems, setOriginalItems]     = useState<Record<number, number>>({})
   const [zoom, setZoom]           = useState(1)
   const [resetKey, setResetKey]   = useState(0)
-  const [qtyPopup, setQtyPopup]   = useState<{ id: number; name: string; colorCode: string } | null>(null)
+  const [qtyPopup, setQtyPopup]   = useState<{ id: number; name: string; colorCode: string; stockQty: number; accent: string } | null>(null)
   const [popupVal, setPopupVal]   = useState('')
   const popupInputRef             = useRef<HTMLInputElement>(null)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | ''>('')
@@ -429,8 +429,8 @@ export default function BookingFoyPage() {
                     defaultValue={qty || ''}
                     key={`qty-${item.id}-${resetKey}`}
                     readOnly
-                    onFocus={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code })}
-                    onClick={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code })}
+                    onFocus={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code, stockQty: parseInt(item.stock_qty) || 0, accent: CATEGORY_ROW_BG[catName] ?? '#f3f4f6' })}
+                    onClick={() => setQtyPopup({ id: item.id, name: item.color_name || item.color_code, colorCode: item.color_code, stockQty: parseInt(item.stock_qty) || 0, accent: CATEGORY_ROW_BG[catName] ?? '#f3f4f6' })}
                     className={`w-full px-1 py-px text-[9px] text-gray-900 text-right bg-transparent focus:outline-none cursor-pointer ${hasPending ? 'font-semibold' : ''}`}
                   />
                 </td>
@@ -724,37 +724,93 @@ export default function BookingFoyPage() {
       </main>
 
       {/* ── Qty popup ─────────────────────────────────────────────────────── */}
-      {qtyPopup && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center sm:items-center no-print"
-          onClick={() => setQtyPopup(null)}>
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl px-6 pt-5 pb-8 sm:pb-6 w-full max-w-sm"
-            onClick={e => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4 sm:hidden" />
-            <div className="text-xs text-gray-400 mb-0.5 font-mono">{qtyPopup.colorCode}</div>
-            <div className="text-lg font-bold text-gray-800 mb-4 truncate">{qtyPopup.name}</div>
-            <input
-              ref={popupInputRef}
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={popupVal}
-              onChange={e => setPopupVal(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={e => { if (e.key === 'Enter') confirmPopup(); if (e.key === 'Escape') setQtyPopup(null) }}
-              className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 border-indigo-400 rounded-2xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50"
-            />
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => setQtyPopup(null)}
-                className="flex-1 py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-base transition-colors">
-                ยกเลิก
-              </button>
-              <button onClick={confirmPopup}
-                className="flex-[2] py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base transition-colors">
-                ✓ ยืนยัน
-              </button>
+      {qtyPopup && (() => {
+        const entered   = parseInt(popupVal) || 0
+        const stock     = qtyPopup.stockQty
+        const remaining = stock - entered
+        const overStock = entered > stock
+        const exact     = !overStock && entered === stock && stock > 0
+        return (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center sm:items-center no-print"
+            onClick={() => setQtyPopup(null)}>
+            <div className="rounded-t-3xl sm:rounded-3xl shadow-2xl px-5 pt-4 pb-8 sm:pb-5 w-full max-w-sm border-t-4"
+              style={{ backgroundColor: qtyPopup.accent, borderColor: '#6366f1' }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* Drag handle */}
+              <div className="w-10 h-1 bg-gray-400/40 rounded-full mx-auto mb-3 sm:hidden" />
+
+              {/* Product info row */}
+              <div className="flex items-start justify-between mb-3 gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] text-gray-500 font-mono leading-none mb-1">{qtyPopup.colorCode}</div>
+                  <div className="text-xl font-extrabold text-gray-900 leading-tight">{qtyPopup.name}</div>
+                </div>
+                <div className="shrink-0 text-right bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5">
+                  <div className="text-[10px] text-blue-400 font-semibold leading-none">สต็อค</div>
+                  <div className="text-2xl font-extrabold text-blue-600 leading-tight">{stock}</div>
+                </div>
+              </div>
+
+              {/* Large input */}
+              <input
+                ref={popupInputRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={popupVal}
+                placeholder="0"
+                onChange={e => setPopupVal(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={e => { if (e.key === 'Enter') confirmPopup(); if (e.key === 'Escape') setQtyPopup(null) }}
+                className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 bg-white"
+                style={{ borderColor: overStock ? '#ef4444' : exact ? '#f97316' : '#6366f1', outline: 'none', '--tw-ring-color': overStock ? '#ef4444' : '#6366f1' } as React.CSSProperties}
+              />
+
+              {/* Feedback */}
+              <div className={`text-center mt-2 text-sm font-bold h-5 ${overStock ? 'text-red-600' : exact ? 'text-orange-600' : popupVal ? 'text-green-700' : 'text-transparent'}`}>
+                {popupVal
+                  ? overStock
+                    ? `${entered} / ${stock} ⚠ เกินสต็อค`
+                    : exact
+                      ? `${entered} / ${stock} · หมดพอดี`
+                      : `${entered} / ${stock} · เหลือ ${remaining}`
+                  : '·'}
+              </div>
+
+              {/* Quick-fill buttons */}
+              {stock > 0 && (
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => setPopupVal(String(stock))}
+                    className="flex-1 py-2.5 rounded-xl text-white font-extrabold text-sm transition-all active:scale-95 shadow-sm"
+                    style={{ backgroundColor: '#ef4444' }}>
+                    {stock} ต้องครบ
+                  </button>
+                  <button
+                    onClick={() => setPopupVal(String(stock))}
+                    className="flex-1 py-2.5 rounded-xl text-white font-extrabold text-sm transition-all active:scale-95 shadow-sm"
+                    style={{ backgroundColor: '#3b82f6' }}>
+                    {stock} เท่าที่มี
+                  </button>
+                </div>
+              )}
+
+              {/* Confirm/cancel */}
+              <div className="flex gap-3 mt-3">
+                <button onClick={() => setQtyPopup(null)}
+                  className="flex-1 py-3 rounded-2xl bg-white/70 hover:bg-white text-gray-600 font-semibold text-base transition-colors border border-gray-300">
+                  ยกเลิก
+                </button>
+                <button onClick={confirmPopup}
+                  className="flex-[2] py-3 rounded-2xl text-white font-bold text-base transition-colors shadow"
+                  style={{ backgroundColor: '#6366f1' }}>
+                  ✓ ยืนยัน
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
