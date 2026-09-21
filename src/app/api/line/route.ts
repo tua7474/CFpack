@@ -1872,11 +1872,12 @@ const SLIP_LABEL: Record<string, string> = {
 }
 
 async function handleImage(messageId: string, userId: string, replyToken: string, source?: Record<string, string>) {
+  try {
   // Download image from LINE Content API
   const imgRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
     headers: { Authorization: `Bearer ${TOKEN}` },
   })
-  if (!imgRes.ok) return // ไม่ reply ถ้าไม่ใช่สลิป (อาจเป็นรูปทั่วไป)
+  if (!imgRes.ok) return // ไม่ reply ถ้าดาวน์โหลดรูปไม่ได้ (อาจเป็นรูปทั่วไป)
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return reply(replyToken, [{ type: 'text', text: '⚠️ ไม่สามารถสแกนสลิปได้ (ไม่มี ANTHROPIC_API_KEY)' }])
@@ -1926,10 +1927,10 @@ async function handleImage(messageId: string, userId: string, replyToken: string
   }
 
   if (scanResult.error) {
-    return // ไม่ใช่สลิป — ไม่ตอบ
+    return // ไม่ใช่สลิป — ไม่ตอบ (รูปทั่วไป)
   }
   if (!scanResult.amount) {
-    return // อ่านยอดไม่ได้ — ไม่ตอบ
+    return reply(replyToken, [{ type: 'text', text: '🔍 รับรูปแล้ว แต่ไม่พบยอดเงินในสลิป\nลองส่งรูปใหม่ที่ชัดขึ้นได้เลยครับ' }])
   }
 
   // Determine category
@@ -1981,6 +1982,10 @@ async function handleImage(messageId: string, userId: string, replyToken: string
   }
 
   return reply(replyToken, [slipConfirmCard(slip, suggest)])
+  } catch (e) {
+    console.error('[handleImage] error:', e)
+    return reply(replyToken, [{ type: 'text', text: `⚠️ เกิดข้อผิดพลาดในการสแกนสลิป\n${String(e)}` }])
+  }
 }
 
 // ── Webhook entry ─────────────────────────────────────────────────────────────
@@ -1996,14 +2001,18 @@ export async function POST(req: NextRequest) {
   await Promise.all(events.map(async (ev: Record<string, unknown>) => {
     const userId     = (ev.source as Record<string, string>)?.userId ?? ''
     const replyToken = ev.replyToken as string
-
-    if (ev.type === 'postback') {
-      const data = (ev.postback as Record<string, string>)?.data ?? ''
-      await handlePostback(data, userId, replyToken, ev.source as Record<string, string>)
-    } else if (ev.type === 'message') {
-      const msg = ev.message as Record<string, unknown>
-      if (msg?.type === 'text')  await handleText(msg.text as string, userId, replyToken, ev.source as Record<string, string>)
-      if (msg?.type === 'image') await handleImage(msg.id as string, userId, replyToken, ev.source as Record<string, string>)
+    try {
+      if (ev.type === 'postback') {
+        const data = (ev.postback as Record<string, string>)?.data ?? ''
+        await handlePostback(data, userId, replyToken, ev.source as Record<string, string>)
+      } else if (ev.type === 'message') {
+        const msg = ev.message as Record<string, unknown>
+        if (msg?.type === 'text')  await handleText(msg.text as string, userId, replyToken, ev.source as Record<string, string>)
+        if (msg?.type === 'image') await handleImage(msg.id as string, userId, replyToken, ev.source as Record<string, string>)
+      }
+    } catch (e) {
+      console.error('[webhook] unhandled error for event', ev.type, e)
+      try { await reply(replyToken, [{ type: 'text', text: `⚠️ เกิดข้อผิดพลาด\n${String(e)}` }]) } catch {}
     }
   }))
 
