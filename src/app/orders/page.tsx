@@ -118,7 +118,7 @@ export default function OrdersPage() {
   const [products, setProducts]     = useState<CatalogProduct[]>([])
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [printOrder, setPrintOrder] = useState<BookingOrder | null>(null)
-  const [printType, setPrintType]   = useState<'booking' | 'foy' | 'all' | null>(null)
+  const [printType, setPrintType]   = useState<'booking' | null>(null)
 
   // Withdrawal types for display
   const [withdrawalTypes, setWithdrawalTypes] = useState<{ id: number; name: string }[]>([])
@@ -215,14 +215,14 @@ export default function OrdersPage() {
     await patch(order.order_no, { pickup_status: 'pending' })
   }
 
-  const handlePickupAndPrint = async (order: BookingOrder, printAs: 'booking' | 'foy') => {
+  const handlePickupAndPrint = async (order: BookingOrder) => {
     await patch(order.order_no, {
       pickup_status: 'picked_up',
       ...(pickupDelivery ? { vehicle_type: pickupDelivery } : {}),
     })
     setPickupOpen(null)
     setPickupDelivery('')
-    handlePrint(order, printAs)
+    handlePrint(order)
   }
 
   const handlePayment = async (order_no: string) => {
@@ -237,8 +237,8 @@ export default function OrdersPage() {
     setPayBank('')
   }
 
-  const handlePrint = (order: BookingOrder, type: 'booking' | 'foy' | 'all') => {
-    setPrintType(type)
+  const handlePrint = (order: BookingOrder) => {
+    setPrintType('booking')
     setPrintOrder(order)
   }
 
@@ -388,10 +388,15 @@ export default function OrdersPage() {
       vatLabel: string | null,
       wrapperStyle?: React.CSSProperties,
     ) => {
-      // Build foy color-level data (NV and legacy combined only)
+      // Build foy color-level data:
+      // - NV form (vatLabel='NV'): always show foy
+      // - V-only form (vatLabel='V', nvTotal=0): show foy (no NV form exists to carry it)
+      // - V form when NV also exists (vatLabel='V', nvTotal>0): skip (foy already in NV)
+      // - Legacy null: always show foy
       type FoyCI = { item: StockItem; qty: number; total: number }
       const foyModelMap = new Map<string, FoyCI[]>()
-      if (vatLabel !== 'V') {
+      const showFoyHere = vatLabel !== 'V' || nvTotal === 0
+      if (showFoyHere) {
         const foyStockMap = new Map(stockItems.map(s => [s.id, s]))
         for (const [idStr, qtyVal] of Object.entries(order.foy_item_quantities ?? {})) {
           if (!qtyVal) continue
@@ -521,148 +526,6 @@ export default function OrdersPage() {
     }
   }
 
-  // ── Print render: ใบจองกระดาษฝอย ──────────────────────────────────────────
-
-  function FoyPrint({ order }: { order: BookingOrder }) {
-    type FoyItem = { item: StockItem; qty: number; total: number }
-    const stockMap = new Map(stockItems.map(s => [s.id, s]))
-    const modelMap = new Map<string, FoyItem[]>()
-
-    for (const [idStr, qty] of Object.entries(order.foy_item_quantities ?? {})) {
-      if (!qty) continue
-      const s = stockMap.get(Number(idStr))
-      if (!s) continue
-      const price = parseFloat(s.warehouse_price ?? '0') || 0
-      if (!modelMap.has(s.model_name)) modelMap.set(s.model_name, [])
-      modelMap.get(s.model_name)!.push({ item: s, qty, total: price * qty })
-    }
-
-    // Fallback: if no item-level data, use model-level summary from foy_quantities
-    const hasFoyItems = modelMap.size > 0
-    const foyQtyEntries = Object.entries(order.foy_quantities ?? {}).filter(([, d]) => d.qty > 0)
-
-    const grandTotal = hasFoyItems
-      ? Array.from(modelMap.values()).flat().reduce((s, i) => s + i.total, 0)
-      : foyQtyEntries.reduce((s, [, d]) => s + d.amount, 0)
-
-    const orderDate = fmtOrderDate(order.updated_at)
-
-    const tdBase: React.CSSProperties = { padding: '1.5mm 2mm', border: '1px solid #ccc', fontSize: '8.5pt' }
-    const thBase: React.CSSProperties = { padding: '2mm', border: '1px solid #888', fontSize: '8.5pt', backgroundColor: '#0f766e', color: 'white' }
-
-    return (
-      <div style={{ width: '210mm', padding: '8mm', boxSizing: 'border-box', fontFamily: 'sans-serif' }}>
-
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '3mm' }}>
-          <div style={{ fontSize: '16pt', fontWeight: 'bold', color: '#0f766e' }}>ใบจองกระดาษฝอย</div>
-          <div style={{ fontSize: '9pt', color: '#555' }}>เลขที่: {order.order_no}</div>
-        </div>
-
-        {/* Info bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '2mm', marginBottom: '3mm', border: '1px solid #ccc', padding: '2.5mm', borderRadius: '1mm', backgroundColor: '#f0fdfa', fontSize: '8.5pt' }}>
-          <div><strong>วันที่:</strong> {orderDate}</div>
-          <div><strong>เบิกของ:</strong> {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}</div>
-          <div><strong>รถ:</strong> {order.vehicle_type ?? '—'}</div>
-          <div><strong>สาขา/ตัวแทน:</strong> {order.branch_name ?? '—'}</div>
-        </div>
-
-        {/* FOY table */}
-        <div>
-          {hasFoyItems ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-              <colgroup>
-                <col style={{ width: '30mm' }} />
-                <col />
-                <col style={{ width: '40mm' }} />
-                <col style={{ width: '16mm' }} />
-                <col style={{ width: '24mm' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={{ ...thBase, textAlign: 'left' }}>รุ่น</th>
-                  <th style={{ ...thBase, textAlign: 'left' }}>รหัสสี</th>
-                  <th style={{ ...thBase, textAlign: 'left' }}>ชื่อสี</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>จำนวน</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>รวม (฿)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(modelMap.entries()).flatMap(([modelName, items]) =>
-                  items.map((item, idx) => (
-                    <tr key={`${modelName}-${idx}`} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5' }}>
-                      {idx === 0 && (
-                        <td rowSpan={items.length} style={{ ...tdBase, fontWeight: 'bold', color: '#4ade80', textAlign: 'center', verticalAlign: 'middle', backgroundColor: '#ccfbf1', fontSize: '7.5pt' }}>
-                          {modelName}
-                        </td>
-                      )}
-                      <td style={{ ...tdBase, fontFamily: 'monospace' }}>{item.item.color_code}</td>
-                      <td style={{ ...tdBase }}>{item.item.color_name}</td>
-                      <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold' }}>{item.qty}</td>
-                      <td style={{ ...tdBase, textAlign: 'right' }}>
-                        {item.total ? item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '—'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              <tfoot>
-                <tr style={{ backgroundColor: '#ccfbf1' }}>
-                  <td colSpan={4} style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', borderColor: '#888' }}>ยอดเงินรวม</td>
-                  <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', color: '#4ade80', borderColor: '#888' }}>
-                    {grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          ) : foyQtyEntries.length > 0 ? (
-            /* Fallback: model-level summary only */
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...thBase, textAlign: 'left' }}>รุ่น</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>จำนวน</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>รวม (฿)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {foyQtyEntries.map(([model, data], idx) => (
-                  <tr key={model} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f5f5f5' }}>
-                    <td style={{ ...tdBase }}>{model}</td>
-                    <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold' }}>{data.qty}</td>
-                    <td style={{ ...tdBase, textAlign: 'right' }}>{data.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ backgroundColor: '#ccfbf1' }}>
-                  <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', borderColor: '#888' }} colSpan={2}>ยอดเงินรวม</td>
-                  <td style={{ ...tdBase, textAlign: 'right', fontWeight: 'bold', fontSize: '10pt', color: '#4ade80', borderColor: '#888' }}>
-                    {grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          ) : (
-            <div style={{ padding: '10mm', textAlign: 'center', color: '#aaa', fontSize: '10pt' }}>ไม่มีรายการกระดาษฝอย</div>
-          )}
-        </div>
-
-        {/* Signature area — keep together, never split */}
-        <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
-          {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
-            <div key={label} style={{ border: '1px solid #ccc', padding: '3mm', borderRadius: '1mm' }}>
-              <div style={{ fontSize: '8pt', color: '#666', marginBottom: '10mm' }}>{label}</div>
-              <div style={{ borderTop: '1px solid #aaa', paddingTop: '1.5mm', fontSize: '7.5pt', color: '#888' }}>
-                ลงชื่อ _________________________ วันที่ _____________
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -681,15 +544,6 @@ export default function OrdersPage() {
       {/* Print area */}
       <div className="print-only">
         {printType === 'booking' && printOrder && <BookingPrint order={printOrder} />}
-        {printType === 'foy'     && printOrder && <FoyPrint     order={printOrder} />}
-        {printType === 'all'     && printOrder && (
-          <>
-            <div style={{ pageBreakAfter: 'always', breakAfter: 'page' }}>
-              <BookingPrint order={printOrder} />
-            </div>
-            <FoyPrint order={printOrder} />
-          </>
-        )}
       </div>
 
       {/* ── Payment Modal */}
@@ -982,9 +836,6 @@ export default function OrdersPage() {
                     const pickedUp  = order.pickup_status === 'picked_up'
                     const paid      = order.payment_status === 'paid'
                     const isPaying  = payingOrderNo === order.order_no
-                    const hasFoy    = Object.keys(order.foy_quantities ?? {}).length > 0 ||
-                                      Object.keys(order.foy_item_quantities ?? {}).length > 0
-
                     return (
                       <tr key={`${order.id}-${vatTag ?? 'x'}`} className={cancelled ? 'bg-red-50 opacity-60' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
 
@@ -1117,16 +968,10 @@ export default function OrdersPage() {
                                 <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{order.vehicle_type}</span>
                               )}
                               <div className="flex gap-1 mt-0.5">
-                                <button onClick={() => handlePrint(order, 'booking')}
+                                <button onClick={() => handlePrint(order)}
                                   className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
                                   🖨️ ใบจอง
                                 </button>
-                                {hasFoy && (
-                                  <button onClick={() => handlePrint(order, 'foy')}
-                                    className="px-2 py-0.5 text-[10px] rounded bg-teal-50 hover:bg-teal-100 text-teal-600 border border-teal-200 transition-colors whitespace-nowrap">
-                                    🖨️ ฝอย
-                                  </button>
-                                )}
                               </div>
                               {(isAdmin || isManager) && (
                                 <button onClick={() => handleResetPickup(order)}
@@ -1152,7 +997,7 @@ export default function OrdersPage() {
                                 </select>
                                 <div className="flex gap-1">
                                   <button
-                                    onClick={() => handlePickupAndPrint(order, 'booking')}
+                                    onClick={() => handlePickupAndPrint(order)}
                                     disabled={!pickupDelivery}
                                     className="flex-1 px-2 py-1 text-[10px] rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
                                   >
@@ -1165,15 +1010,6 @@ export default function OrdersPage() {
                                     ✕
                                   </button>
                                 </div>
-                                {hasFoy && (
-                                  <button
-                                    onClick={() => handlePickupAndPrint(order, 'foy')}
-                                    disabled={!pickupDelivery}
-                                    className="w-full px-2 py-1 text-[10px] rounded bg-teal-600 hover:bg-teal-700 text-white font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                                  >
-                                    📦 ยืนยัน+พิมพ์ฝอย
-                                  </button>
-                                )}
                               </div>
                             ) : (
                               <button
@@ -1188,16 +1024,10 @@ export default function OrdersPage() {
                             <div className="flex flex-col items-center gap-1.5">
                               <span className="text-gray-400 text-xs">รอดำเนินการ</span>
                               <div className="flex gap-1">
-                                <button onClick={() => handlePrint(order, 'booking')}
+                                <button onClick={() => handlePrint(order)}
                                   className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
                                   🖨️ ใบจอง
                                 </button>
-                                {hasFoy && (
-                                  <button onClick={() => handlePrint(order, 'foy')}
-                                    className="px-2 py-0.5 text-[10px] rounded bg-teal-50 hover:bg-teal-100 text-teal-600 border border-teal-200 transition-colors whitespace-nowrap">
-                                    🖨️ ฝอย
-                                  </button>
-                                )}
                               </div>
                             </div>
                           )}
