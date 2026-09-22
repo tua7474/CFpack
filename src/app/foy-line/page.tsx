@@ -3,28 +3,33 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import Link from 'next/link'
 
-// กลุ่มกระดาษฝอยในสต็อค (เหมือนกับ FOY_HIDDEN ใน stock page)
-const FOY_GROUPS = new Set([
-  'กระดาษฝอย', 'รุ่นสีอ่อน', 'รุ่นสีพิเศษ A', 'รุ่นสีพิเศษ B',
-  'รุ่นหยัก', 'ฝอยนุ่น', 'ฝอยหยัก',
-])
+// ── Config ─────────────────────────────────────────────────────────────────────
+
+const MODELS = [
+  { label: 'สีอ่อน',    group: 'รุ่นสีอ่อน'    },
+  { label: 'สีพิเศษ B', group: 'รุ่นสีพิเศษ B' },
+  { label: 'สีพิเศษ A', group: 'รุ่นสีพิเศษ A' },
+  { label: 'ปุยนุ่น',   group: 'ฝอยนุ่น'        },
+  { label: 'ครีเอท',    group: 'กระดาษฝอย'      },
+] as const
+
+const CUT_TYPES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Session {
-  produced?: number
-  produced_date?: string
-  moved?: number
-  moved_date?: string
+  kg?: number
+  cut_type?: string
+  date?: string
 }
 
 interface ProductionRow {
   id?: number
-  product_id?: number
-  product_name?: string
-  new_job_qty?: number
-  new_job_kg?: number
-  new_job_date?: string
+  model_name?: string   // stored in product_name in DB
+  color_name?: string
+  product_id?: number   // catalog product id (for color reference)
+  raw_kg?: number       // stored in new_job_kg in DB
+  raw_date?: string     // stored in new_job_date in DB
   sessions: Session[]
 }
 
@@ -53,28 +58,30 @@ function emptyRow(): ProductionRow {
 
 function hasData(row: ProductionRow) {
   return (
-    !!row.product_id ||
-    row.new_job_qty != null ||
-    row.new_job_kg != null ||
-    row.sessions.some(s => s?.produced != null || s?.moved != null)
+    !!row.model_name || !!row.color_name ||
+    row.raw_kg != null ||
+    row.sessions.some(s => s?.kg != null)
   )
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function FoyLinePage() {
-  const [rows, setRows]       = useState<ProductionRow[]>([emptyRow()])
+  const [rows,     setRows]     = useState<ProductionRow[]>([emptyRow()])
   const [products, setProducts] = useState<CatalogProduct[]>([])
-  const [loading, setLoading]  = useState(true)
+  const [loading,  setLoading]  = useState(true)
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
-  // ── Load ──────────────────────────────────────────────────────────────────
+  // ── Load ────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     Promise.all([
       fetch('/api/catalog').then(r => r.json()),
       fetch('/api/foy-production').then(r => r.json()).catch(() => []),
     ]).then(([catalog, production]: [CatalogProduct[], ProductionRow[]]) => {
-      setProducts((catalog as CatalogProduct[]).filter(p => FOY_GROUPS.has(p.group_name)))
+      // Keep only foy-relevant groups
+      const foyGroups = new Set<string>(MODELS.map(m => m.group))
+      setProducts((catalog as CatalogProduct[]).filter(p => foyGroups.has(p.group_name)))
       const dbRows = (production as ProductionRow[]).map(r => ({
         ...r,
         sessions: Array(8).fill(null).map((_, i) => r.sessions[i] ?? {}),
@@ -84,7 +91,8 @@ export default function FoyLinePage() {
     })
   }, [])
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save ────────────────────────────────────────────────────────────────────
+
   const saveRow = useCallback(async (row: ProductionRow, rowIdx: number) => {
     const body = JSON.stringify(row)
     if (!row.id) {
@@ -107,56 +115,94 @@ export default function FoyLinePage() {
     timers.current.set(rowIdx, setTimeout(() => saveRow(row, rowIdx), 800))
   }, [saveRow])
 
-  // ── Update helpers ────────────────────────────────────────────────────────
-  const selectProduct = useCallback((rowIdx: number, productId: number) => {
-    setRows(prev => {
-      const p = prev[rowIdx]
-      const found = products.find(x => x.id === productId)
-      if (!found) return prev
-      const updated: ProductionRow = {
-        ...p,
-        product_id: found.id,
-        product_name: `${found.group_name} / ${found.product_name}`,
-      }
-      const newRows = [...prev]
-      newRows[rowIdx] = updated
-      scheduleSave(updated, rowIdx)
-      return newRows
-    })
-  }, [products, scheduleSave])
+  // ── Color options for a given model ─────────────────────────────────────────
 
-  const updateNewJob = useCallback((rowIdx: number, field: 'new_job_qty' | 'new_job_kg', raw: string) => {
-    const val = raw === '' ? undefined : Number(raw)
+  const colorOptions = useCallback((modelLabel: string) => {
+    const found = MODELS.find(m => m.label === modelLabel)
+    if (!found) return []
+    return products.filter(p => p.group_name === found.group)
+  }, [products])
+
+  // ── Update helpers ──────────────────────────────────────────────────────────
+
+  const updateModel = useCallback((rowIdx: number, model: string) => {
     setRows(prev => {
-      const row = prev[rowIdx]
-      const patch: Partial<ProductionRow> = { [field]: val }
-      if (val != null && !row.new_job_date) patch.new_job_date = todayStr()
-      const updated = { ...row, ...patch }
-      const newRows = [...prev]
-      newRows[rowIdx] = updated
+      const updated: ProductionRow = {
+        ...prev[rowIdx],
+        model_name: model || undefined,
+        color_name: undefined,
+        product_id: undefined,
+      }
+      const next = [...prev]; next[rowIdx] = updated
       scheduleSave(updated, rowIdx)
-      return newRows
+      return next
     })
   }, [scheduleSave])
 
-  const updateSession = useCallback((
-    rowIdx: number, si: number, field: 'produced' | 'moved', raw: string
-  ) => {
+  const updateColor = useCallback((rowIdx: number, productId: number) => {
+    setRows(prev => {
+      const found = products.find(p => p.id === productId)
+      if (!found) return prev
+      const updated: ProductionRow = {
+        ...prev[rowIdx],
+        product_id: found.id,
+        color_name: found.product_name,
+      }
+      const next = [...prev]; next[rowIdx] = updated
+      scheduleSave(updated, rowIdx)
+      return next
+    })
+  }, [products, scheduleSave])
+
+  const updateRawDate = useCallback((rowIdx: number, val: string) => {
+    setRows(prev => {
+      const updated = { ...prev[rowIdx], raw_date: val || undefined }
+      const next = [...prev]; next[rowIdx] = updated
+      scheduleSave(updated, rowIdx)
+      return next
+    })
+  }, [scheduleSave])
+
+  const updateRawKg = useCallback((rowIdx: number, raw: string) => {
+    const val = raw === '' ? undefined : Number(raw)
+    setRows(prev => {
+      const row = prev[rowIdx]
+      const patch: Partial<ProductionRow> = { raw_kg: val }
+      if (val != null && !row.raw_date) patch.raw_date = todayStr()
+      const updated = { ...row, ...patch }
+      const next = [...prev]; next[rowIdx] = updated
+      scheduleSave(updated, rowIdx)
+      return next
+    })
+  }, [scheduleSave])
+
+  const updateSessionKg = useCallback((rowIdx: number, si: number, raw: string) => {
     const val = raw === '' ? undefined : Number(raw)
     setRows(prev => {
       const row = prev[rowIdx]
       const sessions = row.sessions.map((s, i) => {
         if (i !== si) return s
-        const ns = { ...s, [field]: val }
-        if (field === 'produced' && val != null && !ns.produced_date) ns.produced_date = todayStr()
-        if (field === 'moved'    && val != null && !ns.moved_date)    ns.moved_date    = todayStr()
+        const ns = { ...s, kg: val }
+        if (val != null && !ns.date) ns.date = todayStr()
         return ns
       })
       const updated = { ...row, sessions }
-      const newRows = [...prev]
-      newRows[rowIdx] = updated
+      const next = [...prev]; next[rowIdx] = updated
       scheduleSave(updated, rowIdx)
-      return newRows
+      return next
+    })
+  }, [scheduleSave])
+
+  const updateSessionType = useCallback((rowIdx: number, si: number, val: string) => {
+    setRows(prev => {
+      const row = prev[rowIdx]
+      const sessions = row.sessions.map((s, i) =>
+        i !== si ? s : { ...s, cut_type: val || undefined }
+      )
+      const updated = { ...row, sessions }
+      const next = [...prev]; next[rowIdx] = updated
+      scheduleSave(updated, rowIdx)
+      return next
     })
   }, [scheduleSave])
 
@@ -173,18 +219,22 @@ export default function FoyLinePage() {
 
   const addRow = () => setRows(prev => [...prev, emptyRow()])
 
-  const totalProduced = (row: ProductionRow) =>
-    row.sessions.reduce((s, sess) => s + (Number(sess?.produced) || 0), 0)
+  // ── Computed ─────────────────────────────────────────────────────────────────
 
-  // ── Styles ────────────────────────────────────────────────────────────────
-  const numInput = (extra = '') =>
-    `w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white ${extra}`
+  const totalKg = (row: ProductionRow) =>
+    row.sessions.reduce((s, sess) => s + (Number(sess?.kg) || 0), 0)
 
-  const dateLabel = (d?: string, color = 'text-blue-400') => (
-    <div className={`text-[9px] ${color} text-center leading-none h-3 mb-0.5`}>
+  // ── Styles ───────────────────────────────────────────────────────────────────
+
+  const numCls = 'w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white'
+
+  const dateLbl = (d?: string) => (
+    <div className="text-[9px] text-blue-400 text-center leading-none h-3 mb-0.5 truncate">
       {fmtDateShort(d)}
     </div>
   )
+
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   if (loading) return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center text-gray-400">
@@ -194,6 +244,7 @@ export default function FoyLinePage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
+
       {/* Header */}
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow">
         <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
@@ -201,56 +252,54 @@ export default function FoyLinePage() {
 
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
-        <Link href="/"          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📦 สต็อคสินค้า</Link>
-        <Link href="/stock"     className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคกระดาษฝอย</Link>
-        <Link href="/branches"  className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏪 สาขาและตัวแทน</Link>
-        <Link href="/delivery"  className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🚚 จัดส่ง</Link>
+        <Link href="/"           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📦 สต็อคสินค้า</Link>
+        <Link href="/stock"      className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคกระดาษฝอย</Link>
+        <Link href="/branches"   className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏪 สาขาและตัวแทน</Link>
+        <Link href="/delivery"   className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🚚 จัดส่ง</Link>
         <Link href="/withdrawal" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📤 เบิกของ</Link>
-        <Link href="/restock"   className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📥 เติมสต็อค</Link>
+        <Link href="/restock"    className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📥 เติมสต็อค</Link>
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">🌀 ไลน์ผลิตกระดาษฝอย</span>
       </div>
 
-      {/* Main */}
+      {/* Table */}
       <main className="p-4">
         <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
           <table className="text-xs border-collapse bg-white" style={{ minWidth: 'max-content' }}>
+
             <thead>
-              {/* ── Row 1: top-level ── */}
+              {/* Row 1 */}
               <tr className="bg-[#9b9484] text-white">
-                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left whitespace-nowrap" style={{ minWidth: 200 }}>
-                  รุ่น / หมวด / สี
+                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left align-top" style={{ minWidth: 230 }}>
+                  <div className="font-semibold">รุ่น / สี</div>
+                  <div className="text-[10px] opacity-70 font-normal mt-0.5">วันที่นำวัตถุดิบเข้า · กก.</div>
                 </th>
-                <th colSpan={2} className="px-3 py-1.5 border border-white/20 text-center whitespace-nowrap">
-                  ขึ้นงานใหม่
+                <th colSpan={16} className="px-3 py-1.5 border border-white/20 text-center font-semibold">
+                  บันทึกการตัด
                 </th>
-                <th colSpan={16} className="px-3 py-1.5 border border-white/20 text-center">
-                  บันทึกรายวัน
+                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-center whitespace-nowrap bg-green-700" style={{ minWidth: 64 }}>
+                  รวม<br/>กก.
                 </th>
-                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-center whitespace-nowrap bg-green-700">
-                  รวมผลิต
+                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-center whitespace-nowrap bg-blue-700" style={{ minWidth: 64 }}>
+                  เหลือ<br/>กก.
                 </th>
-                <th rowSpan={3} className="px-2 py-2 border border-white/20 text-center bg-red-800" />
+                <th rowSpan={3} className="px-2 py-2 border border-white/20 bg-red-900/50" style={{ minWidth: 40 }} />
               </tr>
 
-              {/* ── Row 2: sub-groups ── */}
+              {/* Row 2 */}
               <tr className="bg-[#9b9484] text-white">
-                <th className="px-2 py-1 border border-white/20 text-center whitespace-nowrap" style={{ minWidth: 58 }}>จำนวน</th>
-                <th className="px-2 py-1 border border-white/20 text-center whitespace-nowrap" style={{ minWidth: 58 }}>กิโล</th>
                 {Array.from({ length: 8 }, (_, i) => (
-                  <th key={i} colSpan={2} className="px-2 py-1 border border-white/20 text-center whitespace-nowrap">
+                  <th key={i} colSpan={2} className="px-2 py-1 border border-white/20 text-center whitespace-nowrap text-[11px]">
                     ครั้งที่ {i + 1}
                   </th>
                 ))}
               </tr>
 
-              {/* ── Row 3: produced / moved ── */}
+              {/* Row 3 */}
               <tr className="bg-[#7a7568] text-white text-[10px]">
-                <th className="px-1 py-1 border border-white/20 text-center">ม้วน</th>
-                <th className="px-1 py-1 border border-white/20 text-center">กก.</th>
                 {Array.from({ length: 8 }, (_, i) => (
                   <Fragment key={i}>
-                    <th className="px-1 py-1 border border-white/20 text-center" style={{ minWidth: 52 }}>ผลิต</th>
-                    <th className="px-1 py-1 border border-white/20 text-center bg-green-800/60" style={{ minWidth: 52 }}>ย้ายสต็อค</th>
+                    <th className="px-1 py-1 border border-white/20 text-center" style={{ minWidth: 52 }}>กก.</th>
+                    <th className="px-1 py-1 border border-white/20 text-center bg-amber-900/40" style={{ minWidth: 72 }}>หมวด</th>
                   </Fragment>
                 ))}
               </tr>
@@ -258,97 +307,134 @@ export default function FoyLinePage() {
 
             <tbody>
               {rows.map((row, rowIdx) => {
-                const total = totalProduced(row)
-                return (
-                  <tr key={rowIdx} className="border-b border-gray-100 hover:bg-yellow-50/40">
+                const total     = totalKg(row)
+                const remaining = row.raw_kg != null ? row.raw_kg - total : null
+                const colors    = colorOptions(row.model_name ?? '')
 
-                    {/* ── Col 1: dropdown ── */}
-                    <td className="px-2 py-1.5 border-r border-gray-200">
+                return (
+                  <tr key={rowIdx} className="border-b border-gray-100 hover:bg-yellow-50/30 align-top">
+
+                    {/* ── Col 1: วัตถุดิบ ── */}
+                    <td className="px-2 py-1.5 border-r border-gray-200 align-top">
+                      {/* รุ่น */}
                       <select
-                        value={row.product_id ?? ''}
-                        onChange={e => selectProduct(rowIdx, Number(e.target.value))}
-                        className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black"
-                        style={{ minWidth: 190 }}
+                        value={row.model_name ?? ''}
+                        onChange={e => updateModel(rowIdx, e.target.value)}
+                        className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black mb-1"
                       >
-                        <option value="">-- เลือกสินค้า --</option>
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.group_name} / {p.product_name}
-                          </option>
+                        <option value="">-- เลือกรุ่น --</option>
+                        {MODELS.map(m => (
+                          <option key={m.label} value={m.label}>{m.label}</option>
                         ))}
                       </select>
+
+                      {/* สี */}
+                      <select
+                        value={row.product_id ?? ''}
+                        onChange={e => updateColor(rowIdx, Number(e.target.value))}
+                        disabled={!row.model_name || colors.length === 0}
+                        className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black mb-1.5 disabled:opacity-40"
+                      >
+                        <option value="">-- เลือกสี --</option>
+                        {colors.map(p => (
+                          <option key={p.id} value={p.id}>{p.product_name}</option>
+                        ))}
+                      </select>
+
+                      {/* วันที่นำวัตถุดิบเข้า */}
+                      <div className="flex items-center gap-1 mb-1">
+                        <span className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">วันที่นำเข้า</span>
+                        <input
+                          type="date"
+                          value={row.raw_date ?? ''}
+                          onChange={e => updateRawDate(rowIdx, e.target.value)}
+                          className="flex-1 min-w-0 px-1 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-black bg-white"
+                        />
+                      </div>
+
+                      {/* กก.วัตถุดิบ */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">กก.วัตถุดิบ</span>
+                        <input
+                          type="number" inputMode="decimal" step="0.1"
+                          value={row.raw_kg ?? ''}
+                          onChange={e => updateRawKg(rowIdx, e.target.value)}
+                          className={`flex-1 min-w-0 ${numCls}`}
+                          placeholder="0"
+                        />
+                      </div>
                     </td>
 
-                    {/* ── Col 2a: new_job_qty ── */}
-                    <td className="px-1 py-1 border-r border-gray-200">
-                      {dateLabel(row.new_job_qty != null ? row.new_job_date : undefined)}
-                      <input
-                        type="number" inputMode="numeric"
-                        value={row.new_job_qty ?? ''}
-                        onChange={e => updateNewJob(rowIdx, 'new_job_qty', e.target.value)}
-                        className={numInput()}
-                      />
-                    </td>
-
-                    {/* ── Col 2b: new_job_kg ── */}
-                    <td className="px-1 py-1 border-r border-gray-200">
-                      {dateLabel(row.new_job_kg != null ? row.new_job_date : undefined)}
-                      <input
-                        type="number" inputMode="decimal" step="0.1"
-                        value={row.new_job_kg ?? ''}
-                        onChange={e => updateNewJob(rowIdx, 'new_job_kg', e.target.value)}
-                        className={numInput()}
-                      />
-                    </td>
-
-                    {/* ── Col 3: 8 sessions ── */}
+                    {/* ── Sessions ── */}
                     {row.sessions.map((sess, si) => (
                       <Fragment key={si}>
-                        {/* ผลิตได้ */}
-                        <td className="px-1 py-1 border-r border-gray-100">
-                          {dateLabel(sess?.produced != null ? sess.produced_date : undefined)}
+                        {/* กก. */}
+                        <td className="px-1 py-1 border-r border-gray-100 align-top">
+                          {dateLbl(sess?.kg != null ? sess.date : undefined)}
                           <input
-                            type="number" inputMode="numeric"
-                            value={sess?.produced ?? ''}
-                            onChange={e => updateSession(rowIdx, si, 'produced', e.target.value)}
-                            className={numInput()}
+                            type="number" inputMode="decimal" step="0.1"
+                            value={sess?.kg ?? ''}
+                            onChange={e => updateSessionKg(rowIdx, si, e.target.value)}
+                            className={numCls}
+                            placeholder="กก."
                           />
                         </td>
-                        {/* ย้ายเข้าสต็อค */}
-                        <td className="px-1 py-1 border-r border-gray-200 bg-green-50/60">
-                          {dateLabel(sess?.moved != null ? sess.moved_date : undefined, 'text-green-500')}
-                          <input
-                            type="number" inputMode="numeric"
-                            value={sess?.moved ?? ''}
-                            onChange={e => updateSession(rowIdx, si, 'moved', e.target.value)}
-                            className={numInput('bg-green-50')}
-                          />
+                        {/* หมวด */}
+                        <td className="px-1 py-1 border-r border-gray-200 align-top bg-amber-50/40">
+                          {/* spacer for date label alignment */}
+                          <div className="h-3 mb-0.5" />
+                          <select
+                            value={sess?.cut_type ?? ''}
+                            onChange={e => updateSessionType(rowIdx, si, e.target.value)}
+                            className="w-full px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black"
+                          >
+                            <option value="">--</option>
+                            {CUT_TYPES.map(t => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </select>
                         </td>
                       </Fragment>
                     ))}
 
-                    {/* ── Col 4: รวม ── */}
-                    <td className="px-3 py-1 text-center font-bold bg-green-50 border-l border-gray-200">
-                      <div className="text-green-700 whitespace-nowrap text-sm">
-                        {total > 0 ? total.toLocaleString('th-TH') : '—'}
+                    {/* ── รวม กก. ── */}
+                    <td className="px-3 py-2 text-center font-bold bg-green-50 border-l border-gray-200 align-middle">
+                      <div className={`whitespace-nowrap text-sm ${total > 0 ? 'text-green-700' : 'text-gray-300'}`}>
+                        {total > 0 ? total.toLocaleString('th-TH', { maximumFractionDigits: 2 }) : '—'}
                       </div>
+                      {total > 0 && (
+                        <div className="text-[10px] text-green-400 font-normal">
+                          {row.sessions.filter(s => s?.kg != null).length} ครั้ง
+                        </div>
+                      )}
                     </td>
 
-                    {/* ── ลบแถว ── */}
-                    <td className="px-2 py-1 border-l border-gray-200 text-center">
+                    {/* ── เหลือ กก. ── */}
+                    <td className="px-3 py-2 text-center font-bold bg-blue-50 border-l border-gray-200 align-middle">
+                      {remaining !== null ? (
+                        <div className={`whitespace-nowrap text-sm ${remaining < 0 ? 'text-red-500' : remaining === 0 ? 'text-gray-400' : 'text-blue-600'}`}>
+                          {remaining.toLocaleString('th-TH', { maximumFractionDigits: 2 })}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300 text-sm">—</span>
+                      )}
+                    </td>
+
+                    {/* ── ลบ ── */}
+                    <td className="px-2 py-2 border-l border-gray-200 text-center align-middle">
                       <button
-                        onClick={() => {
-                          if (confirm('ลบแถวนี้ใช่หรือไม่?')) deleteRow(rowIdx)
-                        }}
+                        onClick={() => { if (confirm('ลบแถวนี้?')) deleteRow(rowIdx) }}
                         className="px-2 py-0.5 text-[10px] rounded bg-red-50 hover:bg-red-100 text-red-500 border border-red-200 transition-colors"
                       >
                         ลบ
                       </button>
                     </td>
+
                   </tr>
                 )
               })}
             </tbody>
+
           </table>
         </div>
 
