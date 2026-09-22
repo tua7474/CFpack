@@ -273,6 +273,7 @@ type VatItem = { amount: number; slip_date: string }
 function BranchRow({
   branch, session, onManage, colorGroup, slipTotals, slipPeriods,
   withdrawalTypes, unpaidOrders, vatItems, activePeriod, periodOrders,
+  periodSlipTotals, periodUnpaidOrders,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -285,6 +286,8 @@ function BranchRow({
   vatItems: VatItem[]
   activePeriod: { start: string; end: string; label: string } | null
   periodOrders: BranchOrder[]
+  periodSlipTotals: Record<string, number>
+  periodUnpaidOrders: Record<number, UnpaidOrder[]>
 }) {
   const [weekOrders,     setWeekOrders]     = useState<BranchOrder[]>([])
   const [selectedWeek,   setSelectedWeek]   = useState<number | null>(null)
@@ -513,36 +516,45 @@ function BranchRow({
         </td>
 
       {/* ค่าแวต */}
-      <td className="px-3 py-2 border-r border-gray-200 align-top min-w-[110px]">
-        {vatItems.length === 0 ? (
-          <span className="text-xs text-gray-300">-</span>
-        ) : (
-          <div className="flex flex-col gap-0.5">
-            {vatItems.map((v, i) => (
-              <div key={i} className="flex items-center justify-between gap-1">
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                  {new Date(v.slip_date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                </span>
-                <span className="text-xs font-medium text-[#7c3aed] whitespace-nowrap">
-                  ฿{Math.round(v.amount).toLocaleString('th-TH')}
-                </span>
-              </div>
-            ))}
-            {vatItems.length > 1 && (
-              <div className="flex items-center justify-between gap-1 border-t border-gray-200 pt-0.5 mt-0.5">
-                <span className="text-[10px] text-gray-500 font-semibold">รวม</span>
-                <span className="text-xs font-bold text-[#7c3aed] whitespace-nowrap">
-                  ฿{Math.round(vatItems.reduce((s, v) => s + v.amount, 0)).toLocaleString('th-TH')}
-                </span>
+      {(() => {
+        const displayVat = activePeriod
+          ? vatItems.filter(v => v.slip_date >= activePeriod.start && v.slip_date <= activePeriod.end)
+          : vatItems
+        return (
+          <td className="px-3 py-2 border-r border-gray-200 align-top min-w-[110px]">
+            {displayVat.length === 0 ? (
+              <span className="text-xs text-gray-300">-</span>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {displayVat.map((v, i) => (
+                  <div key={i} className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                      {new Date(v.slip_date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                    </span>
+                    <span className="text-xs font-medium text-[#7c3aed] whitespace-nowrap">
+                      ฿{Math.round(v.amount).toLocaleString('th-TH')}
+                    </span>
+                  </div>
+                ))}
+                {displayVat.length > 1 && (
+                  <div className="flex items-center justify-between gap-1 border-t border-gray-200 pt-0.5 mt-0.5">
+                    <span className="text-[10px] text-gray-500 font-semibold">รวม</span>
+                    <span className="text-xs font-bold text-[#7c3aed] whitespace-nowrap">
+                      ฿{Math.round(displayVat.reduce((s, v) => s + v.amount, 0)).toLocaleString('th-TH')}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-      </td>
+          </td>
+        )
+      })()}
 
       {/* ใบจองค้างชำระ — 1 คอลัมน์ต่อ 1 ประเภทเบิกของ */}
       {withdrawalTypes.map(wt => {
-        const orders = unpaidOrders[wt.id] ?? []
+        const orders = activePeriod
+          ? (periodUnpaidOrders[wt.id] ?? [])
+          : (unpaidOrders[wt.id] ?? [])
         return (
           <td key={wt.id} className="px-2 py-1.5 border-r border-gray-200 align-top">
             {orders.length === 0 ? (
@@ -576,11 +588,13 @@ function BranchRow({
 
       {/* 7–11. Slip totals per category */}
       {SLIP_CATS.map((cat, i) => {
-        const t           = slipTotals[cat.key]
-        const period      = slipPeriods[cat.key] ?? 'month'
-        const total       = period === 'month' ? (t?.month ?? 0) : (t?.week ?? 0)
-        const appliedAmt  = period === 'month' ? (t?.applied_month ?? 0) : (t?.applied_week ?? 0)
-        const fullyUsed   = total > 0 && appliedAmt >= total
+        const t          = slipTotals[cat.key]
+        const period     = slipPeriods[cat.key] ?? 'month'
+        const total      = activePeriod
+          ? (periodSlipTotals[cat.key] ?? 0)
+          : period === 'month' ? (t?.month ?? 0) : (t?.week ?? 0)
+        const appliedAmt = activePeriod ? 0 : (period === 'month' ? (t?.applied_month ?? 0) : (t?.applied_week ?? 0))
+        const fullyUsed  = !activePeriod && total > 0 && appliedAmt >= total
         return (
           <td key={cat.key}
             className={`px-3 py-2 text-center whitespace-nowrap ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-200' : ''}`}>
@@ -831,10 +845,12 @@ export default function BranchesPage() {
   const [pendingSlips, setPendingSlips] = useState<Slip[]>([])
   const [confirmSlip,  setConfirmSlip]  = useState<Slip | null>(null)
 
-  // Global period selection for ประวัติใบจอง
-  const [activePeriod,         setActivePeriod]         = useState<{ start: string; end: string; label: string } | null>(null)
-  const [selectedMonth,        setSelectedMonth]        = useState('')
-  const [periodOrdersByBranch, setPeriodOrdersByBranch] = useState<Record<number, BranchOrder[]>>({})
+  // Global period selection
+  const [activePeriod,          setActivePeriod]          = useState<{ start: string; end: string; label: string } | null>(null)
+  const [selectedMonth,         setSelectedMonth]         = useState('')
+  const [periodOrdersByBranch,  setPeriodOrdersByBranch]  = useState<Record<number, BranchOrder[]>>({})
+  const [periodSlipData,        setPeriodSlipData]        = useState<Record<number, Record<string, number>>>({})
+  const [periodUnpaidByBranch,  setPeriodUnpaidByBranch]  = useState<Record<number, Record<number, UnpaidOrder[]>>>({})
 
   // Unpaid orders by withdrawal type
   const [withdrawalTypes,  setWithdrawalTypes]  = useState<WithdrawalType[]>([])
@@ -908,18 +924,48 @@ export default function BranchesPage() {
   useEffect(() => { loadSlipData() }, [loadSlipData])
   useEffect(() => { loadUnpaidData() }, [loadUnpaidData])
 
-  // Fetch all-branch orders when activePeriod changes
+  // Fetch all period data when activePeriod changes
   useEffect(() => {
-    if (!activePeriod || branches.length === 0) { setPeriodOrdersByBranch({}); return }
+    if (!activePeriod || branches.length === 0) {
+      setPeriodOrdersByBranch({})
+      setPeriodSlipData({})
+      setPeriodUnpaidByBranch({})
+      return
+    }
+    const { start, end } = activePeriod
     const fetchAll = async () => {
-      const entries = await Promise.all(
-        branches.map(async b => {
-          const r = await fetch(`/api/branches/orders?branch_id=${b.id}&date_from=${activePeriod.start}&date_to=${activePeriod.end}`)
+      const [ordersEntries, slipRows, unpaidData] = await Promise.all([
+        // Orders per branch
+        Promise.all(branches.map(async b => {
+          const r = await fetch(`/api/branches/orders?branch_id=${b.id}&date_from=${start}&date_to=${end}`)
           const orders: BranchOrder[] = await r.json()
           return [b.id, orders] as [number, BranchOrder[]]
-        })
-      )
-      setPeriodOrdersByBranch(Object.fromEntries(entries))
+        })),
+        // Slip totals for period
+        fetch(`/api/slips?by_branch=true&date_from=${start}&date_to=${end}`)
+          .then(r => r.json() as Promise<{ branch_id: number; category: string; period_total: number }[]>),
+        // All orders (paid+unpaid) in period by withdrawal type
+        fetch(`/api/branches/orders/unpaid?date_from=${start}&date_to=${end}`)
+          .then(r => r.json() as Promise<{ types: WithdrawalType[]; byBranch: Record<string, Record<string, UnpaidOrder[]>> }>),
+      ])
+
+      setPeriodOrdersByBranch(Object.fromEntries(ordersEntries))
+
+      const slipMap: Record<number, Record<string, number>> = {}
+      for (const row of slipRows) {
+        if (!slipMap[row.branch_id]) slipMap[row.branch_id] = {}
+        slipMap[row.branch_id][row.category] = row.period_total
+      }
+      setPeriodSlipData(slipMap)
+
+      const unpaidMap: Record<number, Record<number, UnpaidOrder[]>> = {}
+      for (const [bid, typeMap] of Object.entries(unpaidData.byBranch ?? {})) {
+        unpaidMap[Number(bid)] = {}
+        for (const [tid, orders] of Object.entries(typeMap)) {
+          unpaidMap[Number(bid)][Number(tid)] = orders
+        }
+      }
+      setPeriodUnpaidByBranch(unpaidMap)
     }
     fetchAll()
   }, [activePeriod, branches])
@@ -1224,7 +1270,9 @@ export default function BranchesPage() {
                         unpaidOrders={unpaidByBranch[b.id] ?? {}}
                         vatItems={vatItemsMap[b.id] ?? []}
                         activePeriod={activePeriod}
-                        periodOrders={periodOrdersByBranch[b.id] ?? []} />
+                        periodOrders={periodOrdersByBranch[b.id] ?? []}
+                        periodSlipTotals={periodSlipData[b.id] ?? {}}
+                        periodUnpaidOrders={periodUnpaidByBranch[b.id] ?? {}} />
                     ))}
                   </>
                 ))}
@@ -1250,7 +1298,11 @@ export default function BranchesPage() {
                   {/* ค่าแวต total */}
                   <td className="px-3 py-2 border-r border-gray-300 text-center">
                     {(() => {
-                      const total = Object.values(vatItemsMap).flat().reduce((s, v) => s + v.amount, 0)
+                      const allVat = Object.values(vatItemsMap).flat()
+                      const filtered = activePeriod
+                        ? allVat.filter(v => v.slip_date >= activePeriod.start && v.slip_date <= activePeriod.end)
+                        : allVat
+                      const total = filtered.reduce((s, v) => s + v.amount, 0)
                       return total > 0
                         ? <span className="text-[#7c3aed]">฿{Math.round(total).toLocaleString('th-TH')}</span>
                         : <span className="text-gray-300 font-normal">-</span>
@@ -1258,7 +1310,8 @@ export default function BranchesPage() {
                   </td>
                   {/* Withdrawal type totals */}
                   {withdrawalTypes.map(wt => {
-                    const total = Object.values(unpaidByBranch).reduce((s, byType) => {
+                    const src = activePeriod ? periodUnpaidByBranch : unpaidByBranch
+                    const total = Object.values(src).reduce((s, byType) => {
                       return s + (byType[wt.id] ?? []).reduce((ss, o) => ss + parseFloat(o.total_amount), 0)
                     }, 0)
                     return (
@@ -1271,11 +1324,13 @@ export default function BranchesPage() {
                   })}
                   {/* Slip category totals */}
                   {SLIP_CATS.map((cat, i) => {
-                    const total = Object.values(slipData).reduce((s, catMap) => {
-                      const t = catMap[cat.key]
-                      const period = slipPeriods[cat.key] ?? 'month'
-                      return s + (period === 'month' ? (t?.month ?? 0) : (t?.week ?? 0))
-                    }, 0)
+                    const total = activePeriod
+                      ? Object.values(periodSlipData).reduce((s, m) => s + (m[cat.key] ?? 0), 0)
+                      : Object.values(slipData).reduce((s, catMap) => {
+                          const t = catMap[cat.key]
+                          const period = slipPeriods[cat.key] ?? 'month'
+                          return s + (period === 'month' ? (t?.month ?? 0) : (t?.week ?? 0))
+                        }, 0)
                     return (
                       <td key={cat.key} className={`px-3 py-2 text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-300' : ''}`}>
                         {total > 0

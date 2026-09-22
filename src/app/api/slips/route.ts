@@ -118,6 +118,20 @@ export async function GET(req: NextRequest) {
     const week  = getWeekRange()
 
     if (url.searchParams.get('by_branch') === 'true') {
+      const dateFrom = url.searchParams.get('date_from')
+      const dateTo   = url.searchParams.get('date_to')
+      // Period-specific query (for global period selector)
+      if (dateFrom && dateTo) {
+        const { rows } = await pool.query(`
+          SELECT branch_id, category,
+                 COALESCE(SUM(amount), 0)::float AS period_total
+          FROM slips
+          WHERE status = 'confirmed' AND branch_id IS NOT NULL
+            AND slip_date >= $1 AND slip_date <= $2
+          GROUP BY branch_id, category
+        `, [dateFrom, dateTo])
+        return NextResponse.json(rows)
+      }
       const { rows } = await pool.query(`
         SELECT
           branch_id,
