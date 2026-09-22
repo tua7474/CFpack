@@ -128,6 +128,38 @@ function fmtDateShort(iso: string | null) {
 
 const MONTH_NAMES = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
+function computeWeekBounds(weeksAgo: number) {
+  const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const day = bkk.getDay()
+  const mon = new Date(bkk)
+  mon.setDate(bkk.getDate() - (day === 0 ? 6 : day - 1) - weeksAgo * 7)
+  mon.setHours(0, 0, 0, 0)
+  const sun = new Date(mon)
+  sun.setDate(mon.getDate() + 6)
+  const yr = mon.getFullYear()
+  const jan1 = new Date(yr, 0, 1)
+  const jan1Day = jan1.getDay()
+  const jan1Mon = new Date(jan1)
+  jan1Mon.setDate(jan1.getDate() - (jan1Day === 0 ? 6 : jan1Day - 1))
+  const weekNum = Math.floor((mon.getTime() - jan1Mon.getTime()) / (7 * 864e5)) + 1
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const iso   = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+  const short = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}`
+  return { start: iso(mon), end: iso(sun), weekNum, year: yr, dateRange: `${short(mon)}–${short(sun)}` }
+}
+
+function getMonthOptions() {
+  const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const options: { value: string; label: string }[] = []
+  for (let i = 0; i < 13; i++) {
+    const d = new Date(bkk.getFullYear(), bkk.getMonth() - i, 1)
+    const y = d.getFullYear()
+    const m = d.getMonth() + 1
+    options.push({ value: `${y}-${String(m).padStart(2, '0')}`, label: `${MONTH_NAMES[m - 1]} ${y + 543}` })
+  }
+  return options
+}
+
 // ── Slip Confirm Modal ────────────────────────────────────────────────────────
 
 function SlipConfirmModal({ slip, onClose, onSaved }: {
@@ -240,7 +272,7 @@ type VatItem = { amount: number; slip_date: string }
 
 function BranchRow({
   branch, session, onManage, colorGroup, slipTotals, slipPeriods,
-  withdrawalTypes, unpaidOrders, vatItems,
+  withdrawalTypes, unpaidOrders, vatItems, activePeriod, periodOrders,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -251,6 +283,8 @@ function BranchRow({
   withdrawalTypes: WithdrawalType[]
   unpaidOrders: Record<number, UnpaidOrder[]>
   vatItems: VatItem[]
+  activePeriod: { start: string; end: string; label: string } | null
+  periodOrders: BranchOrder[]
 }) {
   const [weekOrders,     setWeekOrders]     = useState<BranchOrder[]>([])
   const [selectedWeek,   setSelectedWeek]   = useState<number | null>(null)
@@ -259,42 +293,18 @@ function BranchRow({
   const thisMonth = new Date().getMonth() + 1
   const thisYear  = new Date().getFullYear()
 
-  // คำนวณช่วงวันและเลขสัปดาห์ของปี (นับจากวันจันทร์แรกของสัปดาห์ที่มี 1 ม.ค.)
-  const weekBounds = useCallback((weeksAgo: number) => {
-    const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
-    const day = bkk.getDay()
-    const mon = new Date(bkk)
-    mon.setDate(bkk.getDate() - (day === 0 ? 6 : day - 1) - weeksAgo * 7)
-    mon.setHours(0, 0, 0, 0)
-    const sun = new Date(mon)
-    sun.setDate(mon.getDate() + 6)
-
-    // หาเลขสัปดาห์ของปี: นับจากวันจันทร์ของสัปดาห์ที่มี 1 ม.ค.
-    const yr = mon.getFullYear()
-    const jan1 = new Date(yr, 0, 1)
-    const jan1Day = jan1.getDay()
-    const jan1Mon = new Date(jan1)
-    jan1Mon.setDate(jan1.getDate() - (jan1Day === 0 ? 6 : jan1Day - 1))
-    const weekNum = Math.floor((mon.getTime() - jan1Mon.getTime()) / (7 * 864e5)) + 1
-
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const iso   = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
-    const short = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}`
-    return { start: iso(mon), end: iso(sun), weekNum, year: yr, dateRange: `${short(mon)}–${short(sun)}` }
-  }, [])
-
   const loadOrders = useCallback(async () => {
-    // ดึงออเดอร์ 12 สัปดาห์ย้อนหลัง
-    const oldest = weekBounds(2)
+    // ดึงออเดอร์ 3 สัปดาห์ย้อนหลัง
+    const oldest = computeWeekBounds(2)
     const r = await fetch(`/api/branches/orders?branch_id=${branch.id}&date_from=${oldest.start}&date_to=2099-12-31`)
     const all: BranchOrder[] = await r.json()
 
-    // จัดกลุ่มตามสัปดาห์ (offset 0–35)
+    // จัดกลุ่มตามสัปดาห์ (offset 0–2)
     const summary: Record<number, { pending: number; paid: number }> = {}
     for (const o of all) {
       const orderDate = new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
       for (let w = 0; w < 3; w++) {
-        const { start, end } = weekBounds(w)
+        const { start, end } = computeWeekBounds(w)
         if (orderDate >= start && orderDate <= end) {
           if (!summary[w]) summary[w] = { pending: 0, paid: 0 }
           if (o.payment_status === 'paid') summary[w].paid++
@@ -304,7 +314,7 @@ function BranchRow({
       }
     }
     setWeeklySummary(summary)
-  }, [branch.id, weekBounds])
+  }, [branch.id])
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
@@ -315,7 +325,7 @@ function BranchRow({
   const handleWeekClick = async (w: number) => {
     if (selectedWeek === w) { setSelectedWeek(null); return }
     setSelectedWeek(w)
-    const { start, end } = weekBounds(w)
+    const { start, end } = computeWeekBounds(w)
     const r = await fetch(`/api/branches/orders?branch_id=${branch.id}&date_from=${start}&date_to=${end}`)
     setWeekOrders(await r.json())
   }
@@ -370,7 +380,7 @@ function BranchRow({
 
       {/* 2. สรุปสัปดาห์นี้ */}
       <td className="px-3 py-2 border-r border-gray-200 text-center">
-        <div className="text-[10px] text-gray-400 mb-0.5">สัปดาห์ที่ {weekBounds(0).weekNum}</div>
+        <div className="text-[10px] text-gray-400 mb-0.5">สัปดาห์ที่ {computeWeekBounds(0).weekNum}</div>
         <div className="text-sm font-bold text-green-400">{thisMonthPending}</div>
         <div className="text-xs text-gray-400">/ {thisMonthPaid} ชำระแล้ว</div>
       </td>
@@ -380,7 +390,7 @@ function BranchRow({
         <div className="flex flex-wrap gap-1 max-w-[420px]">
           {Array.from({ length: 3 }, (_, w) => w).map(w => {
             const s = weeklySummary[w] ?? { pending: 0, paid: 0 }
-            const { weekNum, year } = weekBounds(w)
+            const { weekNum, year } = computeWeekBounds(w)
             const currentYear = new Date().getFullYear()
             const isSelected = selectedWeek === w
             const hasData = s.pending > 0 || s.paid > 0
@@ -403,11 +413,50 @@ function BranchRow({
           })}
         </div>
 
+        {/* Global period orders */}
+        {activePeriod && (
+          <div className="mt-2 border border-indigo-200 rounded p-2 bg-indigo-50/30 text-xs max-w-[420px]">
+            <div className="font-semibold text-indigo-600 mb-1 text-[10px]">{activePeriod.label}</div>
+            {periodOrders.length === 0 ? (
+              <div className="text-gray-400">ไม่มีรายการ</div>
+            ) : periodOrders.flatMap(o => {
+              const nvT = parseFloat(o.nv_total ?? '0') || 0
+              const vT  = parseFloat(o.v_total  ?? '0') || 0
+              const rows: { key: string; prefix: string; tag: 'NV'|'V'|null; amount: number }[] =
+                nvT > 0 && vT > 0
+                  ? [{ key: `p${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT },
+                     { key: `p${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
+                  : nvT > 0 ? [{ key: `p${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT }]
+                  : vT > 0  ? [{ key: `p${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
+                  : [{ key: `p${o.id}-x`, prefix: '', tag: null, amount: parseFloat(o.total_amount) }]
+              return rows.map(row => (
+                <div key={row.key} className={`flex items-start gap-1.5 py-1 border-b border-indigo-100 last:border-0 ${o.payment_status === 'paid' ? 'text-green-400' : 'text-gray-500'}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">
+                      <span className={row.tag === 'NV' ? 'text-orange-500' : row.tag === 'V' ? 'text-green-500' : ''}>
+                        #{row.prefix}{o.order_no}
+                      </span>
+                    </div>
+                    <div className="text-[9px] text-gray-400">จอง {fmtDateShort(o.created_at)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-gray-500">฿{fmtMoney(row.amount)}</div>
+                    {row.tag && <div className={`text-[9px] ${row.tag === 'NV' ? 'text-orange-400' : 'text-green-400'}`}>{row.tag === 'NV' ? 'ไม่รวมแวต' : 'รวมแวต'}</div>}
+                    {o.payment_status === 'paid'
+                      ? <div className="text-[10px] text-green-500 font-medium">ชำระแล้ว</div>
+                      : <div className="text-[10px] text-red-500 font-medium">รอชำระ</div>}
+                  </div>
+                </div>
+              ))
+            })}
+          </div>
+        )}
+
         {/* Week detail */}
         {selectedWeek !== null && (
           <div className="mt-2 border border-gray-200 rounded p-2 bg-white text-xs max-w-[420px]">
             <div className="font-semibold text-gray-500 mb-1">
-              สัปดาห์ที่ {weekBounds(selectedWeek).weekNum} · {weekBounds(selectedWeek).dateRange}
+              สัปดาห์ที่ {computeWeekBounds(selectedWeek).weekNum} · {computeWeekBounds(selectedWeek).dateRange}
             </div>
             {weekOrders.length === 0 ? (
               <div className="text-gray-400">ไม่มีรายการ</div>
@@ -782,6 +831,11 @@ export default function BranchesPage() {
   const [pendingSlips, setPendingSlips] = useState<Slip[]>([])
   const [confirmSlip,  setConfirmSlip]  = useState<Slip | null>(null)
 
+  // Global period selection for ประวัติใบจอง
+  const [activePeriod,         setActivePeriod]         = useState<{ start: string; end: string; label: string } | null>(null)
+  const [selectedMonth,        setSelectedMonth]        = useState('')
+  const [periodOrdersByBranch, setPeriodOrdersByBranch] = useState<Record<number, BranchOrder[]>>({})
+
   // Unpaid orders by withdrawal type
   const [withdrawalTypes,  setWithdrawalTypes]  = useState<WithdrawalType[]>([])
   const [unpaidByBranch,   setUnpaidByBranch]   = useState<Record<number, Record<number, UnpaidOrder[]>>>({})
@@ -853,6 +907,40 @@ export default function BranchesPage() {
   useEffect(() => { loadBranches() }, [loadBranches])
   useEffect(() => { loadSlipData() }, [loadSlipData])
   useEffect(() => { loadUnpaidData() }, [loadUnpaidData])
+
+  // Fetch all-branch orders when activePeriod changes
+  useEffect(() => {
+    if (!activePeriod || branches.length === 0) { setPeriodOrdersByBranch({}); return }
+    const fetchAll = async () => {
+      const entries = await Promise.all(
+        branches.map(async b => {
+          const r = await fetch(`/api/branches/orders?branch_id=${b.id}&date_from=${activePeriod.start}&date_to=${activePeriod.end}`)
+          const orders: BranchOrder[] = await r.json()
+          return [b.id, orders] as [number, BranchOrder[]]
+        })
+      )
+      setPeriodOrdersByBranch(Object.fromEntries(entries))
+    }
+    fetchAll()
+  }, [activePeriod, branches])
+
+  const handleSelectGlobalWeek = (weeksAgo: number) => {
+    const { start, end, weekNum, dateRange } = computeWeekBounds(weeksAgo)
+    if (activePeriod?.start === start) { setActivePeriod(null); setSelectedMonth(''); return }
+    setSelectedMonth('')
+    setActivePeriod({ start, end, label: `สัปดาห์ที่ ${weekNum} (${dateRange})` })
+  }
+
+  const handleSelectGlobalMonth = (value: string) => {
+    setSelectedMonth(value)
+    if (!value) { setActivePeriod(null); return }
+    const [y, m] = value.split('-').map(Number)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const start = `${y}-${pad(m)}-01`
+    const lastDay = new Date(y, m, 0).getDate()
+    const end = `${y}-${pad(m)}-${pad(lastDay)}`
+    setActivePeriod({ start, end, label: `${MONTH_NAMES[m - 1]} ${y + 543}` })
+  }
 
   const handleLogin = async () => {
     setLoginError('')
@@ -1075,7 +1163,32 @@ export default function BranchesPage() {
                 <tr className="bg-[#9b9484] text-white text-left">
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[360px]">ประวัติใบจอง</th>
+                  <th className="px-3 py-2 border-r border-gray-500 min-w-[360px]">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="whitespace-nowrap font-semibold">ประวัติใบจอง</span>
+                      {[0, 1, 2].map(w => {
+                        const wb = computeWeekBounds(w)
+                        const isActive = activePeriod?.start === wb.start
+                        return (
+                          <button key={w} onClick={() => handleSelectGlobalWeek(w)}
+                            className={`text-[10px] px-2 py-0.5 rounded border whitespace-nowrap transition-colors ${isActive ? 'bg-white text-gray-700 border-white font-semibold' : 'bg-white/15 border-white/40 hover:bg-white/30 text-white'}`}>
+                            สัปดาห์ {wb.weekNum}<span className="opacity-70"> ({wb.dateRange})</span>
+                          </button>
+                        )
+                      })}
+                      <select value={selectedMonth} onChange={e => handleSelectGlobalMonth(e.target.value)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${selectedMonth ? 'bg-white text-gray-700 border-white' : 'bg-white/15 border-white/40 text-white hover:bg-white/30'}`}>
+                        <option value="" className="text-black">รายเดือน ▾</option>
+                        {getMonthOptions().map(opt => <option key={opt.value} value={opt.value} className="text-black">{opt.label}</option>)}
+                      </select>
+                      {activePeriod && (
+                        <button onClick={() => { setActivePeriod(null); setSelectedMonth('') }}
+                          className="text-[10px] px-1.5 py-0.5 rounded border border-white/40 bg-white/10 hover:bg-white/30 text-white">
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[100px] bg-purple-700">ค่าแวต</th>
                   {withdrawalTypes.map(wt => (
                     <th key={wt.id} className="px-2 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[120px]">
@@ -1109,11 +1222,70 @@ export default function BranchesPage() {
                         slipPeriods={slipPeriods}
                         withdrawalTypes={withdrawalTypes}
                         unpaidOrders={unpaidByBranch[b.id] ?? {}}
-                        vatItems={vatItemsMap[b.id] ?? []} />
+                        vatItems={vatItemsMap[b.id] ?? []}
+                        activePeriod={activePeriod}
+                        periodOrders={periodOrdersByBranch[b.id] ?? []} />
                     ))}
                   </>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="bg-gray-100 border-t-2 border-gray-400 text-xs font-semibold">
+                  <td colSpan={2} className="px-3 py-2 border-r border-gray-300 text-right text-gray-500 text-[11px]">รวม</td>
+                  {/* ประวัติใบจอง total */}
+                  <td className="px-3 py-2 border-r border-gray-300">
+                    {activePeriod ? (() => {
+                      const allOrders = Object.values(periodOrdersByBranch).flat()
+                      if (allOrders.length === 0) return <span className="text-gray-400 font-normal">ไม่มีรายการ</span>
+                      const total = allOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
+                      const paid  = allOrders.reduce((s, o) => s + (o.payment_status === 'paid' ? parseFloat(o.total_amount) : 0), 0)
+                      return (
+                        <div>
+                          <div className="text-green-600">฿{fmtMoney(total)}</div>
+                          {paid > 0 && <div className="text-[10px] text-green-400 font-normal">ชำระแล้ว ฿{fmtMoney(paid)}</div>}
+                        </div>
+                      )
+                    })() : <span className="text-gray-300 font-normal text-[10px]">เลือกช่วงเวลาเพื่อดูยอดรวม</span>}
+                  </td>
+                  {/* ค่าแวต total */}
+                  <td className="px-3 py-2 border-r border-gray-300 text-center">
+                    {(() => {
+                      const total = Object.values(vatItemsMap).flat().reduce((s, v) => s + v.amount, 0)
+                      return total > 0
+                        ? <span className="text-[#7c3aed]">฿{Math.round(total).toLocaleString('th-TH')}</span>
+                        : <span className="text-gray-300 font-normal">-</span>
+                    })()}
+                  </td>
+                  {/* Withdrawal type totals */}
+                  {withdrawalTypes.map(wt => {
+                    const total = Object.values(unpaidByBranch).reduce((s, byType) => {
+                      return s + (byType[wt.id] ?? []).reduce((ss, o) => ss + parseFloat(o.total_amount), 0)
+                    }, 0)
+                    return (
+                      <td key={wt.id} className="px-2 py-2 border-r border-gray-300 text-center">
+                        {total > 0
+                          ? <span className="text-gray-600">฿{fmtMoney(total)}</span>
+                          : <span className="text-gray-300 font-normal">-</span>}
+                      </td>
+                    )
+                  })}
+                  {/* Slip category totals */}
+                  {SLIP_CATS.map((cat, i) => {
+                    const total = Object.values(slipData).reduce((s, catMap) => {
+                      const t = catMap[cat.key]
+                      const period = slipPeriods[cat.key] ?? 'month'
+                      return s + (period === 'month' ? (t?.month ?? 0) : (t?.week ?? 0))
+                    }, 0)
+                    return (
+                      <td key={cat.key} className={`px-3 py-2 text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-300' : ''}`}>
+                        {total > 0
+                          ? <span className="text-green-600">฿{Math.round(total).toLocaleString('th-TH')}</span>
+                          : <span className="text-gray-300 font-normal">-</span>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
