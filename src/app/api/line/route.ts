@@ -1286,6 +1286,24 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     return reply(replyToken, [{ type: 'text', text: prompts[field] ?? 'พิมพ์ข้อมูลใหม่:' }])
   }
 
+  // SLIP_VAT:{id} — บันทึกค่าแวตโดยตรง (ไม่ผ่านขั้นตอน purpose/type)
+  if (data.startsWith('SLIP_VAT:')) {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้' }])
+    }
+    const slipId = parseInt(data.split(':')[1])
+    const { rows: existing } = await pool.query('SELECT status, amount FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+    const { rows: [slip] } = await pool.query(
+      `UPDATE slips SET status='confirmed', category='vat', applied=false WHERE id=$1 RETURNING amount`,
+      [slipId]
+    )
+    const fmtAmt = Number(slip?.amount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })
+    return reply(replyToken, [{ type: 'text', text: `✅ บันทึกค่าแวต ฿${fmtAmt} เรียบร้อยแล้วครับ` }])
+  }
+
   // SLIP_PURPOSE:{id}:{PAY|STORE} — ขั้นตอนที่ 1: เลือกวัตถุประสงค์
   if (data.startsWith('SLIP_PURPOSE:')) {
     if (!await isLineAdmin(userId, source)) {
@@ -1802,6 +1820,11 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
                 color: '#9b9484', flex: 1, height: 'sm',
               }
             ]
+          },
+          {
+            type: 'button',
+            action: { type: 'postback', label: '🧾 ค่าแวต', data: `SLIP_VAT:${slip.id}` },
+            style: 'secondary', height: 'sm', color: '#7c3aed', margin: 'sm',
           }
         ]
       }
