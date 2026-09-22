@@ -236,9 +236,11 @@ type SlipTotals = Record<string, { month: number; week: number; applied_month: n
 
 type SlipPeriods = Record<string, 'month' | 'week'>
 
+type VatItem = { amount: number; slip_date: string }
+
 function BranchRow({
   branch, session, onManage, colorGroup, slipTotals, slipPeriods,
-  withdrawalTypes, unpaidOrders,
+  withdrawalTypes, unpaidOrders, vatItems,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -248,6 +250,7 @@ function BranchRow({
   slipPeriods: SlipPeriods
   withdrawalTypes: WithdrawalType[]
   unpaidOrders: Record<number, UnpaidOrder[]>
+  vatItems: VatItem[]
 }) {
   const [weekOrders,     setWeekOrders]     = useState<BranchOrder[]>([])
   const [selectedWeek,   setSelectedWeek]   = useState<number | null>(null)
@@ -461,13 +464,30 @@ function BranchRow({
         </td>
 
       {/* ค่าแวต */}
-      <td className="px-3 py-2 border-r border-gray-200 text-center whitespace-nowrap align-top">
-        {(slipTotals['vat']?.month ?? 0) > 0 ? (
-          <span className="text-xs font-semibold text-purple-600">
-            ฿{Math.round(slipTotals['vat'].month).toLocaleString('th-TH')}
-          </span>
-        ) : (
+      <td className="px-3 py-2 border-r border-gray-200 align-top min-w-[110px]">
+        {vatItems.length === 0 ? (
           <span className="text-xs text-gray-300">-</span>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {vatItems.map((v, i) => (
+              <div key={i} className="flex items-center justify-between gap-1">
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                  {new Date(v.slip_date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                </span>
+                <span className="text-xs font-medium text-[#7c3aed] whitespace-nowrap">
+                  ฿{Math.round(v.amount).toLocaleString('th-TH')}
+                </span>
+              </div>
+            ))}
+            {vatItems.length > 1 && (
+              <div className="flex items-center justify-between gap-1 border-t border-gray-200 pt-0.5 mt-0.5">
+                <span className="text-[10px] text-gray-500 font-semibold">รวม</span>
+                <span className="text-xs font-bold text-[#7c3aed] whitespace-nowrap">
+                  ฿{Math.round(vatItems.reduce((s, v) => s + v.amount, 0)).toLocaleString('th-TH')}
+                </span>
+              </div>
+            )}
+          </div>
         )}
       </td>
 
@@ -758,6 +778,7 @@ export default function BranchesPage() {
   // Slip state
   const [slipPeriods,  setSlipPeriods]  = useState<SlipPeriods>({ วรวุฒิ: 'month', print: 'month', pack: 'month', bb: 'month', กล่อง: 'month' })
   const [slipData,     setSlipData]     = useState<Record<number, SlipTotals>>({})
+  const [vatItemsMap,  setVatItemsMap]  = useState<Record<number, VatItem[]>>({})
   const [pendingSlips, setPendingSlips] = useState<Slip[]>([])
   const [confirmSlip,  setConfirmSlip]  = useState<Slip | null>(null)
 
@@ -790,19 +811,28 @@ export default function BranchesPage() {
   }, [])
 
   const loadSlipData = useCallback(async () => {
-    const [byBranchRes, pendingRes] = await Promise.all([
+    const [byBranchRes, pendingRes, vatRes] = await Promise.all([
       fetch('/api/slips?by_branch=true'),
       fetch('/api/slips?pending=true'),
+      fetch('/api/slips?vat_items=true'),
     ])
     const rows: { branch_id: number; category: string; month_total: number; week_total: number; applied_month_total: number; applied_week_total: number }[] = await byBranchRes.json()
     const pending: Slip[] = await pendingRes.json()
+    const vatRows: { branch_id: number; amount: number; slip_date: string }[] = await vatRes.json()
     // Build map: branch_id → category → { month, week, applied_month, applied_week }
     const map: Record<number, SlipTotals> = {}
     for (const r of rows) {
       if (!map[r.branch_id]) map[r.branch_id] = {}
       map[r.branch_id][r.category] = { month: r.month_total, week: r.week_total, applied_month: r.applied_month_total ?? 0, applied_week: r.applied_week_total ?? 0 }
     }
+    // Build map: branch_id → VatItem[]
+    const vatMap: Record<number, VatItem[]> = {}
+    for (const v of vatRows) {
+      if (!vatMap[v.branch_id]) vatMap[v.branch_id] = []
+      vatMap[v.branch_id].push({ amount: v.amount, slip_date: v.slip_date })
+    }
     setSlipData(map)
+    setVatItemsMap(vatMap)
     setPendingSlips(pending)
   }, [])
 
@@ -1078,7 +1108,8 @@ export default function BranchesPage() {
                         slipTotals={slipData[b.id] ?? {}}
                         slipPeriods={slipPeriods}
                         withdrawalTypes={withdrawalTypes}
-                        unpaidOrders={unpaidByBranch[b.id] ?? {}} />
+                        unpaidOrders={unpaidByBranch[b.id] ?? {}}
+                        vatItems={vatItemsMap[b.id] ?? []} />
                     ))}
                   </>
                 ))}

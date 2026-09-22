@@ -102,6 +102,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(rows)
     }
 
+    // Return individual VAT slips per branch (all time)
+    if (url.searchParams.get('vat_items') === 'true') {
+      const { rows } = await pool.query(`
+        SELECT branch_id, amount::float, slip_date::text, created_at
+        FROM slips
+        WHERE status = 'confirmed' AND category = 'vat' AND branch_id IS NOT NULL
+        ORDER BY branch_id, slip_date DESC, created_at DESC
+      `)
+      return NextResponse.json(rows)
+    }
+
     // Return totals by branch (for table rows)
     const month = getMonthRange()
     const week  = getWeekRange()
