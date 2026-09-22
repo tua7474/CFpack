@@ -1817,14 +1817,14 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
                 type: 'button',
                 action: { type: 'postback', label: '🛒 ไว้หักค่าของ', data: `SLIP_PURPOSE:${slip.id}:STORE` },
                 style: suggest?.purpose === 'STORE' ? 'primary' : 'secondary',
-                color: '#9b9484', flex: 1, height: 'sm',
+                color: '#f97316', flex: 1, height: 'sm',
               }
             ]
           },
           {
             type: 'button',
             action: { type: 'postback', label: '🧾 ค่าแวต', data: `SLIP_VAT:${slip.id}` },
-            style: 'secondary', height: 'sm', color: '#7c3aed', margin: 'sm',
+            style: 'secondary', height: 'sm', color: '#9b9484', margin: 'sm',
           }
         ]
       }
