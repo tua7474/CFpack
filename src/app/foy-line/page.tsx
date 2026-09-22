@@ -269,9 +269,8 @@ export default function FoyLinePage() {
             <thead>
               {/* Row 1 */}
               <tr className="bg-[#9b9484] text-white">
-                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left align-top" style={{ minWidth: 230 }}>
-                  <div className="font-semibold">รุ่น / สี</div>
-                  <div className="text-[10px] opacity-70 font-normal mt-0.5">วันที่นำวัตถุดิบเข้า · กก.</div>
+                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left align-top" style={{ minWidth: 210 }}>
+                  <div className="font-semibold">รุ่น / สี · วันที่ / กก.</div>
                 </th>
                 <th colSpan={16} className="px-3 py-1.5 border border-white/20 text-center font-semibold">
                   บันทึกการตัด
@@ -316,53 +315,48 @@ export default function FoyLinePage() {
 
                     {/* ── Col 1: วัตถุดิบ ── */}
                     <td className="px-2 py-1.5 border-r border-gray-200 align-top">
-                      {/* รุ่น */}
-                      <select
-                        value={row.model_name ?? ''}
-                        onChange={e => updateModel(rowIdx, e.target.value)}
-                        className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black mb-1"
-                      >
-                        <option value="">-- เลือกรุ่น --</option>
-                        {MODELS.map(m => (
-                          <option key={m.label} value={m.label}>{m.label}</option>
-                        ))}
-                      </select>
+                      {/* บรรทัด 1: รุ่น + สี */}
+                      <div className="flex gap-1 mb-1">
+                        <select
+                          value={row.model_name ?? ''}
+                          onChange={e => updateModel(rowIdx, e.target.value)}
+                          className="w-[90px] shrink-0 px-1 py-0.5 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black"
+                        >
+                          <option value="">-- รุ่น --</option>
+                          {MODELS.map(m => (
+                            <option key={m.label} value={m.label}>{m.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={row.product_id ?? ''}
+                          onChange={e => updateColor(rowIdx, Number(e.target.value))}
+                          disabled={!row.model_name || colors.length === 0}
+                          className="flex-1 min-w-0 px-1 py-0.5 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black disabled:opacity-40"
+                        >
+                          <option value="">-- สี --</option>
+                          {colors.map(p => (
+                            <option key={p.id} value={p.id}>{p.product_name}</option>
+                          ))}
+                        </select>
+                      </div>
 
-                      {/* สี */}
-                      <select
-                        value={row.product_id ?? ''}
-                        onChange={e => updateColor(rowIdx, Number(e.target.value))}
-                        disabled={!row.model_name || colors.length === 0}
-                        className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black mb-1.5 disabled:opacity-40"
-                      >
-                        <option value="">-- เลือกสี --</option>
-                        {colors.map(p => (
-                          <option key={p.id} value={p.id}>{p.product_name}</option>
-                        ))}
-                      </select>
-
-                      {/* วันที่นำวัตถุดิบเข้า */}
-                      <div className="flex items-center gap-1 mb-1">
-                        <span className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">วันที่นำเข้า</span>
+                      {/* บรรทัด 2: วันที่ + กก. */}
+                      <div className="flex gap-1 items-center">
                         <input
                           type="date"
                           value={row.raw_date ?? ''}
                           onChange={e => updateRawDate(rowIdx, e.target.value)}
-                          className="flex-1 min-w-0 px-1 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-black bg-white"
+                          className="w-[112px] shrink-0 px-1 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-black bg-white"
                         />
-                      </div>
-
-                      {/* กก.วัตถุดิบ */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">กก.วัตถุดิบ</span>
                         <input
                           type="number" inputMode="decimal" step="0.1"
                           value={row.raw_kg ?? ''}
                           onChange={e => updateRawKg(rowIdx, e.target.value)}
-                          className={`flex-1 min-w-0 ${numCls}`}
-                          placeholder="0"
+                          className="flex-1 min-w-0 px-1 py-0.5 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white"
+                          placeholder="กก."
                         />
                       </div>
+
                     </td>
 
                     {/* ── Sessions ── */}
