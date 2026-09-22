@@ -122,6 +122,10 @@ export default function WithdrawalPage() {
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
           📥 เติมสต็อค
         </Link>
+        <Link href="/foy-line"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          🌀 ไลน์ผลิตกระดาษฝอย
+        </Link>
       </div>
 
       {/* Main */}
