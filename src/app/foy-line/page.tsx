@@ -53,7 +53,18 @@ function fmtDateShort(d?: string) {
 }
 
 function emptyRow(): ProductionRow {
-  return { sessions: Array(8).fill(null).map(() => ({})) }
+  return { sessions: [{}] }
+}
+
+// ตัด trailing empty sessions เวลา load จาก DB
+function trimSessions(sessions: Session[]): Session[] {
+  const arr = [...sessions]
+  while (arr.length > 1) {
+    const last = arr[arr.length - 1]
+    if (!last?.kg && !last?.cut_type) arr.pop()
+    else break
+  }
+  return arr
 }
 
 function hasData(row: ProductionRow) {
@@ -84,7 +95,7 @@ export default function FoyLinePage() {
       setProducts((catalog as CatalogProduct[]).filter(p => foyGroups.has(p.group_name)))
       const dbRows = (production as ProductionRow[]).map(r => ({
         ...r,
-        sessions: Array(8).fill(null).map((_, i) => r.sessions[i] ?? {}),
+        sessions: trimSessions(r.sessions?.length ? r.sessions : [{}]),
       }))
       setRows(dbRows.length ? dbRows : [emptyRow()])
       setLoading(false)
@@ -219,7 +230,18 @@ export default function FoyLinePage() {
 
   const addRow = () => setRows(prev => [...prev, emptyRow()])
 
+  const addSession = useCallback((rowIdx: number) => {
+    setRows(prev => {
+      const updated = { ...prev[rowIdx], sessions: [...prev[rowIdx].sessions, {}] }
+      const next = [...prev]; next[rowIdx] = updated
+      scheduleSave(updated, rowIdx)
+      return next
+    })
+  }, [scheduleSave])
+
   // ── Computed ─────────────────────────────────────────────────────────────────
+
+  const maxSessions = Math.max(1, ...rows.map(r => r.sessions.length))
 
   const totalKg = (row: ProductionRow) =>
     row.sessions.reduce((s, sess) => s + (Number(sess?.kg) || 0), 0)
@@ -272,9 +294,10 @@ export default function FoyLinePage() {
                 <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left align-top" style={{ minWidth: 210 }}>
                   <div className="font-semibold">รุ่น / สี · วันที่ / กก.</div>
                 </th>
-                <th colSpan={16} className="px-3 py-1.5 border border-white/20 text-center font-semibold">
+                <th colSpan={maxSessions * 2} className="px-3 py-1.5 border border-white/20 text-center font-semibold">
                   บันทึกการตัด
                 </th>
+                <th rowSpan={3} className="px-1 py-2 border border-white/20 text-center bg-[#6b7280]" style={{ minWidth: 32 }} />
                 <th rowSpan={3} className="px-3 py-2 border border-white/20 text-center whitespace-nowrap bg-green-700" style={{ minWidth: 64 }}>
                   รวม<br/>กก.
                 </th>
@@ -286,7 +309,7 @@ export default function FoyLinePage() {
 
               {/* Row 2 */}
               <tr className="bg-[#9b9484] text-white">
-                {Array.from({ length: 8 }, (_, i) => (
+                {Array.from({ length: maxSessions }, (_, i) => (
                   <th key={i} colSpan={2} className="px-2 py-1 border border-white/20 text-center whitespace-nowrap text-[11px]">
                     ครั้งที่ {i + 1}
                   </th>
@@ -295,7 +318,7 @@ export default function FoyLinePage() {
 
               {/* Row 3 */}
               <tr className="bg-[#7a7568] text-white text-[10px]">
-                {Array.from({ length: 8 }, (_, i) => (
+                {Array.from({ length: maxSessions }, (_, i) => (
                   <Fragment key={i}>
                     <th className="px-1 py-1 border border-white/20 text-center" style={{ minWidth: 52 }}>กก.</th>
                     <th className="px-1 py-1 border border-white/20 text-center bg-amber-900/40" style={{ minWidth: 72 }}>หมวด</th>
@@ -360,36 +383,52 @@ export default function FoyLinePage() {
                     </td>
 
                     {/* ── Sessions ── */}
-                    {row.sessions.map((sess, si) => (
-                      <Fragment key={si}>
-                        {/* กก. */}
-                        <td className="px-1 py-1 border-r border-gray-100 align-top">
-                          {dateLbl(sess?.kg != null ? sess.date : undefined)}
-                          <input
-                            type="number" inputMode="decimal" step="0.1"
-                            value={sess?.kg ?? ''}
-                            onChange={e => updateSessionKg(rowIdx, si, e.target.value)}
-                            className={numCls}
-                            placeholder="กก."
-                          />
-                        </td>
-                        {/* หมวด */}
-                        <td className="px-1 py-1 border-r border-gray-200 align-top bg-amber-50/40">
-                          {/* spacer for date label alignment */}
-                          <div className="h-3 mb-0.5" />
-                          <select
-                            value={sess?.cut_type ?? ''}
-                            onChange={e => updateSessionType(rowIdx, si, e.target.value)}
-                            className="w-full px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black"
-                          >
-                            <option value="">--</option>
-                            {CUT_TYPES.map(t => (
-                              <option key={t} value={t}>{t}</option>
-                            ))}
-                          </select>
-                        </td>
-                      </Fragment>
-                    ))}
+                    {Array.from({ length: maxSessions }, (_, si) => {
+                      const sess = row.sessions[si]
+                      const active = si < row.sessions.length
+                      return (
+                        <Fragment key={si}>
+                          {/* กก. */}
+                          <td className="px-1 py-1 border-r border-gray-100 align-top">
+                            {dateLbl(active && sess?.kg != null ? sess?.date : undefined)}
+                            <input
+                              type="number" inputMode="decimal" step="0.1"
+                              value={active ? (sess?.kg ?? '') : ''}
+                              onChange={e => updateSessionKg(rowIdx, si, e.target.value)}
+                              disabled={!active}
+                              className={numCls + (active ? '' : ' opacity-20 cursor-not-allowed')}
+                              placeholder="กก."
+                            />
+                          </td>
+                          {/* หมวด */}
+                          <td className="px-1 py-1 border-r border-gray-200 align-top bg-amber-50/40">
+                            <div className="h-3 mb-0.5" />
+                            <select
+                              value={active ? (sess?.cut_type ?? '') : ''}
+                              onChange={e => updateSessionType(rowIdx, si, e.target.value)}
+                              disabled={!active}
+                              className={'w-full px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black' + (active ? '' : ' opacity-20 cursor-not-allowed')}
+                            >
+                              <option value="">--</option>
+                              {CUT_TYPES.map(t => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </Fragment>
+                      )
+                    })}
+
+                    {/* ── + เพิ่มครั้ง ── */}
+                    <td className="px-1 py-2 border-r border-gray-200 text-center align-middle bg-gray-50">
+                      <button
+                        onClick={() => addSession(rowIdx)}
+                        title="เพิ่มครั้งตัด"
+                        className="w-6 h-6 rounded-full bg-gray-200 hover:bg-[#9b9484] hover:text-white text-gray-600 font-bold text-sm leading-none transition-colors flex items-center justify-center mx-auto"
+                      >
+                        +
+                      </button>
+                    </td>
 
                     {/* ── รวม กก. ── */}
                     <td className="px-3 py-2 text-center font-bold bg-green-50 border-l border-gray-200 align-middle">
