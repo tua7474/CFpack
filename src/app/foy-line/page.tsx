@@ -248,7 +248,7 @@ export default function FoyLinePage() {
 
   // ── Styles ───────────────────────────────────────────────────────────────────
 
-  const numCls = 'w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white'
+  const numCls = 'w-full px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white'
 
   const dateLbl = (d?: string) => (
     <div className="text-[9px] text-blue-400 text-center leading-none h-3 mb-0.5 truncate">
@@ -320,8 +320,8 @@ export default function FoyLinePage() {
               <tr className="bg-[#7a7568] text-white text-[10px]">
                 {Array.from({ length: maxSessions }, (_, i) => (
                   <Fragment key={i}>
-                    <th className="px-1 py-1 border border-white/20 text-center" style={{ minWidth: 52 }}>กก.</th>
-                    <th className="px-1 py-1 border border-white/20 text-center bg-amber-900/40" style={{ minWidth: 72 }}>หมวด</th>
+                    <th className="px-0.5 py-1 border border-white/20 text-center" style={{ minWidth: 26 }}>กก.</th>
+                    <th className="px-0.5 py-1 border border-white/20 text-center bg-amber-900/40" style={{ minWidth: 36 }}>หมวด</th>
                   </Fragment>
                 ))}
               </tr>
@@ -389,7 +389,7 @@ export default function FoyLinePage() {
                       return (
                         <Fragment key={si}>
                           {/* กก. */}
-                          <td className="px-1 py-1 border-r border-gray-100 align-top">
+                          <td className="px-0.5 py-1 border-r border-gray-100 align-top" style={{ minWidth: 26 }}>
                             {dateLbl(active && sess?.kg != null ? sess?.date : undefined)}
                             <input
                               type="number" inputMode="decimal" step="0.1"
@@ -401,13 +401,13 @@ export default function FoyLinePage() {
                             />
                           </td>
                           {/* หมวด */}
-                          <td className="px-1 py-1 border-r border-gray-200 align-top bg-amber-50/40">
+                          <td className="px-0 py-1 border-r border-gray-200 align-top bg-amber-50/40" style={{ minWidth: 36 }}>
                             <div className="h-3 mb-0.5" />
                             <select
                               value={active ? (sess?.cut_type ?? '') : ''}
                               onChange={e => updateSessionType(rowIdx, si, e.target.value)}
                               disabled={!active}
-                              className={'w-full px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black' + (active ? '' : ' opacity-20 cursor-not-allowed')}
+                              className={'w-full px-0 py-0.5 text-[9px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black' + (active ? '' : ' opacity-20 cursor-not-allowed')}
                             >
                               <option value="">--</option>
                               {CUT_TYPES.map(t => (
