@@ -109,7 +109,7 @@ export default function OrdersPage() {
   const [branchSlips, setBranchSlips]       = useState<{ id: number; category: string; amount: number; account_name: string | null; slip_date: string; applied: boolean }[]>([])
   const [appliedSlipIds, setAppliedSlipIds] = useState<Set<number>>(new Set())
   const [payStep, setPayStep]               = useState<1 | 2>(1)
-  const [qrUrl, setQrUrl]                   = useState<string | null>(null)
+  const [qrDataUrl, setQrDataUrl]           = useState<string | null>(null)
   const [qrAmount, setQrAmount]             = useState(0)
   const [qrLoading, setQrLoading]           = useState(false)
   const [qrSaving, setQrSaving]             = useState(false)
@@ -279,7 +279,7 @@ export default function OrdersPage() {
       setBranchSlips(Array.isArray(slipsRes) ? slipsRes : [])
       setAppliedSlipIds(new Set())
       setPayStep(1)
-      setQrUrl(null)
+      setQrDataUrl(null)
     } catch { /* ignore fetch errors — still open modal */ }
     setShowPayModal(true)
   }
@@ -297,47 +297,47 @@ export default function OrdersPage() {
     }
     setPayStep(2)
     setQrAmount(remaining)
+    setQrDataUrl(null)
     if (remaining > 0) {
       setQrLoading(true)
-      setQrUrl(null)
       try {
+        // Get PromptPay payload from server (reads PROMPTPAY_ID securely server-side)
         const res = await fetch(`/api/promptpay?amount=${remaining.toFixed(2)}`)
         if (res.ok) {
           const data = await res.json()
-          setQrUrl(data.qrUrl ?? null)
+          const payload: string = data.payload
+          if (payload) {
+            // Generate QR entirely client-side — no external image service needed
+            const QRCode = (await import('qrcode')).default
+            const dataUrl = await QRCode.toDataURL(payload, {
+              width: 300,
+              margin: 2,
+              errorCorrectionLevel: 'M',
+              color: { dark: '#000000', light: '#ffffff' },
+            })
+            setQrDataUrl(dataUrl)
+          }
+        } else {
+          console.error('[goToStep2] /api/promptpay returned', res.status, await res.text())
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.error('[goToStep2] QR generation error:', e)
+      }
       setQrLoading(false)
     }
   }
 
-  const saveQrImage = async () => {
-    if (!qrUrl || qrSaving) return
+  const saveQrImage = () => {
+    if (!qrDataUrl || qrSaving) return
     setQrSaving(true)
-    try {
-      const resp = await fetch(qrUrl)
-      const blob = await resp.blob()
-      const filename = `promptpay-${qrAmount.toFixed(0)}thb.png`
-      if (typeof navigator !== 'undefined' && navigator.share) {
-        const file = new File([blob], filename, { type: 'image/png' })
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ title: `PromptPay ฿${qrAmount.toLocaleString('th-TH')}`, files: [file] })
-          setQrSaving(false)
-          setShowPayModal(false)
-          return
-        }
-      }
-      const blobUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = blobUrl
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000)
-    } catch {
-      window.open(qrUrl, '_blank')
-    }
+    const filename = `promptpay-${qrAmount.toFixed(0)}thb.png`
+    // qrDataUrl is already a data:image/png;base64,... — download directly, no fetch needed
+    const a = document.createElement('a')
+    a.href = qrDataUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
     setQrSaving(false)
     setShowPayModal(false)
   }
@@ -735,9 +735,9 @@ export default function OrdersPage() {
                       <div className="border-2 border-purple-200 rounded-2xl p-3 bg-white shadow">
                         {qrLoading ? (
                           <div className="w-52 h-52 flex items-center justify-center text-gray-400 text-sm">กำลังสร้าง QR...</div>
-                        ) : qrUrl ? (
+                        ) : qrDataUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={qrUrl} alt="PromptPay QR" width={208} height={208} className="rounded-lg" />
+                          <img src={qrDataUrl} alt="PromptPay QR" width={208} height={208} className="rounded-lg" />
                         ) : (
                           <div className="w-52 h-52 flex flex-col items-center justify-center text-gray-400 text-sm text-center gap-2">
                             <span className="text-3xl">⚠️</span>
@@ -745,7 +745,7 @@ export default function OrdersPage() {
                           </div>
                         )}
                       </div>
-                      {qrUrl && (
+                      {qrDataUrl && (
                         <button
                           onClick={saveQrImage}
                           disabled={qrSaving}
