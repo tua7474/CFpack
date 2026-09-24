@@ -11,11 +11,15 @@ const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
 // ── LINE API ──────────────────────────────────────────────────────────────────
 
 async function reply(replyToken: string, messages: object[]) {
-  await fetch('https://api.line.me/v2/bot/message/reply', {
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
     body: JSON.stringify({ replyToken, messages }),
   })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error('[LINE reply] HTTP', res.status, body, '| messages:', JSON.stringify(messages).slice(0, 300))
+  }
 }
 
 export async function push(to: string, messages: object[]) {
@@ -1077,6 +1081,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
 
     const qrUrl   = promptPayQrUrl(promptPayId, total)
     const orderNos = selOrders.map((o: Record<string, string>) => `#${o.order_no}`).join(', ')
+    console.log('[PAY_QR] total:', total, '| qrUrl:', qrUrl)
 
     return reply(replyToken, [
       { type: 'image', originalContentUrl: qrUrl, previewImageUrl: qrUrl },
