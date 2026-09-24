@@ -734,25 +734,30 @@ export default function OrdersPage() {
                     <>
                       <div className="border-2 border-purple-200 rounded-2xl p-3 bg-white shadow">
                         {qrLoading ? (
-                          <div className="w-52 h-52 flex items-center justify-center text-gray-400 text-sm">กำลังสร้าง QR...</div>
+                          <div className="w-64 h-64 flex items-center justify-center text-gray-400 text-sm">กำลังสร้าง QR...</div>
                         ) : qrDataUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={qrDataUrl} alt="PromptPay QR" width={208} height={208} className="rounded-lg" />
+                          <img src={qrDataUrl} alt="PromptPay QR" width={256} height={256} className="rounded-lg select-none" draggable={false} />
                         ) : (
-                          <div className="w-52 h-52 flex flex-col items-center justify-center text-gray-400 text-sm text-center gap-2">
+                          <div className="w-64 h-64 flex flex-col items-center justify-center text-gray-400 text-sm text-center gap-2">
                             <span className="text-3xl">⚠️</span>
                             <span>ยังไม่ได้ตั้งค่า PROMPTPAY_ID<br/>ใน Railway environment</span>
                           </div>
                         )}
                       </div>
                       {qrDataUrl && (
-                        <button
-                          onClick={saveQrImage}
-                          disabled={qrSaving}
-                          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-base font-semibold shadow transition-colors disabled:opacity-60"
-                        >
-                          {qrSaving ? '⏳ กำลังบันทึก...' : '💾 บันทึกรูป QR'}
-                        </button>
+                        <div className="flex flex-col items-center gap-2 w-full">
+                          <button
+                            onClick={saveQrImage}
+                            disabled={qrSaving}
+                            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-base font-semibold shadow transition-colors disabled:opacity-60 w-full justify-center"
+                          >
+                            {qrSaving ? '⏳ กำลังบันทึก...' : '💾 บันทึกรูป QR'}
+                          </button>
+                          <p className="text-center text-xs text-gray-400">
+                            หากบันทึกไม่ได้ ให้กดค้างที่รูป QR แล้วเลือก "บันทึกรูปภาพ"
+                          </p>
+                        </div>
                       )}
                       <p className="text-center text-xs text-orange-600 font-medium">
                         📌 อย่าลืมส่งสลิปเข้ากลุ่ม เพื่อตัดยอดบิลด้วยนะคะ
