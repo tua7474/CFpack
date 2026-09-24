@@ -294,7 +294,7 @@ function promptPayPayload(promptPayId: string, amount: number): string {
 
 function promptPayQrUrl(promptPayId: string, amount: number): string {
   const payload = promptPayPayload(promptPayId, amount)
-  return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&ecc=M&data=${encodeURIComponent(payload)}`
+  return `${BASE_URL}/api/qr?size=512&data=${encodeURIComponent(payload)}`
 }
 
 // ── Weekly summary helpers ────────────────────────────────────────────────────
