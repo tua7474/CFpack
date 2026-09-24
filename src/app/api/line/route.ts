@@ -1032,27 +1032,32 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
   }
 
-  // PAY_TOGGLE:{branchId}:{orderNo} — อัปเดต DB อย่างเดียว ไม่ส่งข้อความในกลุ่ม
+  // PAY_TOGGLE:{branchId}:{orderNo} — อัปเดต DB แล้ว re-render payment view
   if (data.startsWith('PAY_TOGGLE:')) {
-    const parts   = data.split(':')
-    const orderNo = parts[2]
-    const sel     = await getPaySelection(userId)
+    const parts    = data.split(':')
+    const branchId = parseInt(parts[1])
+    const orderNo  = parts[2]
+    const sel      = await getPaySelection(userId)
     await setPaySelection(userId, sel.includes(orderNo) ? sel.filter(s => s !== orderNo) : [...sel, orderNo])
-    return
+    const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
+    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
   }
 
-  // PAY_SELECTALL:{branchId} — อัปเดต DB อย่างเดียว
+  // PAY_SELECTALL:{branchId} — อัปเดต DB แล้ว re-render payment view
   if (data.startsWith('PAY_SELECTALL:')) {
     const branchId = parseInt(data.split(':')[1])
     const pending  = await getPendingOrders(branchId)
     await setPaySelection(userId, pending.map((o: Record<string, string>) => o.order_no))
-    return
+    const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
+    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
   }
 
-  // PAY_CLEARSEL:{branchId} — อัปเดต DB อย่างเดียว
+  // PAY_CLEARSEL:{branchId} — อัปเดต DB แล้ว re-render payment view
   if (data.startsWith('PAY_CLEARSEL:')) {
+    const branchId = parseInt(data.split(':')[1])
     await setPaySelection(userId, [])
-    return
+    const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
+    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
   }
 
   // PAY_QR:{branchId} — generate PromptPay QR for selected orders
