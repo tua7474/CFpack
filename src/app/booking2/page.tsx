@@ -221,7 +221,7 @@ function injectFoyRows(
   })
 }
 
-const BUBBLE_GROUPS_SET = new Set(['บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
+const BUBBLE_GROUPS_SET = new Set(['ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
 
 function getBubbleUnits(product_name: string): number {
   const w = parseFloat(product_name)
