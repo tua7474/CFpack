@@ -272,6 +272,7 @@ function Booking2Inner() {
   const [withdrawalTypes, setWithdrawalTypes]   = useState<{ id: number; name: string }[]>([])
   const [withdrawalTypeId, setWithdrawalTypeId] = useState<number | null>(null)
   const [priorityMode, setPriorityMode]         = useState<PriorityLevel | null>(null)
+  const [autoCapEnabled, setAutoCapEnabled]     = useState(true)  // auto-add ฝาปิดกระบอก 2x when กระบอก qty changes
   const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
   const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
 
@@ -521,11 +522,56 @@ function Booking2Inner() {
   const handleQtyChange = useCallback((id: number, val: string) => {
     const qty = parseInt(val, 10) || 0
     setPending(prev => {
-      const next = qty > 0 ? { ...prev, [id]: qty } : (() => { const n = { ...prev }; delete n[id]; return n })()
+      const next: Record<number, number> = qty > 0 ? { ...prev, [id]: qty } : (() => { const n = { ...prev }; delete n[id]; return n })()
+      // Auto-add ฝาปิดกระบอก 2 ฝาต่อ 1 กระบอก เมื่อ qty ของกระบอกเปลี่ยน
+      if (autoCapEnabled) {
+        const changedProd = products.find(p => p.id === id)
+        if (changedProd?.subgroup_name === 'กระบอก') {
+          const cylinders = products.filter(p => p.subgroup_name === 'กระบอก')
+          const caps      = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
+          for (const diam of ['3 นิ้ว', '2 นิ้ว', '1.5 นิ้ว']) {
+            const cylSum = cylinders.filter(p => p.product_name.includes(diam)).reduce((s, p) => s + (next[p.id] ?? 0), 0)
+            const capQty = cylSum * 2
+            caps.filter(p => p.product_name.includes(diam)).forEach(p => {
+              if (capQty > 0) next[p.id] = capQty; else delete next[p.id]
+            })
+          }
+        }
+      }
       if (!editOrderNo) saveDraft(next)
       return next
     })
-  }, [editOrderNo])
+  }, [editOrderNo, autoCapEnabled, products])
+
+  // ── ปุ่ม "ไม่เอาฝา" / "เพิ่มฝาอัตโนมัติ" ──────────────────────────────────
+  const clearCaps = useCallback(() => {
+    const caps = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
+    setAutoCapEnabled(false)
+    setPending(prev => {
+      const next = { ...prev }
+      caps.forEach(p => delete next[p.id])
+      if (!editOrderNo) saveDraft(next)
+      return next
+    })
+  }, [products, editOrderNo])
+
+  const enableAutoCap = useCallback(() => {
+    setAutoCapEnabled(true)
+    const cylinders = products.filter(p => p.subgroup_name === 'กระบอก')
+    const caps      = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
+    setPending(prev => {
+      const next = { ...prev }
+      for (const diam of ['3 นิ้ว', '2 นิ้ว', '1.5 นิ้ว']) {
+        const cylSum = cylinders.filter(p => p.product_name.includes(diam)).reduce((s, p) => s + (next[p.id] ?? 0), 0)
+        const capQty = cylSum * 2
+        caps.filter(p => p.product_name.includes(diam)).forEach(p => {
+          if (capQty > 0) next[p.id] = capQty; else delete next[p.id]
+        })
+      }
+      if (!editOrderNo) saveDraft(next)
+      return next
+    })
+  }, [products, editOrderNo])
 
   // ── Qty popup (auto-focus + confirm) ─────────────────────────────────────
   useEffect(() => {
@@ -1510,9 +1556,19 @@ function Booking2Inner() {
                                 className={`border px-2 py-px text-[11px] font-bold print-sg ${sgBgClass} sg-gray-${sgGray}`}>
                                 <div className="flex items-center justify-between gap-1">
                                   <span>{cell.name}</span>
-                                  {sgTotal > 0 && (
-                                    <span className="text-[8px] font-semibold opacity-90 whitespace-nowrap">฿{fmt2(sgTotal)}</span>
-                                  )}
+                                  <div className="flex items-center gap-1.5">
+                                    {sgTotal > 0 && (
+                                      <span className="text-[8px] font-semibold opacity-90 whitespace-nowrap">฿{fmt2(sgTotal)}</span>
+                                    )}
+                                    {cell.name === 'กระบอก' && !compactPrintMode && (
+                                      <button
+                                        onClick={e => { e.stopPropagation(); autoCapEnabled ? clearCaps() : enableAutoCap() }}
+                                        className="no-print text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap bg-black text-white hover:bg-gray-800 transition-colors"
+                                      >
+                                        {autoCapEnabled ? '✕ ไม่เอาฝา' : '+ เพิ่มฝาอัตโนมัติ'}
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </td>,
                             ]
