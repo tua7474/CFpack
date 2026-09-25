@@ -746,18 +746,9 @@ export default function OrdersPage() {
                         )}
                       </div>
                       {qrDataUrl && (
-                        <div className="flex flex-col items-center gap-2 w-full">
-                          <button
-                            onClick={saveQrImage}
-                            disabled={qrSaving}
-                            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-base font-semibold shadow transition-colors disabled:opacity-60 w-full justify-center"
-                          >
-                            {qrSaving ? '⏳ กำลังบันทึก...' : '💾 บันทึกรูป QR'}
-                          </button>
-                          <p className="text-center text-xs text-gray-400">
-                            หากบันทึกไม่ได้ ให้กดค้างที่รูป QR แล้วเลือก "บันทึกรูปภาพ"
-                          </p>
-                        </div>
+                        <p className="text-center text-sm font-semibold text-purple-700">
+                          📲 กดค้างที่รูปเพื่อบันทึกรูป QR
+                        </p>
                       )}
                       <p className="text-center text-xs text-orange-600 font-medium">
                         📌 อย่าลืมส่งสลิปเข้ากลุ่ม เพื่อตัดยอดบิลด้วยนะคะ
