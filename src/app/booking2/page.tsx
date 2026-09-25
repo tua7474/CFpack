@@ -68,9 +68,10 @@ const SUBGROUP_BG: Record<SubgroupColor, string> = {
   maroon: 'bg-[#9b9484] text-white border-gray-500',
 }
 
-// 6 subgroups that can toggle between no-VAT (orange) and VAT (gray)
+// subgroups that can toggle between no-VAT (orange) and VAT (gray)
 const SWITCHABLE_SUBGROUP_NAMES = new Set([
-  'ซองPPกันกระแทก', 'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
+  'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
+  'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
 ])
 
 // ── กระดาษฝอย groups — link to /booking-foy ──────────────────────────────────
@@ -1463,7 +1464,7 @@ function Booking2Inner() {
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>
-                                      {fmt2(noVatColTotal > 0 ? noVatColTotal : 0)}
+                                      {noVatColTotal > 0 ? fmt2(noVatColTotal) : ''}
                                     </div>
                                   </div>
                                 </td>,
@@ -1479,7 +1480,7 @@ function Booking2Inner() {
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {fmt2(vatColTotal > 0 ? vatColTotal : 0)}
+                                      {vatColTotal > 0 ? fmt2(vatColTotal) : ''}
                                     </div>
                                   </div>
                                 </td>,
