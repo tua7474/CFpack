@@ -519,6 +519,47 @@ function Booking2Inner() {
     }
   }, [pending, foyPending, products, sourceType, vehicleType])
 
+  // Extract inch number from a product name, e.g. "กระบอก 3 นิ้ว" → "3", "ฝาปิด 1.5"" → "1.5"
+  const extractInch = useCallback((name: string): string | null => {
+    const m = name.match(/(\d+(?:\.\d+)?)\s*(?:นิ้ว|")/)
+    return m ? m[1] : null
+  }, [])
+
+  // Assign cap qtys based on cylinder qtys (2 caps per cylinder, matched by inch size)
+  const applyAutoCap = useCallback((
+    next: Record<number, number>,
+    cylinders: CatalogProduct[],
+    caps: CatalogProduct[],
+  ) => {
+    // Sum cylinder qty per inch size
+    const cylByInch: Record<string, number> = {}
+    cylinders.forEach(p => {
+      const inch = extractInch(p.product_name)
+      if (inch) cylByInch[inch] = (cylByInch[inch] ?? 0) + (next[p.id] ?? 0)
+    })
+
+    // If regex matched nothing (no inch in names), fall back to positional match
+    const hasInchData = Object.keys(cylByInch).length > 0
+    if (!hasInchData) {
+      // Sort both arrays by product_name for stable positional matching
+      const sortedCyls = [...cylinders].sort((a, b) => a.product_name.localeCompare(b.product_name))
+      const sortedCaps = [...caps].sort((a, b) => a.product_name.localeCompare(b.product_name))
+      sortedCaps.forEach((cap, i) => {
+        const cyl = sortedCyls[i]
+        const capQty = cyl ? (next[cyl.id] ?? 0) * 2 : 0
+        if (capQty > 0) next[cap.id] = capQty; else delete next[cap.id]
+      })
+      return
+    }
+
+    caps.forEach(p => {
+      const inch = extractInch(p.product_name)
+      const cylSum = inch ? (cylByInch[inch] ?? 0) : 0
+      const capQty = cylSum * 2
+      if (capQty > 0) next[p.id] = capQty; else delete next[p.id]
+    })
+  }, [extractInch])
+
   const handleQtyChange = useCallback((id: number, val: string) => {
     const qty = parseInt(val, 10) || 0
     setPending(prev => {
@@ -529,19 +570,13 @@ function Booking2Inner() {
         if (changedProd?.subgroup_name === 'กระบอก') {
           const cylinders = products.filter(p => p.subgroup_name === 'กระบอก')
           const caps      = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
-          for (const diam of ['3 นิ้ว', '2 นิ้ว', '1.5 นิ้ว']) {
-            const cylSum = cylinders.filter(p => p.product_name.includes(diam)).reduce((s, p) => s + (next[p.id] ?? 0), 0)
-            const capQty = cylSum * 2
-            caps.filter(p => p.product_name.includes(diam)).forEach(p => {
-              if (capQty > 0) next[p.id] = capQty; else delete next[p.id]
-            })
-          }
+          applyAutoCap(next, cylinders, caps)
         }
       }
       if (!editOrderNo) saveDraft(next)
       return next
     })
-  }, [editOrderNo, autoCapEnabled, products])
+  }, [editOrderNo, autoCapEnabled, products, applyAutoCap])
 
   // ── ปุ่ม "ไม่เอาฝา" / "เพิ่มฝาอัตโนมัติ" ──────────────────────────────────
   const clearCaps = useCallback(() => {
@@ -561,17 +596,11 @@ function Booking2Inner() {
     const caps      = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
     setPending(prev => {
       const next = { ...prev }
-      for (const diam of ['3 นิ้ว', '2 นิ้ว', '1.5 นิ้ว']) {
-        const cylSum = cylinders.filter(p => p.product_name.includes(diam)).reduce((s, p) => s + (next[p.id] ?? 0), 0)
-        const capQty = cylSum * 2
-        caps.filter(p => p.product_name.includes(diam)).forEach(p => {
-          if (capQty > 0) next[p.id] = capQty; else delete next[p.id]
-        })
-      }
+      applyAutoCap(next, cylinders, caps)
       if (!editOrderNo) saveDraft(next)
       return next
     })
-  }, [products, editOrderNo])
+  }, [products, editOrderNo, applyAutoCap])
 
   // ── Qty popup (auto-focus + confirm) ─────────────────────────────────────
   useEffect(() => {
