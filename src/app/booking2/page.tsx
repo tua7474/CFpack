@@ -487,7 +487,7 @@ function Booking2Inner() {
   // Auto-force เบิกของ + รถ ตามเงื่อนไขยอด
   useEffect(() => {
     if (!products.length) return
-    const BOX_GROUPS = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น'])
+    const BOX_GROUPS = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
     let bt = 0, otherTotal = 0
     let hasOther = false
     for (const p of products) {
@@ -528,8 +528,17 @@ function Booking2Inner() {
       setSourceType('โกดัง')
       setVehicleType('จองรถ60000')
     } else if (!hasOther && bt >= 20000) {
-      setSourceType('โรงกล่อง')
-      setVehicleType('รถโรงงาน')
+      // กล่องล้วน ยอดเกิน 20k → auto-force โรงกล่อง + โรงกล่องส่งตรง
+      const boxWT = withdrawalTypes.find(w => w.name.includes('โรงกล่อง'))
+      if (boxWT && withdrawalTypeId !== boxWT.id) setWithdrawalTypeId(boxWT.id)
+      if (sourceType !== 'โรงกล่อง') setSourceType('โรงกล่อง')
+      const boxDelivery = deliveryMethods.find(d => d.name.includes('กล่องส่งตรง'))
+      if (boxDelivery && vehicleType !== boxDelivery.name) setVehicleType(boxDelivery.name)
+    } else if (!hasOther && bt > 0 && bt < 20000) {
+      // กล่องล้วน ยอดต่ำกว่า 20k — reset ค่าที่ไม่อนุญาต
+      const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+      if (curWT?.name.includes('BB')) setWithdrawalTypeId(null)
+      if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
     } else if (hasOther) {
       // มิกซ์ แต่ยอด < 25,000 — reset ตัวเลือกที่ไม่รองรับในโหมดมิกซ์
       if (sourceType === 'โรงกล่อง' || sourceType === 'โรงบับเบิล') setSourceType('')
@@ -964,7 +973,7 @@ function Booking2Inner() {
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - couponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
 
-  const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น'])
+  const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
   let boxTotal = 0, hasNonBoxItems = false
   for (const sec of sections) {
     for (const row of sec.rows) {
@@ -1002,13 +1011,16 @@ function Booking2Inner() {
   const isBubbleOnly    = hasBubbleItems && !hasNonBubbleInOrder
   const isBubbleOnlyLow = isBubbleOnly && bubbleTotalAmt > 0 && bubbleTotalAmt < 15000
   const autoForceBubble = isBubbleOnly && bubbleTotalAmt >= 15000
+  const isBoxOnlyLow    = !hasNonBoxItems && boxTotal > 0 && boxTotal < 20000
   const isAutoForced    = autoForceFactory || autoForceWarehouse || autoForceBubble
 
-  // กรองตัวเลือกเมื่อบับเบิลล้วน ยอดต่ำกว่า 15k
+  // กรองตัวเลือกตามเงื่อนไข
   const allowedWithdrawalTypes = isBubbleOnlyLow
     ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
-    : withdrawalTypes
-  const allowedDeliveryMethods = isBubbleOnlyLow
+    : isBoxOnlyLow
+      ? withdrawalTypes.filter(w => !w.name.includes('BB'))
+      : withdrawalTypes
+  const allowedDeliveryMethods = (isBubbleOnlyLow || isBoxOnlyLow)
     ? deliveryMethods.filter(d => !d.name.includes('BBส่งตรง') && !d.name.includes('กล่องส่งตรง'))
     : deliveryMethods
 
