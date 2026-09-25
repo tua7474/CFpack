@@ -263,7 +263,8 @@ function Booking2Inner() {
   const [stockPrintMode, setStockPrintMode]     = useState(false)
   const [compactPrintMode, setCompactPrintMode] = useState(false)
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
-  const [vehicleType, setVehicleType] = useState<'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน' | ''>('')
+  const [vehicleType, setVehicleType] = useState<string>('')
+  const [deliveryMethods, setDeliveryMethods] = useState<{ id: number; name: string }[]>([])
   const [manualTotal, setManualTotal]   = useState<string>('')
   const [couponAmount, setCouponAmount] = useState<string>('')
   const [branchInfo, setBranchInfo] = useState<{ name: string; phone: string } | null>(null)
@@ -376,7 +377,7 @@ function Booking2Inner() {
           localStorage.setItem('cf_foy_items', JSON.stringify(order.foy_item_quantities))
         }
         if (order.source_type) setSourceType(order.source_type as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
-        if (order.vehicle_type) setVehicleType(order.vehicle_type as 'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน')
+        if (order.vehicle_type) setVehicleType(order.vehicle_type)
         if (order.withdrawal_type_id) setWithdrawalTypeId(order.withdrawal_type_id)
         if (order.priorities && Object.keys(order.priorities).length > 0) {
           const prio: Record<number, PriorityLevel | null> = {}
@@ -394,6 +395,14 @@ function Booking2Inner() {
     fetch('/api/withdrawal')
       .then(r => r.json())
       .then((data: { id: number; name: string }[]) => setWithdrawalTypes(data))
+      .catch(() => {})
+  }, [])
+
+  // Fetch delivery methods
+  useEffect(() => {
+    fetch('/api/delivery')
+      .then(r => r.json())
+      .then((data: { id: number; name: string }[]) => setDeliveryMethods(data))
       .catch(() => {})
   }, [])
 
@@ -451,7 +460,7 @@ function Booking2Inner() {
       const st = localStorage.getItem('cf_source_type')
       const vt = localStorage.getItem('cf_vehicle_type')
       if (st) setSourceType(st as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
-      if (vt) setVehicleType(vt as 'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน')
+      if (vt) setVehicleType(vt)
     } catch { /* ignore */ }
   }, [editOrderNo])
 
@@ -661,7 +670,7 @@ function Booking2Inner() {
 
   const handleSave = async () => {
     if (!pendingCount && !hasFoyPending && !editOrderNo) return
-    if (vehicleType === '') { setSaveMsg('⚠ กรุณาเลือก รถ ก่อนบันทึก'); return }
+    if (vehicleType === '') { setSaveMsg('⚠ กรุณาเลือก รูปแบบการจัดส่ง ก่อนบันทึก'); return }
     if (!isAutoForced && withdrawalTypeId === null) { setSaveMsg('⚠ กรุณาเลือก เบิกของ ก่อนบันทึก'); return }
     setSaving(true)
     setSaveMsg(null)
@@ -1238,7 +1247,7 @@ function Booking2Inner() {
                   {saving ? 'กำลังบันทึก...' : '💾 บันทึกการจอง'}
                 </button>
                 {!isAutoForced && withdrawalTypeId === null && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก เบิกของ</span>}
-                {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รถ</span>}
+                {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รูปแบบการจัดส่ง</span>}
                 {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
               </>
@@ -1261,7 +1270,7 @@ function Booking2Inner() {
                   {saving ? 'กำลังบันทึก...' : '💾 อัพเดทการจอง'}
                 </button>
                 {!isAutoForced && withdrawalTypeId === null && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก เบิกของ</span>}
-                {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รถ</span>}
+                {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รูปแบบการจัดส่ง</span>}
                 {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
                 {pendingCount === 0 && !hasFoyPending && (
@@ -1518,29 +1527,15 @@ function Booking2Inner() {
                               <td key={`${si}-ip8b`} colSpan={2} rowSpan={3}
                                 className={`${base} p-1 align-middle ${(vehicleType === '' || cannotBook25k) ? 'bg-red-50' : 'bg-white'}`}>
                                 <div className="flex flex-col justify-center h-full gap-0.5">
-                                  <div className="text-[7px] text-gray-500 font-semibold leading-none">รถ</div>
+                                  <div className="text-[7px] text-gray-500 font-semibold leading-none">จัดส่ง</div>
                                   <select value={vehicleType}
                                     disabled={isAutoForced}
-                                    onChange={e => setVehicleType(e.target.value as 'จองรถ60000' | 'รอพ่วง' | 'รับเอง' | 'รถโรงงาน')}
+                                    onChange={e => setVehicleType(e.target.value)}
                                     className={`w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none ${isAutoForced ? 'bg-blue-50 border-blue-400 text-blue-700 opacity-90' : (vehicleType === '' || cannotBook25k) ? 'bg-white border-red-400 text-red-500' : 'bg-white border-gray-400 text-gray-500'}`}>
                                     <option value="" disabled>— เลือก —</option>
-                                    {(sourceType === 'โรงกล่อง' || sourceType === 'โรงบับเบิล') ? (
-                                      <>
-                                        <option value="รถโรงงาน">รถโรงงาน</option>
-                                        <option value="รับเอง">รับเอง</option>
-                                      </>
-                                    ) : hasMixItems && !isAutoForced ? (
-                                      <>
-                                        <option value="รอพ่วง">รอพ่วง</option>
-                                        <option value="รับเอง">รับเอง</option>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <option value="จองรถ60000">เต็มคัน 25k</option>
-                                        <option value="รอพ่วง">รอพ่วง</option>
-                                        <option value="รับเอง">รับเอง</option>
-                                      </>
-                                    )}
+                                    {deliveryMethods.map(d => (
+                                      <option key={d.id} value={d.name}>{d.name}</option>
+                                    ))}
                                   </select>
                                   {vehicleType === '' && <div className="text-[7px] text-red-500 leading-none">กรุณาเลือก</div>}
                                   {isAutoForced && <div className="text-[7px] text-blue-600 leading-none">ระบบกำหนดอัตโนมัติ</div>}
