@@ -501,20 +501,29 @@ function Booking2Inner() {
     if (foyAmt > 0) hasOther = true
     const total = bt + otherTotal + foyAmt
 
-    // ตรวจบับเบิลล้วน
-    let bubbleUnits = 0, hasBubble = false, hasNonBubble = false
+    // ตรวจบับเบิลล้วน + ยอดเงิน
+    let hasBubble = false, hasNonBubble = false, bubbleAmt = 0
     for (const p of products) {
       const qty = pending[p.id] ?? 0
+      const price = parseFloat(p.price ?? '0') || 0
       if (BUBBLE_GROUPS_SET.has(p.group_name)) {
-        bubbleUnits += qty * getBubbleUnits(p.product_name)
-        if (qty > 0) hasBubble = true
+        if (qty > 0) { hasBubble = true; bubbleAmt += qty * price }
       } else if (qty > 0) hasNonBubble = true
     }
     if (foyAmt > 0) hasNonBubble = true
 
-    if (hasBubble && !hasNonBubble && bubbleUnits >= 120 && bubbleUnits <= 128) {
-      setSourceType('โรงบับเบิล')
-      setVehicleType('รถโรงงาน')
+    if (hasBubble && !hasNonBubble && bubbleAmt >= 15000) {
+      // บับเบิลล้วน ยอดเกิน 15k → auto-force โรงBB + โรงBBส่งตรง
+      const bbWT = withdrawalTypes.find(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
+      if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
+      if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
+      const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
+      if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
+    } else if (hasBubble && !hasNonBubble && bubbleAmt > 0) {
+      // บับเบิลล้วน ยอดต่ำกว่า 15k — reset ค่าที่ไม่อนุญาต
+      const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+      if (curWT?.name.includes('โรงกล่อง')) setWithdrawalTypeId(null)
+      if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
     } else if (hasOther && total >= 25000) {
       setSourceType('โกดัง')
       setVehicleType('จองรถ60000')
@@ -526,7 +535,7 @@ function Booking2Inner() {
       if (sourceType === 'โรงกล่อง' || sourceType === 'โรงบับเบิล') setSourceType('')
       if (vehicleType === 'จองรถ60000' || vehicleType === 'รถโรงงาน') setVehicleType('')
     }
-  }, [pending, foyPending, products, sourceType, vehicleType])
+  }, [pending, foyPending, products, sourceType, vehicleType, withdrawalTypes, deliveryMethods, withdrawalTypeId])
 
   // Extract inch number from a product name, e.g. "กระบอก 3 นิ้ว" → "3", "ฝาปิด 1.5"" → "1.5"
   const extractInch = useCallback((name: string): string | null => {
@@ -972,14 +981,17 @@ function Booking2Inner() {
   const autoForceWarehouse = hasNonBoxItems && (grayTotal + orangeTotal + foyTotal) >= 25000
 
   // ── Bubble unit validation ─────────────────────────────────────────────────
-  let totalBubbleUnits = 0, hasBubbleItems = false, hasNonBubbleInOrder = false
+  let totalBubbleUnits = 0, hasBubbleItems = false, hasNonBubbleInOrder = false, bubbleTotalAmt = 0
   for (const sec of sections) {
     for (const row of sec.rows) {
       if (row.type !== 'product') continue
       const qty = pending[row.product.id] ?? 0
       if (BUBBLE_GROUPS_SET.has(row.product.group_name)) {
         totalBubbleUnits += qty * getBubbleUnits(row.product.product_name)
-        if (qty > 0) hasBubbleItems = true
+        if (qty > 0) {
+          hasBubbleItems = true
+          bubbleTotalAmt += qty * (parseFloat(row.product.price ?? '0') || 0)
+        }
       } else if (qty > 0) {
         hasNonBubbleInOrder = true
       }
@@ -987,8 +999,18 @@ function Booking2Inner() {
   }
   if (foyTotal > 0) hasNonBubbleInOrder = true
 
-  const autoForceBubble = hasBubbleItems && !hasNonBubbleInOrder && totalBubbleUnits >= 120 && totalBubbleUnits <= 128
+  const isBubbleOnly    = hasBubbleItems && !hasNonBubbleInOrder
+  const isBubbleOnlyLow = isBubbleOnly && bubbleTotalAmt > 0 && bubbleTotalAmt < 15000
+  const autoForceBubble = isBubbleOnly && bubbleTotalAmt >= 15000
   const isAutoForced    = autoForceFactory || autoForceWarehouse || autoForceBubble
+
+  // กรองตัวเลือกเมื่อบับเบิลล้วน ยอดต่ำกว่า 15k
+  const allowedWithdrawalTypes = isBubbleOnlyLow
+    ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
+    : withdrawalTypes
+  const allowedDeliveryMethods = isBubbleOnlyLow
+    ? deliveryMethods.filter(d => !d.name.includes('BBส่งตรง') && !d.name.includes('กล่องส่งตรง'))
+    : deliveryMethods
 
   let bubbleWarning: string | null = null
   let bubbleBlocking = false
@@ -1487,14 +1509,14 @@ function Booking2Inner() {
                                       // map ชื่อ → sourceType เพื่อ vehicleType logic
                                       const name = withdrawalTypes.find(w => w.id === id)?.name ?? ''
                                       const src = name.includes('โรงกล่อง') ? 'โรงกล่อง'
-                                               : name.includes('โรงบับเบิล') ? 'โรงบับเบิล'
+                                               : (name.includes('โรงบับเบิล') || name.includes('BB')) ? 'โรงบับเบิล'
                                                : name.includes('โกดัง') ? 'โกดัง' : 'หน้าร้าน'
                                       setSourceType(src)
                                       if ((src === 'โรงกล่อง' || src === 'โรงบับเบิล') && vehicleType !== 'รับเอง' && vehicleType !== 'รถโรงงาน') setVehicleType('')
                                     }}
                                     className={`w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none ${isAutoForced ? 'bg-blue-50 border-blue-400 text-blue-700 opacity-90' : withdrawalTypeId === null ? 'bg-white border-red-400 text-red-500' : 'bg-white border-gray-400 text-gray-500'}`}>
                                     <option value="" disabled>— เลือก —</option>
-                                    {withdrawalTypes.map(wt => (
+                                    {allowedWithdrawalTypes.map(wt => (
                                       <option key={wt.id} value={wt.id}>{wt.name}</option>
                                     ))}
                                   </select>
@@ -1533,7 +1555,7 @@ function Booking2Inner() {
                                     onChange={e => setVehicleType(e.target.value)}
                                     className={`w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none ${isAutoForced ? 'bg-blue-50 border-blue-400 text-blue-700 opacity-90' : (vehicleType === '' || cannotBook25k) ? 'bg-white border-red-400 text-red-500' : 'bg-white border-gray-400 text-gray-500'}`}>
                                     <option value="" disabled>— เลือก —</option>
-                                    {deliveryMethods.map(d => (
+                                    {allowedDeliveryMethods.map(d => (
                                       <option key={d.id} value={d.name}>{d.name}</option>
                                     ))}
                                   </select>
