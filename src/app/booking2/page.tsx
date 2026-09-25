@@ -68,12 +68,12 @@ const SUBGROUP_BG: Record<SubgroupColor, string> = {
   maroon: 'bg-[#9b9484] text-white border-gray-500',
 }
 
-// subgroups that can toggle between no-VAT (orange) and VAT (gray)
+// subgroups that can toggle between no-VAT (orange) and VAT (gray) — ไม่รวมบับเบิล
 const SWITCHABLE_SUBGROUP_NAMES = new Set([
-  'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
   'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
 ])
 // bubble subgroups: ราคาในระบบ รวมแวตแล้ว (incl-VAT)
+// สลับได้เฉพาะเมื่อบับเบิลล้วน ≥ 15k (โรงBBส่งตรง) เท่านั้น
 // → โนแวต = ÷1.07 | รวมแวต = ใช้ราคาเดิม
 const BUBBLE_SWITCHABLE_NAMES = new Set([
   'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
@@ -882,6 +882,21 @@ function Booking2Inner() {
 
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
+  // Pre-scan: ตรวจว่าเป็นบับเบิลล้วน ≥ 15k หรือไม่ (ใช้ก่อน totals loop)
+  // ถ้าใช่ → bubble switchable (โนแวตได้) | ถ้าไม่ใช่ → bubble ล็อคฝั่งแวต
+  let _bbAmt = 0, _hasBB = false, _hasNonBB = false
+  for (const sec of sections) {
+    for (const row of sec.rows) {
+      if (row.type !== 'product') continue
+      const _qty = pending[row.product.id] ?? 0
+      if (BUBBLE_GROUPS_SET.has(row.product.group_name)) {
+        if (_qty > 0) { _hasBB = true; _bbAmt += _qty * (parseFloat(row.product.price ?? '0') || 0) }
+      } else if (_qty > 0) _hasNonBB = true
+    }
+  }
+  if (Object.values(foyPending).some(d => d.amount > 0)) _hasNonBB = true
+  const canBubbleNoVat = _hasBB && !_hasNonBB && _bbAmt >= 15000
+
   // Precompute print gray index for each subgroup (cycles through 0→1→2)
   const subgroupPrintGray = new Map<string, number>()
   let grayCounter = 0
@@ -958,7 +973,7 @@ function Booking2Inner() {
         if (sec.is_vat_included) grayTotal += val
         else orangeTotal += val
         secTotal += val
-        if (BUBBLE_SWITCHABLE_NAMES.has(currentSubgroup ?? '')) switchableBubbleTotal += val
+        if (BUBBLE_SWITCHABLE_NAMES.has(currentSubgroup ?? '') && canBubbleNoVat) switchableBubbleTotal += val
         else if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
         if (currentSubgroup !== null) {
           const sgKey = `${sec.order}-${currentSubgroup}`
@@ -1618,6 +1633,7 @@ function Booking2Inner() {
                             const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             const isSwitchableSg = SWITCHABLE_SUBGROUP_NAMES.has(cell.name)
+                              || (canBubbleNoVat && BUBBLE_SWITCHABLE_NAMES.has(cell.name))
                             const sgBgClass = isSwitchableSg && vatMode === 'no-vat'
                               ? 'bg-orange-500 text-white border-orange-600'
                               : SUBGROUP_BG[cell.color]
