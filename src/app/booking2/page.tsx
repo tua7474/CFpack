@@ -73,6 +73,11 @@ const SWITCHABLE_SUBGROUP_NAMES = new Set([
   'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
   'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
 ])
+// bubble subgroups: ราคาในระบบ รวมแวตแล้ว (incl-VAT)
+// → โนแวต = ÷1.07 | รวมแวต = ใช้ราคาเดิม
+const BUBBLE_SWITCHABLE_NAMES = new Set([
+  'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
+])
 
 // ── กระดาษฝอย groups — link to /booking-foy ──────────────────────────────────
 // ทุก model จาก paper_stock จะมี group_name='กระดาษฝอย' และ subgroup_name='กระดาษฝอย'
@@ -927,7 +932,8 @@ function Booking2Inner() {
   })
 
   let grayTotal = 0, orangeTotal = 0
-  let switchableProductTotal = 0
+  let switchableProductTotal = 0   // excl-VAT switchable (ซองใสปะหน้า ฯลฯ)
+  let switchableBubbleTotal  = 0   // incl-VAT switchable (บับเบิล ฯลฯ) — ต้อง ÷1.07 เมื่อโนแวต
   const sectionTotals  = new Map<number, number>()
   const subgroupTotals = new Map<string, number>()   // key = `${sec.order}-${subgroup.name}`
   for (const sec of sections) {
@@ -952,7 +958,8 @@ function Booking2Inner() {
         if (sec.is_vat_included) grayTotal += val
         else orangeTotal += val
         secTotal += val
-        if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
+        if (BUBBLE_SWITCHABLE_NAMES.has(currentSubgroup ?? '')) switchableBubbleTotal += val
+        else if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
         if (currentSubgroup !== null) {
           const sgKey = `${sec.order}-${currentSubgroup}`
           subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + val)
@@ -962,15 +969,19 @@ function Booking2Inner() {
     sectionTotals.set(sec.order, secTotal)
   }
   const foyTotal = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
-  // switchableTotal = 6 switchable subgroups + กระดาษฝอย
-  const switchableTotal = switchableProductTotal + foyTotal
-  // fixedTotal = หมวดแถบเทาที่สวิสไม่ได้ (ราคารวม VAT อยู่แล้ว) → ไปอยู่ฝั่งขวาเสมอ
-  const fixedTotal      = grayTotal + orangeTotal - switchableProductTotal
-  const couponVal       = parseFloat(couponAmount) || 0
-  // ซ้าย (โนแวต): เฉพาะ switchable เมื่อ mode=โนแวต
-  const noVatColTotal   = vatMode === 'no-vat' ? switchableTotal : 0
-  // ขวา (รวมแวต): fixedTotal เสมอ + switchable×1.07 เมื่อ mode=รวมแวต
-  const vatColTotal     = fixedTotal + (vatMode === 'vat' ? Math.round(switchableTotal * 1.07 * 100) / 100 : 0)
+  // excl-VAT switchable + กระดาษฝอย
+  const switchableExclVatTotal = switchableProductTotal + foyTotal
+  // fixed = ส่วนที่ไม่สลับได้ (gray + non-switchable orange)
+  const fixedTotal = grayTotal + orangeTotal - switchableProductTotal - switchableBubbleTotal
+  const couponVal  = parseFloat(couponAmount) || 0
+  // ซ้าย (โนแวต): excl-VAT as-is + incl-VAT ÷1.07 (ถอดแวต)
+  const noVatColTotal = vatMode === 'no-vat'
+    ? switchableExclVatTotal + Math.round(switchableBubbleTotal / 1.07 * 100) / 100
+    : 0
+  // ขวา (รวมแวต): fixed เสมอ + (excl-VAT ×1.07 + incl-VAT as-is) เมื่อ vat mode
+  const vatColTotal = fixedTotal + (vatMode === 'vat'
+    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal
+    : 0)
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - couponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
 
