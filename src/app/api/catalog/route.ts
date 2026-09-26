@@ -122,6 +122,7 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE products_catalog ADD COLUMN IF NOT EXISTS show_in_booking BOOLEAN NOT NULL DEFAULT true`)
   await pool.query(`ALTER TABLE products_catalog ADD COLUMN IF NOT EXISTS prev_warehouse_price NUMERIC(12,2)`)
   await pool.query(`ALTER TABLE products_catalog ADD COLUMN IF NOT EXISTS price_updated_at     TIMESTAMP`)
+  await pool.query(`ALTER TABLE products_catalog ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0`)
   const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM products_catalog')
   if (rows[0].n === 0) await seedData()
   // Seed กระดาษฝอย products if not yet present
@@ -438,7 +439,7 @@ export async function GET() {
              last_added_qty, last_added_at, last_booked_qty, last_booked_at,
              show_in_booking, prev_warehouse_price, price_updated_at
       FROM products_catalog
-      ORDER BY group_name, id
+      ORDER BY group_name, sort_order, id
     `)
     return NextResponse.json(rows)
   } catch (err) {
@@ -452,6 +453,20 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
+
+    // Reorder: { action: 'reorder', group_name, ids: number[] }
+    if (!Array.isArray(body) && body.action === 'reorder') {
+      const { group_name, ids } = body as { group_name: string; ids: number[] }
+      await Promise.all(
+        ids.map((id: number, idx: number) =>
+          pool.query(
+            'UPDATE products_catalog SET sort_order = $1 WHERE id = $2 AND group_name = $3',
+            [idx, id, group_name]
+          )
+        )
+      )
+      return NextResponse.json({ ok: true })
+    }
 
     // Group toggle: { action:'toggle_group', group_name, show_in_booking }
     if (!Array.isArray(body) && body.action === 'toggle_group') {

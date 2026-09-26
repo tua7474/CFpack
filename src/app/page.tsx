@@ -75,6 +75,8 @@ export default function Home() {
   const [now, setNow] = useState<Date | null>(null)
   const [pageAllowed, setPageAllowed] = useState<boolean | null>(null)
   const [session, setSession] = useState<SessionInfo | null>(null)
+  const [dragId, setDragId]       = useState<number | null>(null)
+  const [dragOverId, setDragOverId] = useState<number | null>(null)
 
   // Check page access via branch_session
   useEffect(() => {
@@ -242,6 +244,40 @@ export default function Home() {
     })
   }, [])
 
+  const handleDrop = useCallback(async (targetId: number) => {
+    if (dragId === null || dragId === targetId) { setDragId(null); setDragOverId(null); return }
+    const dragProd  = products.find(p => p.id === dragId)
+    const targetProd = products.find(p => p.id === targetId)
+    if (!dragProd || !targetProd || dragProd.group_name !== targetProd.group_name) {
+      setDragId(null); setDragOverId(null); return
+    }
+    // Reorder within group
+    const groupProds = products.filter(p => p.group_name === dragProd.group_name)
+    const dragIdx   = groupProds.findIndex(p => p.id === dragId)
+    const targetIdx = groupProds.findIndex(p => p.id === targetId)
+    const reordered = [...groupProds]
+    reordered.splice(dragIdx, 1)
+    reordered.splice(targetIdx, 0, dragProd)
+    // Rebuild full products array
+    const reorderedSet = new Set(reordered.map(p => p.id))
+    const newProducts: Product[] = []
+    let inserted = false
+    for (const p of products) {
+      if (reorderedSet.has(p.id)) {
+        if (!inserted) { newProducts.push(...reordered); inserted = true }
+      } else {
+        newProducts.push(p)
+      }
+    }
+    setProducts(newProducts)
+    setDragId(null); setDragOverId(null)
+    await fetch('/api/catalog', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reorder', group_name: dragProd.group_name, ids: reordered.map(p => p.id) }),
+    })
+  }, [dragId, products])
+
   // ── Build grouped entries ─────────────────────────────────────────────────────
 
   // กระดาษฝอย groups ถูกจัดการที่หน้าสต็อคกระดาษฝอยแทน
@@ -376,6 +412,7 @@ export default function Home() {
             <table className="min-w-full text-xs">
               <thead className="sticky top-0 z-20">
                 <tr className="bg-[#9b9484] text-white text-left">
+                  <th className="w-6 bg-[#9b9484]" />
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">หมวดสินค้า ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสินค้า ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">สต็อคล่าสุด</th>
@@ -390,6 +427,7 @@ export default function Home() {
 
                 {/* ── Add new product row (sticky) ── */}
                 <tr className="bg-blue-50 border-b-2 border-blue-300">
+                  <td className="border-r border-gray-200" />
                   <td className="px-2 py-1.5 border-r border-gray-200">
                     <datalist id="group-suggestions">
                       {BOOKING2_GROUPS.map(g => <option key={g} value={g} />)}
@@ -430,7 +468,7 @@ export default function Home() {
                     const allOn = groupProducts.length > 0 && groupProducts.every(p => p.show_in_booking)
                     return (
                       <tr key={`g-${ei}`} className="bg-[#9b9484] text-white">
-                        <td colSpan={8} className="px-3 py-1.5 font-bold text-sm tracking-wide">
+                        <td colSpan={9} className="px-3 py-1.5 font-bold text-sm tracking-wide">
                           {entry.name}
                         </td>
                         <td className="px-2 py-1 text-center">
@@ -454,7 +492,28 @@ export default function Home() {
                   const price9p7  = price > 0 ? price * 1.09 * 1.07 : null
 
                   return (
-                    <tr key={p.id} className="bg-white even:bg-gray-50 hover:bg-yellow-50/40 transition-colors">
+                    <tr key={p.id}
+                      draggable
+                      onDragStart={() => setDragId(p.id)}
+                      onDragEnd={() => { setDragId(null); setDragOverId(null) }}
+                      onDragOver={e => {
+                        e.preventDefault()
+                        const overProd = products.find(pr => pr.id === p.id)
+                        const fromProd = products.find(pr => pr.id === dragId)
+                        if (overProd && fromProd && overProd.group_name === fromProd.group_name) setDragOverId(p.id)
+                      }}
+                      onDrop={() => handleDrop(p.id)}
+                      className={`transition-colors ${
+                        dragId === p.id ? 'opacity-40 bg-blue-50' :
+                        dragOverId === p.id ? 'border-t-2 border-blue-400 bg-blue-50' :
+                        'bg-white even:bg-gray-50 hover:bg-yellow-50/40'
+                      }`}
+                    >
+
+                      {/* drag handle */}
+                      <td className="w-6 text-center text-gray-300 cursor-grab active:cursor-grabbing select-none px-1">
+                        ⠿
+                      </td>
 
                       {/* 1. หมวดสินค้า */}
                       <td className="px-2 py-1 border-r border-gray-200">
