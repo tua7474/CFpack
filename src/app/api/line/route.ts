@@ -1854,10 +1854,10 @@ function slipTypeCard(slipId: number, purpose: 'PAY' | 'STORE', fmtAmount: strin
     contents: {
       type: 'bubble',
       header: {
-        type: 'box', layout: 'vertical', backgroundColor: purpose === 'PAY' ? '#16a34a' : '#9b9484', paddingAll: '12px',
+        type: 'box', layout: 'horizontal', backgroundColor: purpose === 'PAY' ? '#16a34a' : '#9b9484', paddingAll: '10px', alignItems: 'center',
         contents: [
-          { type: 'text', text: `✅ ${purposeLabel}`, color: '#ffffff', weight: 'bold', size: 'sm' },
-          { type: 'text', text: `ยอด ฿${fmtAmount}`, color: '#ffffff', size: 'xs', margin: 'xs' }
+          { type: 'text', text: `✅ ${purposeLabel}`, color: '#ffffff', weight: 'bold', size: 'sm', flex: 1 },
+          { type: 'text', text: `฿${fmtAmount}`, color: '#ffffff', size: 'sm', weight: 'bold', align: 'end', flex: 0 }
         ]
       },
       body: {
