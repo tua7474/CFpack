@@ -72,6 +72,8 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE slips ALTER COLUMN status TYPE VARCHAR(30)`).catch(() => {})
   // Payment selection per user
   await pool.query(`ALTER TABLE line_sessions ADD COLUMN IF NOT EXISTS pay_selection JSONB DEFAULT '[]'`).catch(() => {})
+  // Partial payment tracking
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
 }
 
 async function getOrder(userId: string): Promise<Record<number, number>> {
@@ -1157,24 +1159,30 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
 
     if (slipBranchId !== null) {
-      // หักยอดใบจองค้างชำระจากเก่าสุดก่อน จนหมดยอดสลิป
+      // หักยอดใบจองค้างชำระจากเก่าสุดก่อน จนหมดยอดสลิป (รองรับหักบางส่วน)
       const { rows: pending } = await pool.query(`
-        SELECT id, order_no, total_amount FROM booking_orders
+        SELECT id, order_no, total_amount, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
         WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
         ORDER BY created_at ASC
       `, [slipBranchId])
       let left = slipAmount
       for (const o of pending) {
         if (left <= 0) break
-        const amt = parseFloat(o.total_amount) || 0
-        if (left >= amt) {
+        const remaining = (parseFloat(o.total_amount) || 0) - (parseFloat(o.paid_amount) || 0)
+        if (remaining <= 0) continue
+        if (left >= remaining) {
           await pool.query(
-            `UPDATE booking_orders SET payment_status='paid', payment_bank=$2, updated_at=NOW() WHERE id=$1`,
+            `UPDATE booking_orders SET payment_status='paid', paid_amount=total_amount, payment_bank=$2, updated_at=NOW() WHERE id=$1`,
             [o.id, slipTypeLabel]
           )
-          left -= amt
+          left -= remaining
+        } else {
+          await pool.query(
+            `UPDATE booking_orders SET paid_amount=COALESCE(paid_amount,0)+$2, updated_at=NOW() WHERE id=$1`,
+            [o.id, left]
+          )
+          left = 0
         }
-        // ถ้ายอดสลิปไม่พอปิดบิลนี้ ไม่มาร์คว่าชำระแล้ว (รอโอนส่วนที่เหลือ)
       }
     }
 
@@ -1214,20 +1222,27 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
     if (slipBranchId !== null) {
       const { rows: pending } = await pool.query(`
-        SELECT id, total_amount FROM booking_orders
+        SELECT id, total_amount, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
         WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
         ORDER BY created_at ASC
       `, [slipBranchId])
       let left = slipAmount
       for (const o of pending) {
         if (left <= 0) break
-        const amt = parseFloat(o.total_amount) || 0
-        if (left >= amt) {
+        const remaining = (parseFloat(o.total_amount) || 0) - (parseFloat(o.paid_amount) || 0)
+        if (remaining <= 0) continue
+        if (left >= remaining) {
           await pool.query(
-            `UPDATE booking_orders SET payment_status='paid', payment_bank='ชำระยอดค้าง', updated_at=NOW() WHERE id=$1`,
+            `UPDATE booking_orders SET payment_status='paid', paid_amount=total_amount, payment_bank='ชำระยอดค้าง', updated_at=NOW() WHERE id=$1`,
             [o.id]
           )
-          left -= amt
+          left -= remaining
+        } else {
+          await pool.query(
+            `UPDATE booking_orders SET paid_amount=COALESCE(paid_amount,0)+$2, updated_at=NOW() WHERE id=$1`,
+            [o.id, left]
+          )
+          left = 0
         }
       }
     }
@@ -1336,10 +1351,10 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       const { rows: [slip] } = await pool.query('SELECT branch_id FROM slips WHERE id=$1', [slipId])
       if (slip?.branch_id) {
         const { rows: pending } = await pool.query(`
-          SELECT id, order_no, total_amount::float FROM booking_orders
+          SELECT id, order_no, total_amount::float, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
           WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
         `, [slip.branch_id])
-        const match = pending.find(o => Math.abs(parseFloat(o.total_amount) - slipAmt) < 0.01)
+        const match = pending.find(o => Math.abs((parseFloat(o.total_amount) - parseFloat(o.paid_amount)) - slipAmt) < 0.01)
         if (match) { matched_order_id = match.id; matched_order_no = match.order_no }
       }
     }
@@ -1385,28 +1400,35 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
 
     if (purpose === 'PAY' && slipBranchId !== null) {
       if (matched_order_id) {
-        // ตัดใบจองที่ตรงกันโดยตรง
+        // ตัดใบจองที่ตรงกันโดยตรง (ยอดตรงพอดี → ปิดเลย)
         await pool.query(
-          `UPDATE booking_orders SET payment_status='paid', payment_bank=$2, updated_at=NOW() WHERE id=$1`,
+          `UPDATE booking_orders SET payment_status='paid', paid_amount=total_amount, payment_bank=$2, updated_at=NOW() WHERE id=$1`,
           [matched_order_id, slipTypeLabel]
         )
       } else {
-        // ตัดจากเก่าสุดก่อน
+        // ตัดจากเก่าสุดก่อน รองรับหักบางส่วน
         const { rows: pending } = await pool.query(`
-          SELECT id, total_amount FROM booking_orders
+          SELECT id, total_amount, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
           WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
           ORDER BY created_at ASC
         `, [slipBranchId])
         let left = slipAmount
         for (const o of pending) {
           if (left <= 0) break
-          const amt = parseFloat(o.total_amount) || 0
-          if (left >= amt) {
+          const remaining = (parseFloat(o.total_amount) || 0) - (parseFloat(o.paid_amount) || 0)
+          if (remaining <= 0) continue
+          if (left >= remaining) {
             await pool.query(
-              `UPDATE booking_orders SET payment_status='paid', payment_bank=$2, updated_at=NOW() WHERE id=$1`,
+              `UPDATE booking_orders SET payment_status='paid', paid_amount=total_amount, payment_bank=$2, updated_at=NOW() WHERE id=$1`,
               [o.id, slipTypeLabel]
             )
-            left -= amt
+            left -= remaining
+          } else {
+            await pool.query(
+              `UPDATE booking_orders SET paid_amount=COALESCE(paid_amount,0)+$2, updated_at=NOW() WHERE id=$1`,
+              [o.id, left]
+            )
+            left = 0
           }
         }
       }

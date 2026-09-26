@@ -90,6 +90,7 @@ export async function GET(request: Request) {
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS priorities          JSONB NOT NULL DEFAULT '{}'`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS nv_total           DECIMAL(12,2)`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS v_total            DECIMAL(12,2)`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount        DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
   const { searchParams } = new URL(request.url)
   const no = searchParams.get('no')
 
