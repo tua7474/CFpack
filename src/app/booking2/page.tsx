@@ -1646,12 +1646,12 @@ function Booking2Inner() {
                                     {sgTotal > 0 && (
                                       <span className="text-[8px] font-semibold opacity-90 whitespace-nowrap">฿{fmt2(sgTotal)}</span>
                                     )}
-                                    {cell.name === 'กระบอก' && !compactPrintMode && (
+                                    {cell.name === 'ฝาปิดกระบอก' && !compactPrintMode && (
                                       <button
                                         onClick={e => { e.stopPropagation(); autoCapEnabled ? clearCaps() : enableAutoCap() }}
-                                        className="no-print text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap bg-black text-white hover:bg-gray-800 transition-colors"
+                                        className="no-print text-[11px] px-2 py-0.5 rounded font-bold whitespace-nowrap bg-black text-white hover:bg-gray-800 transition-colors"
                                       >
-                                        {autoCapEnabled ? '✕ ไม่เอาฝา' : '+ เพิ่มฝาอัตโนมัติ'}
+                                        {autoCapEnabled ? '-ฝา' : '+ฝา'}
                                       </button>
                                     )}
                                   </div>
