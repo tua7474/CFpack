@@ -135,8 +135,9 @@ export default function Home() {
 
   const handleAddAll = async () => {
     const stockEntries = Object.entries(addInputs).filter(([, v]) => parseFloat(v) > 0)
+    const bookEntries  = Object.entries(bookInputs).filter(([, v]) => parseFloat(v) > 0)
     const infoEntries  = Object.entries(rowEdits).filter(([, edits]) => Object.keys(edits).length > 0)
-    if (!stockEntries.length && !infoEntries.length) return
+    if (!stockEntries.length && !bookEntries.length && !infoEntries.length) return
     setBusy(b => ({ ...b, addAll: true }))
     await Promise.all([
       ...stockEntries.map(([idStr, v]) =>
@@ -144,6 +145,13 @@ export default function Home() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: Number(idStr), action: 'add', qty: parseFloat(v) }),
+        })
+      ),
+      ...bookEntries.map(([idStr, v]) =>
+        fetch('/api/catalog', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(idStr), action: 'book', qty: parseFloat(v) }),
         })
       ),
       ...infoEntries.map(([idStr, edits]) => {
@@ -159,10 +167,12 @@ export default function Home() {
       }),
     ])
     setAddInputs({})
+    setBookInputs({})
     setRowEdits({})
     load()
     const parts: string[] = []
     if (stockEntries.length) parts.push(`เพิ่มสต็อค ${stockEntries.length} รายการ`)
+    if (bookEntries.length)  parts.push(`-จอง ${bookEntries.length} รายการ`)
     if (infoEntries.length)  parts.push(`อัพเดทราคา ${infoEntries.length} รายการ`)
     showMsg(parts.join(' · '))
     setBusy(b => ({ ...b, addAll: false }))
