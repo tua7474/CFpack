@@ -1747,18 +1747,18 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
   const autoBox: object = suggest
     ? {
         type: 'box', layout: 'vertical', backgroundColor: suggest.purpose === 'PAY' ? '#dcfce7' : '#fef9c3',
-        cornerRadius: '8px', paddingAll: '10px', margin: 'md',
+        cornerRadius: '6px', paddingAll: '6px', margin: 'xs',
         contents: [
           {
-            type: 'text', size: 'xs', wrap: true,
+            type: 'text', size: 'xxs', wrap: false,
             color: suggest.purpose === 'PAY' ? '#15803d' : '#92400e',
             text: suggest.purpose === 'PAY'
-              ? `🔍 พบใบจอง ${suggest.orderNo} (฿${Number(suggest.orderAmt).toLocaleString('th-TH', { minimumFractionDigits: 2 })}) ตรงกับยอดสลิป\n→ แนะนำ: ชำระยอดตามบิล`
-              : '🔍 ไม่พบใบจองที่ตรงกับยอดนี้\n→ แนะนำ: ไว้หักค่าของ'
+              ? `พบใบจอง ${suggest.orderNo} ฿${Number(suggest.orderAmt).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`
+              : 'ไม่พบใบจองที่ตรงกับยอดนี้'
           }
         ]
       }
-    : { type: 'text', text: ' ', size: 'xs', color: '#ffffff', margin: 'none' }
+    : { type: 'text', text: ' ', size: 'xxs', color: '#ffffff', margin: 'none' }
 
   return {
     type: 'flex',
@@ -1808,26 +1808,26 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
             action: { type: 'postback', label: 'แก้ผู้รับ', data: `SLIP_EDIT:${slip.id}:account_name` }
           },
           autoBox,
-          { type: 'separator', margin: 'sm' },
+          { type: 'separator', margin: 'xs' },
           // 3 ปุ่มในแถวเดียว
           {
-            type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
+            type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
             contents: [
               {
                 type: 'button',
-                action: { type: 'postback', label: '💳 ชำระบิล', data: `SLIP_PURPOSE:${slip.id}:PAY` },
+                action: { type: 'postback', label: 'ชำระบิล', data: `SLIP_PURPOSE:${slip.id}:PAY` },
                 style: suggest?.purpose === 'PAY' ? 'primary' : 'secondary',
                 color: '#16a34a', flex: 1, height: 'sm',
               },
               {
                 type: 'button',
-                action: { type: 'postback', label: '🛒 หักค่าของ', data: `SLIP_PURPOSE:${slip.id}:STORE` },
+                action: { type: 'postback', label: 'หักค่าของ', data: `SLIP_PURPOSE:${slip.id}:STORE` },
                 style: suggest?.purpose === 'STORE' ? 'primary' : 'secondary',
                 color: '#f97316', flex: 1, height: 'sm',
               },
               {
                 type: 'button',
-                action: { type: 'postback', label: '🧾 แวต', data: `SLIP_VAT:${slip.id}` },
+                action: { type: 'postback', label: 'แวต', data: `SLIP_VAT:${slip.id}` },
                 style: 'secondary', height: 'sm', color: '#9b9484', flex: 1,
               }
             ]
