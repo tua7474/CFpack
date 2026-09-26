@@ -1866,20 +1866,15 @@ function slipTypeCard(slipId: number, purpose: 'PAY' | 'STORE', fmtAmount: strin
           { type: 'text', text: 'เลือกประเภทปลายทางรับเงิน', size: 'xxs', color: '#9b9484', weight: 'bold', margin: 'none' },
           { type: 'separator', margin: 'sm' },
           {
-            type: 'box', layout: 'horizontal', spacing: 'none', margin: 'sm',
+            type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'sm',
             contents: CIRCLE_OPTS.map(opt => ({
-              type: 'box', layout: 'vertical', flex: 1, alignItems: 'center', spacing: 'xs',
+              type: 'box', layout: 'vertical', flex: 1,
+              cornerRadius: '20px', backgroundColor: opt.color,
+              justifyContent: 'center', alignItems: 'center',
+              paddingAll: '8px',
+              action: { type: 'postback', label: opt.label, data: `SLIP_TYPE:${slipId}:${opt.key}` },
               contents: [
-                { type: 'text', text: opt.label, size: 'xxs', align: 'center', wrap: true, color: '#555555' },
-                {
-                  type: 'box', layout: 'vertical', width: '48px', height: '48px',
-                  cornerRadius: '24px', backgroundColor: opt.color,
-                  justifyContent: 'center', alignItems: 'center',
-                  action: { type: 'postback', label: opt.label, data: `SLIP_TYPE:${slipId}:${opt.key}` },
-                  contents: [
-                    { type: 'text', text: opt.abbr, color: '#ffffff', size: 'sm', weight: 'bold', align: 'center' }
-                  ]
-                }
+                { type: 'text', text: opt.label, color: '#ffffff', size: 'xxs', weight: 'bold', align: 'center', wrap: true }
               ]
             }))
           }
