@@ -73,7 +73,7 @@ async function ensureTable() {
   // Payment selection per user
   await pool.query(`ALTER TABLE line_sessions ADD COLUMN IF NOT EXISTS pay_selection JSONB DEFAULT '[]'`).catch(() => {})
   // Partial payment tracking
-  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0`).catch((e: unknown) => console.error('[ensureTable] paid_amount migration:', e))
 }
 
 async function getOrder(userId: string): Promise<Record<number, number>> {
@@ -1938,6 +1938,7 @@ const SLIP_LABEL: Record<string, string> = {
 
 async function handleImage(messageId: string, userId: string, replyToken: string, source?: Record<string, string>) {
   try {
+  await ensureTable()  // ensure paid_amount column exists before querying
   // Download image from LINE Content API
   const imgRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
     headers: { Authorization: `Bearer ${TOKEN}` },

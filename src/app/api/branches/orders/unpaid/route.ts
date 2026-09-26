@@ -19,9 +19,12 @@ export async function GET(req: NextRequest) {
       )
     `)
 
-    // Ensure withdrawal_type_id column exists on booking_orders
+    // Ensure columns exist on booking_orders
     await pool.query(
       `ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS withdrawal_type_id INT REFERENCES withdrawal_types(id)`
+    ).catch(() => {})
+    await pool.query(
+      `ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0`
     ).catch(() => {})
 
     const [{ rows: types }, { rows: orders }] = await Promise.all([
