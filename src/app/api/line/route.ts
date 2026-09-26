@@ -1844,29 +1844,47 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
 
 function slipTypeCard(slipId: number, purpose: 'PAY' | 'STORE', fmtAmount: string): object {
   const purposeLabel = purpose === 'PAY' ? 'ชำระยอดตามบิล' : 'ไว้หักค่าของ'
+  // 5 circle buttons — one per slip type
+  const CIRCLE_OPTS = [
+    { key: 'วรวุฒิ', label: 'วรวุฒิ', abbr: 'วว',  color: '#E57373' },
+    { key: 'print',  label: 'Print',   abbr: 'PR',  color: '#4FC3F7' },
+    { key: 'pack',   label: 'PACK',    abbr: 'PK',  color: '#81C784' },
+    { key: 'bb',     label: 'BB',      abbr: 'BB',  color: '#FFD54F' },
+    { key: 'กล่อง', label: 'กล่อง',  abbr: 'กล.', color: '#CE93D8' },
+  ]
   return {
     type: 'flex',
     altText: `🧾 เลือกประเภทสลิป ฿${fmtAmount}`,
     contents: {
       type: 'bubble',
       header: {
-        type: 'box', layout: 'vertical', backgroundColor: purpose === 'PAY' ? '#16a34a' : '#9b9484', paddingAll: '14px',
+        type: 'box', layout: 'vertical', backgroundColor: purpose === 'PAY' ? '#16a34a' : '#9b9484', paddingAll: '12px',
         contents: [
-          { type: 'text', text: `✅ ${purposeLabel}`, color: '#ffffff', weight: 'bold', size: 'md' },
-          { type: 'text', text: `ยอด ฿${fmtAmount}`, color: '#ffffff', size: 'sm', margin: 'xs' }
+          { type: 'text', text: `✅ ${purposeLabel}`, color: '#ffffff', weight: 'bold', size: 'sm' },
+          { type: 'text', text: `ยอด ฿${fmtAmount}`, color: '#ffffff', size: 'xs', margin: 'xs' }
         ]
       },
       body: {
-        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', backgroundColor: '#F5EED8',
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px', backgroundColor: '#F5EED8',
         contents: [
-          { type: 'text', text: 'ขั้นตอนที่ 2: เลือกประเภทปลายทางรับเงิน', size: 'xs', color: '#9b9484', weight: 'bold', margin: 'none' },
+          { type: 'text', text: 'เลือกประเภทปลายทางรับเงิน', size: 'xxs', color: '#9b9484', weight: 'bold', margin: 'none' },
           { type: 'separator', margin: 'sm' },
           {
-            type: 'box', layout: 'vertical', spacing: 'sm', margin: 'sm',
-            contents: SLIP_TYPE_OPTS.map(opt => ({
-              type: 'button',
-              action: { type: 'postback', label: opt.label, data: `SLIP_TYPE:${slipId}:${opt.key}` },
-              style: 'secondary', height: 'sm', color: '#9b9484',
+            type: 'box', layout: 'horizontal', spacing: 'none', margin: 'sm',
+            contents: CIRCLE_OPTS.map(opt => ({
+              type: 'box', layout: 'vertical', flex: 1, alignItems: 'center', spacing: 'xs',
+              contents: [
+                { type: 'text', text: opt.label, size: 'xxs', align: 'center', wrap: true, color: '#555555' },
+                {
+                  type: 'box', layout: 'vertical', width: '48px', height: '48px',
+                  cornerRadius: '24px', backgroundColor: opt.color,
+                  justifyContent: 'center', alignItems: 'center',
+                  action: { type: 'postback', label: opt.label, data: `SLIP_TYPE:${slipId}:${opt.key}` },
+                  contents: [
+                    { type: 'text', text: opt.abbr, color: '#ffffff', size: 'sm', weight: 'bold', align: 'center' }
+                  ]
+                }
+              ]
             }))
           }
         ]
