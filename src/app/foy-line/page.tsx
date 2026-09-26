@@ -5,13 +5,7 @@ import Link from 'next/link'
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
-const MODELS = [
-  { label: 'สีอ่อน',    group: 'รุ่นสีอ่อน'    },
-  { label: 'สีพิเศษ B', group: 'รุ่นสีพิเศษ B' },
-  { label: 'สีพิเศษ A', group: 'รุ่นสีพิเศษ A' },
-  { label: 'ปุยนุ่น',   group: 'ฝอยนุ่น'        },
-  { label: 'ครีเอท',    group: 'กระดาษฝอย'      },
-] as const
+const MODELS = ['สีอ่อน', 'สีพิเศษ B', 'สีพิเศษ A', 'ปุยนุ่น', 'ครีเอท']
 
 const CUT_TYPES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
 
@@ -90,9 +84,8 @@ export default function FoyLinePage() {
       fetch('/api/catalog').then(r => r.json()),
       fetch('/api/foy-production').then(r => r.json()).catch(() => []),
     ]).then(([catalog, production]: [CatalogProduct[], ProductionRow[]]) => {
-      // Keep only foy-relevant groups
-      const foyGroups = new Set<string>(MODELS.map(m => m.group))
-      setProducts((catalog as CatalogProduct[]).filter(p => foyGroups.has(p.group_name)))
+      // สีทั้งหมดอยู่ใน group 'กระดาษฝอย'
+      setProducts((catalog as CatalogProduct[]).filter(p => p.group_name === 'กระดาษฝอย'))
       const dbRows = (production as ProductionRow[]).map(r => ({
         ...r,
         sessions: trimSessions(r.sessions?.length ? r.sessions : [{}]),
@@ -126,12 +119,11 @@ export default function FoyLinePage() {
     timers.current.set(rowIdx, setTimeout(() => saveRow(row, rowIdx), 800))
   }, [saveRow])
 
-  // ── Color options for a given model ─────────────────────────────────────────
+  // ── Color options: ทุกรุ่นใช้สีจาก group 'กระดาษฝอย' ทั้งหมด ─────────────────
 
   const colorOptions = useCallback((modelLabel: string) => {
-    const found = MODELS.find(m => m.label === modelLabel)
-    if (!found) return []
-    return products.filter(p => p.group_name === found.group)
+    if (!modelLabel) return []
+    return products  // products ถูก filter ไว้แล้วว่า group_name === 'กระดาษฝอย'
   }, [products])
 
   // ── Update helpers ──────────────────────────────────────────────────────────
@@ -347,7 +339,7 @@ export default function FoyLinePage() {
                         >
                           <option value="">-- รุ่น --</option>
                           {MODELS.map(m => (
-                            <option key={m.label} value={m.label}>{m.label}</option>
+                            <option key={m} value={m}>{m}</option>
                           ))}
                         </select>
                         <select
