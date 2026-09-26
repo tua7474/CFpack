@@ -767,9 +767,16 @@ async function historyView(branchId: number, branchName: string): Promise<object
 }
 
 async function paymentView(branchId: number, branchName: string, userId: string): Promise<object> {
-  const [pending, rawSel] = await Promise.all([
+  const [pending, rawSel, storeSlips] = await Promise.all([
     getPendingOrders(branchId),
     getPaySelection(userId),
+    // สลิปหักค่าของ: applied=false, category != 'vat'
+    pool.query(`
+      SELECT id, amount::float, account_name, slip_date
+      FROM slips
+      WHERE branch_id=$1 AND status='confirmed' AND applied=false AND category != 'vat'
+      ORDER BY created_at ASC
+    `, [branchId]).then(r => r.rows),
   ])
 
   if (!pending.length) {
@@ -863,6 +870,31 @@ async function paymentView(branchId: number, branchName: string, userId: string)
       body: {
         type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px',
         contents: [
+          // เครดิตหักค่าของ (สลิป STORE ที่ยังไม่ได้ใช้)
+          ...(storeSlips.length > 0 ? [
+            {
+              type: 'box', layout: 'vertical', backgroundColor: '#fff7ed',
+              cornerRadius: '8px', paddingAll: '8px',
+              contents: [
+                { type: 'text', text: `💰 เครดิตหักค่าของ (${storeSlips.length} รายการ)`, size: 'xs', weight: 'bold', color: '#b45309' },
+                ...storeSlips.map((s: Record<string, string | number>) => ({
+                  type: 'box', layout: 'horizontal', margin: 'xs',
+                  contents: [
+                    { type: 'text', text: String(s.account_name ?? '-'), size: 'xxs', flex: 1, color: '#555555' },
+                    { type: 'text', text: `฿${fmt(Number(s.amount))}`, size: 'xxs', flex: 0, color: '#b45309', weight: 'bold', align: 'end' },
+                  ]
+                })),
+                {
+                  type: 'box', layout: 'horizontal', margin: 'xs',
+                  contents: [
+                    { type: 'text', text: 'รวมเครดิต', size: 'xxs', flex: 1, color: '#b45309', weight: 'bold' },
+                    { type: 'text', text: `฿${fmt(storeSlips.reduce((s: number, r: Record<string, number>) => s + (r.amount ?? 0), 0))}`, size: 'xs', flex: 0, color: '#b45309', weight: 'bold', align: 'end' },
+                  ]
+                }
+              ]
+            },
+            { type: 'separator', margin: 'sm' },
+          ] : []),
           { type: 'text', text: 'กด ○ เพื่อเลือก · กด ✔ เพื่อยกเลิกการเลือก', size: 'xs', color: '#888888' },
           { type: 'separator', margin: 'sm' },
           ...orderRows,
@@ -1831,16 +1863,16 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
           },
           autoBox,
           { type: 'separator', margin: 'xs' },
-          // 3 ปุ่มในแถวเดียว
+          // ปุ่มล่าง: ชำระบิล (เขียว) เฉพาะเมื่อพบใบจองตรงกัน + หักค่าของ + แวต
           {
             type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
             contents: [
-              {
+              // ชำระบิล: แสดงเฉพาะเมื่อ suggest.purpose === 'PAY' (พบใบจองตรงกัน)
+              ...(suggest?.purpose === 'PAY' ? [{
                 type: 'button',
                 action: { type: 'postback', label: 'ชำระบิล', data: `SLIP_PURPOSE:${slip.id}:PAY` },
-                style: suggest?.purpose === 'PAY' ? 'primary' : 'secondary',
-                color: '#16a34a', flex: 1, height: 'sm',
-              },
+                style: 'primary', color: '#16a34a', flex: 1, height: 'sm',
+              }] : []),
               {
                 type: 'button',
                 action: { type: 'postback', label: 'หักค่าของ', data: `SLIP_PURPOSE:${slip.id}:STORE` },
