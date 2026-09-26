@@ -1551,8 +1551,8 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           saveGroupId(branch.id, source.groupId)  // บันทึก group ID ไว้สำหรับส่งแจ้งเตือน
         }
       }
-    }
-    if (!branchId) {
+    } else {
+      // DM เท่านั้น: fallback ไปดูทะเบียน LINE user (ไม่ใช้ข้ามกลุ่ม)
       const ub = await getBranchFromLineUser(userId)
       if (ub) {
         branchId    = ub.branch_id
@@ -2001,7 +2001,7 @@ async function handleImage(messageId: string, userId: string, replyToken: string
   // Determine category
   const category = scanResult.account_name ? categorizeByAccount(scanResult.account_name) : null
 
-  // Find branch from group name or user
+  // Find branch from group name; DM only → fallback to stored line user
   let branchId: number | null = null
   if (source?.type === 'group' && source.groupId) {
     const groupName = await getGroupName(source.groupId)
@@ -2012,8 +2012,8 @@ async function handleImage(messageId: string, userId: string, replyToken: string
         saveGroupId(branch.id, source.groupId)  // บันทึก group ID ไว้สำหรับส่งแจ้งเตือน
       }
     }
-  }
-  if (!branchId) {
+  } else {
+    // DM เท่านั้น: fallback ไปดูทะเบียน LINE user
     const ub = await getBranchFromLineUser(userId)
     if (ub) branchId = ub.branch_id
   }
@@ -2037,12 +2037,12 @@ async function handleImage(messageId: string, userId: string, replyToken: string
   let suggest: SlipAutoSuggest = { purpose: 'STORE' }
   if (branchId) {
     const { rows: pending } = await pool.query(`
-      SELECT id, order_no, total_amount::float FROM booking_orders
+      SELECT id, order_no, total_amount::float, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
       WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
     `, [branchId])
-    const matched = pending.find(o => Math.abs(parseFloat(o.total_amount) - scanResult.amount!) < 0.01)
+    const matched = pending.find(o => Math.abs((parseFloat(o.total_amount) - parseFloat(o.paid_amount)) - scanResult.amount!) < 0.01)
     if (matched) {
-      suggest = { purpose: 'PAY', orderNo: matched.order_no, orderAmt: matched.total_amount }
+      suggest = { purpose: 'PAY', orderNo: matched.order_no, orderAmt: matched.total_amount - matched.paid_amount }
     }
   }
 
