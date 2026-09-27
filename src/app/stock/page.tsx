@@ -425,6 +425,10 @@ export default function StockPage() {
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50">
           🌿 สต็อคกระดาษฝอย
         </span>
+        <Link href="/orders"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          📋 ใบจอง
+        </Link>
         <Link href="/branches"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
           🏪 สาขาและตัวแทน
@@ -440,6 +444,10 @@ export default function StockPage() {
         <Link href="/restock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
           📥 ใบPO
+        </Link>
+        <Link href="/suppliers"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          🏭 ซัพพลายเออร์
         </Link>
         <Link href="/foy-line"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">

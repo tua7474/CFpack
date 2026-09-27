@@ -165,6 +165,10 @@ export default function RestockPage() {
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🌿 สต็อคกระดาษฝอย
         </Link>
+        <Link href="/orders"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          📋 ใบจอง
+        </Link>
         <Link href="/branches"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🏪 สาขาและตัวแทน
@@ -180,6 +184,10 @@ export default function RestockPage() {
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">
           📥 ใบPO
         </span>
+        <Link href="/suppliers"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          🏭 ซัพพลายเออร์
+        </Link>
         <Link href="/foy-line"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🌀 ไลน์ผลิตกระดาษฝอย

@@ -107,6 +107,10 @@ export default function WithdrawalPage() {
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
           🌿 สต็อคกระดาษฝอย
         </Link>
+        <Link href="/orders"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          📋 ใบจอง
+        </Link>
         <Link href="/branches"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
           🏪 สาขาและตัวแทน
@@ -121,6 +125,10 @@ export default function WithdrawalPage() {
         <Link href="/restock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
           📥 ใบPO
+        </Link>
+        <Link href="/suppliers"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          🏭 ซัพพลายเออร์
         </Link>
         <Link href="/foy-line"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
