@@ -369,6 +369,10 @@ export default function Home() {
             className="px-4 py-1.5 text-sm rounded bg-[#F2E9D3] hover:bg-[#E8DFC9] text-[#2baf2b] font-medium transition-colors border border-yellow-400">
             📝 ใบจองสินค้า
           </Link>
+          <Link href="/po"
+            className="px-4 py-1.5 text-sm rounded bg-[#d4edda] hover:bg-[#c3e6cb] text-[#2e7d32] font-medium transition-colors border border-green-400">
+            📄 สร้างใบPO
+          </Link>
           {msg && (
             <span className="text-sm px-3 py-1 rounded-full bg-green-500 text-white">{msg}</span>
           )}
@@ -404,7 +408,7 @@ export default function Home() {
         </Link>
         <Link href="/restock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
-          📥 เติมสต็อค
+          📥 ใบPO
         </Link>
         <Link href="/foy-line"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
