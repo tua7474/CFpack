@@ -74,6 +74,25 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE line_sessions ADD COLUMN IF NOT EXISTS pay_selection JSONB DEFAULT '[]'`).catch(() => {})
   // Partial payment tracking
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0`).catch((e: unknown) => console.error('[ensureTable] paid_amount migration:', e))
+  // System settings (key-value)
+  await pool.query(`CREATE TABLE IF NOT EXISTS system_settings (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL)`).catch(() => {})
+}
+
+// ── System settings helpers ───────────────────────────────────────────────────
+
+export async function getSetting(key: string): Promise<string | null> {
+  try {
+    const { rows } = await pool.query(`SELECT value FROM system_settings WHERE key=$1`, [key])
+    return rows[0]?.value ?? null
+  } catch { return null }
+}
+
+async function setSetting(key: string, value: string) {
+  await pool.query(
+    `INSERT INTO system_settings (key, value) VALUES ($1,$2)
+     ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`,
+    [key, value]
+  )
 }
 
 async function getOrder(userId: string): Promise<Record<number, number>> {
@@ -2097,16 +2116,27 @@ export async function POST(req: NextRequest) {
   const { events = [] } = JSON.parse(body)
 
   await Promise.all(events.map(async (ev: Record<string, unknown>) => {
-    const userId     = (ev.source as Record<string, string>)?.userId ?? ''
-    const replyToken = ev.replyToken as string
+    const source      = ev.source as Record<string, string>
+    const userId      = source?.userId ?? ''
+    const replyToken  = ev.replyToken as string
+
+    // Auto-register "ออกใบจอง" group ID ทุกครั้งที่มีข้อความจากกลุ่มนั้น
+    if (source?.type === 'group' && source.groupId) {
+      const gName = await getGroupName(source.groupId).catch(() => null)
+      if (gName === 'ออกใบจอง') {
+        await ensureTable()
+        await setSetting('order_notify_group_id', source.groupId).catch(() => {})
+      }
+    }
+
     try {
       if (ev.type === 'postback') {
         const data = (ev.postback as Record<string, string>)?.data ?? ''
-        await handlePostback(data, userId, replyToken, ev.source as Record<string, string>)
+        await handlePostback(data, userId, replyToken, source)
       } else if (ev.type === 'message') {
         const msg = ev.message as Record<string, unknown>
-        if (msg?.type === 'text')  await handleText(msg.text as string, userId, replyToken, ev.source as Record<string, string>)
-        if (msg?.type === 'image') await handleImage(msg.id as string, userId, replyToken, ev.source as Record<string, string>)
+        if (msg?.type === 'text')  await handleText(msg.text as string, userId, replyToken, source)
+        if (msg?.type === 'image') await handleImage(msg.id as string, userId, replyToken, source)
       }
     } catch (e) {
       console.error('[webhook] unhandled error for event', ev.type, e)

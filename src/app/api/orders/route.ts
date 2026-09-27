@@ -6,44 +6,75 @@ import pool from '@/lib/db'
 const LINE_TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN!
 const BASE_URL    = process.env.RAILWAY_PUBLIC_DOMAIN
 
-async function notifyNewBooking(branch_id: number | null, order_no: string) {
-  if (!branch_id || !LINE_TOKEN || !BASE_URL) return
-  try {
-    const { rows } = await pool.query(
-      `SELECT line_group_id FROM branches WHERE id = $1`, [branch_id]
-    )
-    const groupId = rows[0]?.line_group_id
-    if (!groupId) return
+async function pushLineMsg(to: string, messages: object[]) {
+  return fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
+    body: JSON.stringify({ to, messages }),
+  })
+}
 
-    const ordersUrl = `${BASE_URL}/orders`
-    await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
-      body: JSON.stringify({
-        to: groupId,
-        messages: [{
-          type: 'flex',
-          altText: `เช็คด่วน ใบจองใหม่ #${order_no}`,
-          contents: {
-            type: 'bubble',
-            body: {
-              type: 'box', layout: 'vertical', spacing: 'sm',
-              contents: [
-                { type: 'text', text: '🔔 เช็คด่วน ใบจองใหม่', weight: 'bold', size: 'lg', color: '#CC0000' },
-                { type: 'text', text: `เลขที่ใบจอง: ${order_no}`, size: 'sm', color: '#555555' },
-              ],
-            },
-            footer: {
-              type: 'box', layout: 'vertical',
-              contents: [{
-                type: 'button', style: 'primary', color: '#CC0000',
-                action: { type: 'uri', label: '📋 ดูประวัติใบจอง', uri: ordersUrl },
-              }],
-            },
-          },
-        }],
-      }),
-    })
+async function notifyNewBooking(
+  branch_id: number | null, order_no: string,
+  total_amount: number, branch_name: string | null
+) {
+  if (!LINE_TOKEN) return
+  try {
+    // ── ดึง group IDs พร้อมกัน ────────────────────────────────────────────────
+    const [branchRow, settingRow] = await Promise.all([
+      branch_id ? pool.query(`SELECT line_group_id FROM branches WHERE id=$1`, [branch_id]) : null,
+      pool.query(`SELECT value FROM system_settings WHERE key='order_notify_group_id'`).catch(() => ({ rows: [] })),
+    ])
+    const branchGroupId  = branchRow?.rows[0]?.line_group_id ?? null
+    const centralGroupId = settingRow?.rows[0]?.value ?? null
+
+    const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
+    const label = branch_name ?? (branch_id ? `สาขา #${branch_id}` : 'ไม่ระบุสาขา')
+    const ordersUrl = BASE_URL ? `${BASE_URL}/orders` : null
+
+    const msg: object = {
+      type: 'flex',
+      altText: `📝 ใบจองใหม่ #${order_no} — ${label}`,
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '10px',
+          contents: [
+            { type: 'text', text: '📝 ใบจองใหม่', color: '#ffffff', weight: 'bold', size: 'sm' },
+          ]
+        },
+        body: {
+          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px',
+          contents: [
+            { type: 'box', layout: 'horizontal', contents: [
+              { type: 'text', text: 'สาขา', size: 'xs', color: '#888888', flex: 3 },
+              { type: 'text', text: label, size: 'xs', weight: 'bold', color: '#333333', flex: 5, wrap: true },
+            ]},
+            { type: 'box', layout: 'horizontal', margin: 'xs', contents: [
+              { type: 'text', text: 'เลขที่', size: 'xs', color: '#888888', flex: 3 },
+              { type: 'text', text: `#${order_no}`, size: 'xs', weight: 'bold', color: '#333333', flex: 5 },
+            ]},
+            { type: 'box', layout: 'horizontal', margin: 'xs', contents: [
+              { type: 'text', text: 'ยอดรวม', size: 'xs', color: '#888888', flex: 3 },
+              { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', weight: 'bold', color: '#CC0000', flex: 5 },
+            ]},
+          ],
+        },
+        ...(ordersUrl ? {
+          footer: {
+            type: 'box', layout: 'vertical', paddingAll: '8px',
+            contents: [{
+              type: 'button', style: 'primary', color: '#9b9484', height: 'sm',
+              action: { type: 'uri', label: 'ดูประวัติใบจอง', uri: ordersUrl },
+            }],
+          }
+        } : {}),
+      },
+    }
+
+    // ส่งไปทั้งกลุ่มสาขา (ถ้ามี) และกลุ่ม "ออกใบจอง" (ถ้ามี)
+    const targets = [...new Set([branchGroupId, centralGroupId].filter(Boolean) as string[])]
+    await Promise.all(targets.map(to => pushLineMsg(to, [msg])))
   } catch { /* non-critical — don't fail the order */ }
 }
 
@@ -147,7 +178,7 @@ export async function POST(request: Request) {
        nv_total ?? null, v_total ?? null]
     )
     await deductStock(quantities ?? {})
-    notifyNewBooking(branch_id ?? null, rows[0].order_no)
+    notifyNewBooking(branch_id ?? null, rows[0].order_no, total_amount ?? 0, branch_name ?? null)
     return NextResponse.json(rows[0], { status: 201 })
   } catch (e: unknown) {
     if ((e as { code?: string }).code === '23505') {
@@ -160,7 +191,7 @@ export async function POST(request: Request) {
          nv_total ?? null, v_total ?? null]
       )
       await deductStock(quantities ?? {})
-      notifyNewBooking(branch_id ?? null, rows[0].order_no)
+      notifyNewBooking(branch_id ?? null, rows[0].order_no, total_amount ?? 0, branch_name ?? null)
       return NextResponse.json(rows[0], { status: 201 })
     }
     throw e
