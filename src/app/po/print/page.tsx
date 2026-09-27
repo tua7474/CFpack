@@ -217,6 +217,14 @@ function POPrintInner() {
     })
   }, [poNo])
 
+  // Auto-print once content is rendered and measured
+  useEffect(() => {
+    if (loading || !order || sections.length === 0) return
+    // Small delay so layout paints first
+    const t = setTimeout(() => window.print(), 400)
+    return () => clearTimeout(t)
+  }, [loading, order, sections])
+
   // Measure content height for scaling
   useEffect(() => {
     if (!contentRef.current) return
@@ -264,9 +272,9 @@ function POPrintInner() {
       {/* Toolbar — hidden on print */}
       <div className="no-print bg-[#4e7a5e] text-white px-4 py-2 flex items-center gap-4 shadow">
         <button
-          onClick={() => window.history.back()}
+          onClick={() => window.close()}
           className="text-white/80 hover:text-white text-sm px-3 py-1.5 rounded border border-white/30 hover:bg-white/10 transition-colors">
-          ← กลับ
+          ✕ ปิด
         </button>
         <div className="flex-1">
           <span className="font-bold">ใบPO </span>
