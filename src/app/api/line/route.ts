@@ -2120,12 +2120,14 @@ export async function POST(req: NextRequest) {
     const userId      = source?.userId ?? ''
     const replyToken  = ev.replyToken as string
 
-    // Auto-register "ออกใบจอง" group ID ทุกครั้งที่มีข้อความจากกลุ่มนั้น
+    // Auto-register กลุ่ม "ออกใบจอง" (รองรับมีเว้นวรรคหรือไม่ก็ได้)
     if (source?.type === 'group' && source.groupId) {
       const gName = await getGroupName(source.groupId).catch(() => null)
-      if (gName === 'ออกใบจอง') {
+      const normalized = (gName ?? '').replace(/\s+/g, '')
+      if (normalized === 'ออกใบจอง') {
         await ensureTable()
         await setSetting('order_notify_group_id', source.groupId).catch(() => {})
+        console.log('[LINE] registered order_notify_group_id:', source.groupId, 'from group:', gName)
       }
     }
 
