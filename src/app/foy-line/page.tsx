@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import Link from 'next/link'
 
 // ── Config ─────────────────────────────────────────────────────────────────────
-
-const MODELS = ['สีอ่อน', 'สีพิเศษ B', 'สีพิเศษ A', 'ปุยนุ่น', 'ครีเอท']
+// ชื่อรุ่นตรงกับ model_name ใน paper_stock table
+const MODELS = ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ปุยนุ่น', 'ครีเอท']
 
 const CUT_TYPES = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
 
@@ -27,10 +27,10 @@ interface ProductionRow {
   sessions: Session[]
 }
 
-interface CatalogProduct {
+interface StockColor {
   id: number
-  group_name: string
-  product_name: string
+  model_name: string
+  color_name: string
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -72,20 +72,20 @@ function hasData(row: ProductionRow) {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function FoyLinePage() {
-  const [rows,     setRows]     = useState<ProductionRow[]>([emptyRow()])
-  const [products, setProducts] = useState<CatalogProduct[]>([])
-  const [loading,  setLoading]  = useState(true)
+  const [rows,       setRows]     = useState<ProductionRow[]>([emptyRow()])
+  const [stockColors, setStockColors] = useState<StockColor[]>([])
+  const [loading,    setLoading]  = useState(true)
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
   // ── Load ────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/catalog').then(r => r.json()),
+      fetch('/api/stock').then(r => r.json()),
       fetch('/api/foy-production').then(r => r.json()).catch(() => []),
-    ]).then(([catalog, production]: [CatalogProduct[], ProductionRow[]]) => {
-      // สีทั้งหมดอยู่ใน group 'กระดาษฝอย'
-      setProducts((catalog as CatalogProduct[]).filter(p => p.group_name === 'กระดาษฝอย'))
+    ]).then(([stock, production]: [StockColor[], ProductionRow[]]) => {
+      // เก็บเฉพาะ model_name + color_name จาก paper_stock
+      setStockColors((stock as StockColor[]).filter(s => s.color_name))
       const dbRows = (production as ProductionRow[]).map(r => ({
         ...r,
         sessions: trimSessions(r.sessions?.length ? r.sessions : [{}]),
@@ -119,12 +119,12 @@ export default function FoyLinePage() {
     timers.current.set(rowIdx, setTimeout(() => saveRow(row, rowIdx), 800))
   }, [saveRow])
 
-  // ── Color options: ทุกรุ่นใช้สีจาก group 'กระดาษฝอย' ทั้งหมด ─────────────────
+  // ── Color options: กรอง paper_stock ตาม model_name ที่เลือก ──────────────────
 
-  const colorOptions = useCallback((modelLabel: string) => {
-    if (!modelLabel) return []
-    return products  // products ถูก filter ไว้แล้วว่า group_name === 'กระดาษฝอย'
-  }, [products])
+  const colorOptions = useCallback((modelName: string) => {
+    if (!modelName) return []
+    return stockColors.filter(s => s.model_name === modelName)
+  }, [stockColors])
 
   // ── Update helpers ──────────────────────────────────────────────────────────
 
@@ -142,20 +142,18 @@ export default function FoyLinePage() {
     })
   }, [scheduleSave])
 
-  const updateColor = useCallback((rowIdx: number, productId: number) => {
+  const updateColor = useCallback((rowIdx: number, colorName: string) => {
     setRows(prev => {
-      const found = products.find(p => p.id === productId)
-      if (!found) return prev
       const updated: ProductionRow = {
         ...prev[rowIdx],
-        product_id: found.id,
-        color_name: found.product_name,
+        color_name: colorName || undefined,
+        product_id: undefined,
       }
       const next = [...prev]; next[rowIdx] = updated
       scheduleSave(updated, rowIdx)
       return next
     })
-  }, [products, scheduleSave])
+  }, [scheduleSave])
 
   const updateRawDate = useCallback((rowIdx: number, val: string) => {
     setRows(prev => {
@@ -343,14 +341,14 @@ export default function FoyLinePage() {
                           ))}
                         </select>
                         <select
-                          value={row.product_id ?? ''}
-                          onChange={e => updateColor(rowIdx, Number(e.target.value))}
+                          value={row.color_name ?? ''}
+                          onChange={e => updateColor(rowIdx, e.target.value)}
                           disabled={!row.model_name || colors.length === 0}
                           className="flex-1 min-w-0 px-1 py-0.5 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] bg-white text-black disabled:opacity-40"
                         >
                           <option value="">-- สี --</option>
-                          {colors.map(p => (
-                            <option key={p.id} value={p.id}>{p.product_name}</option>
+                          {colors.map(s => (
+                            <option key={s.id} value={s.color_name}>{s.color_name}</option>
                           ))}
                         </select>
                       </div>
