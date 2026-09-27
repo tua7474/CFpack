@@ -426,7 +426,7 @@ export default function Home() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">หมวดสินค้า ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสินค้า ✎</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">สต็อคล่าสุด</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เพิ่มสต็อค</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">ใบPO</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">จำนวนจอง</th>
                   <th className="px-3 py-2 border-r border-orange-400 whitespace-nowrap text-right bg-orange-400">ราคาโกดัง ✎</th>
                   <th className="px-3 py-2 border-r border-yellow-400 whitespace-nowrap text-right bg-yellow-500 text-gray-500 w-12">+9%</th>
