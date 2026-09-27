@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -296,7 +296,13 @@ export default function RestockPage() {
 
                       {/* Actions */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 justify-center">
+                        <div className="flex items-center gap-2 justify-center flex-wrap">
+                          <Link
+                            href={`/po/print?no=${encodeURIComponent(order.po_no)}`}
+                            target="_blank"
+                            className="bg-[#4e7a5e] hover:bg-[#3d6149] text-white text-xs font-medium px-3 py-1.5 rounded shadow transition-colors whitespace-nowrap">
+                            🖨️ ใบสั่งพิมพ์
+                          </Link>
                           {isPending && (
                             <button
                               onClick={() => handleReceive(order.id)}
