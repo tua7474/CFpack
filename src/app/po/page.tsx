@@ -1,249 +1,2077 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback, Suspense, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type PriorityLevel = 'critical' | 'important'
 
 interface CatalogProduct {
   id: number
   group_name: string
   product_name: string
   price: string | null
-  show_in_booking: boolean
+  stock_qty: string | null
+  priority: string | null
+  section_order: number
+  section_name: string
+  is_vat_included: boolean
+  subgroup_order: number
+  subgroup_name: string
 }
 
-interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
+type SubgroupColor = 'gray' | 'light' | 'orange' | 'teal' | 'maroon'
 
-const FOY_HIDDEN = new Set(['กระดาษฝอย', 'รุ่นสีอ่อน', 'รุ่นสีพิเศษ A', 'รุ่นสีพิเศษ B', 'รุ่นหยัก', 'ฝอยนุ่น', 'ฝอยหยัก'])
+type SectionRow =
+  | { type: 'subgroup'; name: string; color: SubgroupColor }
+  | { type: 'product'; product: CatalogProduct }
+  | { type: 'foy_cat'; category: string }
+  | { type: 'foy_item'; category: string; model_name: string; qty: number; amount: number }
 
-function fmt(n: number) {
+interface Section {
+  order: number
+  name: string
+  is_vat_included: boolean
+  rows: SectionRow[]
+}
+
+// ── Sub-group colors ──────────────────────────────────────────────────────────
+// key = "section_order-subgroup_order"
+
+const SUBGROUP_COLOR: Record<string, SubgroupColor> = {
+  // S2 — กล่อง Thank You, กล่องผลไม้ 5 ชั้น, กล่องเอกสาร, กล่อง 5 ชั้น, [กระดาษฝอย=5], ถุงใส่กระดาษฝอย
+  '2-1': 'light',  '2-2': 'gray',   '2-3': 'gray',   '2-4': 'gray',
+  '2-6': 'light',
+  // S3 — ซอง PP, ซองเมทาลิค, ซอง PP สี, ซองน้ำตาล, ซองขยายข้าง, ซองจ่าหน้า, ซองบับเบิล, ซองPPกันกระแทก, ฟิล์มยืด
+  '3-1': 'gray',   '3-2': 'gray',   '3-3': 'gray',   '3-4': 'gray',
+  '3-5': 'light',  '3-6': 'gray',   '3-7': 'gray',   '3-8': 'orange',  '3-9': 'light',
+  // S4 — บับเบิล, บับเบิลสี, บับเบิลบาง 35g, โฟมบาง 2 มิล, ตัวตัดเทป, เทป OPP แกนดำ, เทประวังแตก, เทป OPP แกนส้ม, เทป Thank You, ถุงหิ้วบริการ, ลาเบล 10x15, สติกเกอร์ระวังแตก
+  '4-1': 'light',  '4-2': 'light',  '4-3': 'light',  '4-4': 'gray',   '4-5': 'light',
+  '4-6': 'gray',   '4-7': 'orange', '4-8': 'orange', '4-9': 'gray',   '4-10': 'orange',
+  '4-11': 'gray',
+  // S5 — ถุงแก้วฝากาว 60M/100P, ถุงซิปรูด, ซองใสปะหน้า, กระบอก, ฝาปิดกระบอก, สายรัด PP, กระดาษห่อ, เชือก, กระดาษพิมพ์สลิป, ปากกาเขียน PP
+  '5-1': 'gray',   '5-2': 'gray',   '5-3': 'gray',   '5-4': 'light',  '5-5': 'teal',
+  '5-6': 'gray',   '5-7': 'gray',   '5-8': 'orange', '5-9': 'orange', '5-10': 'gray',
+  // S6 — ซองกันกระแทก, MINI AIR BAG ม้วนเปล่า, AIRLOCK, MINI AIR เครื่องเป่า, สติกเกอร์ระวังแตก, เครื่อง/สติกเกอร์/เคส, เบิกฟรี
+  '6-1': 'gray',   '6-2': 'orange', '6-3': 'orange', '6-4': 'orange', '6-5': 'orange',
+  '6-6': 'orange', '6-7': 'teal',
+}
+
+const SUBGROUP_BG: Record<SubgroupColor, string> = {
+  gray:   'bg-[#4e7a5e] text-white border-gray-500',
+  light:  'bg-[#4e7a5e] text-white border-gray-500',
+  orange: 'bg-[#4e7a5e] text-white border-gray-500',
+  teal:   'bg-[#4e7a5e] text-white border-gray-500',
+  maroon: 'bg-[#4e7a5e] text-white border-gray-500',
+}
+
+// subgroups that can toggle between no-VAT (orange) and VAT (gray) — ไม่รวมบับเบิล
+const SWITCHABLE_SUBGROUP_NAMES = new Set([
+  'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
+])
+// bubble subgroups: ราคาในระบบ รวมแวตแล้ว (incl-VAT)
+// สลับได้เฉพาะเมื่อบับเบิลล้วน ≥ 15k (โรงBBส่งตรง) เท่านั้น
+// → โนแวต = ÷1.07 | รวมแวต = ใช้ราคาเดิม
+const BUBBLE_SWITCHABLE_NAMES = new Set([
+  'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
+])
+
+// ── กระดาษฝอย groups — link to /booking-foy ──────────────────────────────────
+// ทุก model จาก paper_stock จะมี group_name='กระดาษฝอย' และ subgroup_name='กระดาษฝอย'
+const FOY_SUBGROUP_NAMES = new Set(['กระดาษฝอย'])
+const FOY_GROUP_NAMES    = new Set(['กระดาษฝอย'])
+
+const FOY_CATS_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
+const FOY_CAT_BG_GREEN: Record<string, string> = {
+  '2 มิล':   '#4e7a5e',
+  '4 มิล':   '#4e7a5e',
+  '1.5 มิล': '#4e7a5e',
+  'ฝอยหยัก': '#4e7a5e',
+}
+
+const FOY_ITEM_BG: Record<string, string> = {
+  '2 มิล':   '#FCF3CF',
+  '4 มิล':   '#FAE5D3',
+  '1.5 มิล': '#FADBD8',
+  'ฝอยหยัก': '#FBDEF0',
+}
+
+// ── Column widths ─────────────────────────────────────────────────────────────
+
+const COL_NAME  = 82
+const COL_PRICE = 54
+const COL_QTY   = 44
+const COL_TOTAL = 62
+const ROW_NUM_W = 24
+const TABLE_W        = ROW_NUM_W + 6 * (COL_NAME + COL_PRICE + COL_QTY + COL_TOTAL)
+const INFO_PANEL_ROWS = 13  // 3 sig + 2 coupon + 2 total + 3 date/source + 3 branch/vehicle
+
+// ── A4 landscape dimensions ───────────────────────────────────────────────────
+// 1 CSS mm = 96/25.4 px (CSS reference pixel)
+const A4_W_PX       = 297 * (96 / 25.4)          // ≈ 1122.5 CSS px
+const A4_PAD_PX     = 8   * (96 / 25.4)          // 8 mm padding each side ≈ 30.2 px
+const CONTENT_SCALE = (A4_W_PX - A4_PAD_PX * 2) / TABLE_W  // ≈ 0.72
+
+// ── Draft helpers ─────────────────────────────────────────────────────────────
+
+const DRAFT_KEY = 'cf_draft_po'
+
+function loadDraft(): Record<number, number> {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) ?? '{}') } catch { return {} }
+}
+function saveDraft(e: Record<number, number>) {
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(e))
+}
+
+// ── Build sections (insert subgroup headers) ──────────────────────────────────
+
+function buildSections(products: CatalogProduct[]): Section[] {
+  const map = new Map<number, Section>()
+  for (const p of products) {
+    if (!map.has(p.section_order)) {
+      map.set(p.section_order, {
+        order: p.section_order,
+        name: p.section_name,
+        is_vat_included: p.is_vat_included,
+        rows: [],
+      })
+    }
+    const sec = map.get(p.section_order)!
+    // Section 1 (กล่อง) has no subgroup — prepend its section name as first subgroup header
+    if (p.section_order === 1 && sec.rows.length === 0) {
+      sec.rows.push({ type: 'subgroup', name: p.section_name, color: 'gray' })
+    }
+    if (p.subgroup_order > 0) {
+      const prev = [...sec.rows].reverse().find(r => r.type === 'subgroup') as { type: 'subgroup'; name: string; color: SubgroupColor } | undefined
+      if (!prev || prev.name !== p.subgroup_name) {
+        const key = `${p.section_order}-${p.subgroup_order}`
+        sec.rows.push({ type: 'subgroup', name: p.subgroup_name, color: SUBGROUP_COLOR[key] ?? 'gray' })
+      }
+    }
+    sec.rows.push({ type: 'product', product: p })
+  }
+  return Array.from(map.values()).sort((a, b) => a.order - b.order)
+}
+
+// ── Inject dynamic FOY rows (category-separated) ──────────────────────────────
+// Replaces catalog กระดาษฝอย product rows with foy_cat/foy_item rows derived
+// from foyPending (keys = "category|model_name").
+
+const FOY_MODEL_ORDER = ['สีอ่อน', 'พิเศษ B', 'พิเศษ A', 'ครีเอท']
+
+function injectFoyRows(
+  sections: Section[],
+  foyPending: Record<string, { qty: number; amount: number }>,
+  categoryVis: Record<string, boolean>,
+  modelVis: Record<string, boolean>,
+  foyStockItems: { category: string; model_name: string }[]
+): Section[] {
+  // Group foyPending by category, filtered by visibility
+  const byCat = new Map<string, Map<string, { qty: number; amount: number }>>()
+  for (const [key, data] of Object.entries(foyPending)) {
+    if (data.qty <= 0) continue
+    const idx = key.indexOf('|')
+    if (idx === -1) continue
+    const cat   = key.slice(0, idx)
+    const model = key.slice(idx + 1)
+    if (categoryVis[cat] === false) continue
+    if (modelVis[model] === false) continue
+    if (!byCat.has(cat)) byCat.set(cat, new Map())
+    byCat.get(cat)!.set(model, data)
+  }
+
+  // Build all visible categories+models from stock items
+  const allCatModels = new Map<string, string[]>()
+  for (const cat of FOY_CATS_ORDER) {
+    if (categoryVis[cat] === false) continue
+    const models = foyStockItems
+      .filter(it => it.category === cat && modelVis[it.model_name] !== false)
+      .map(it => it.model_name)
+    const unique = [...new Set(models)]
+    const ordered = [
+      ...FOY_MODEL_ORDER.filter(m => unique.includes(m)),
+      ...unique.filter(m => !FOY_MODEL_ORDER.includes(m)),
+    ]
+    if (ordered.length > 0) allCatModels.set(cat, ordered)
+  }
+
+  return sections.map(sec => {
+    const hasFoy = sec.rows.some(r => r.type === 'product' && FOY_GROUP_NAMES.has(r.product.group_name))
+    if (!hasFoy) return sec
+
+    const newRows: SectionRow[] = []
+    let foyInjected = false
+    for (const row of sec.rows) {
+      // Skip FOY subgroup header row (no gap before foy_cat rows)
+      if (row.type === 'subgroup' && FOY_SUBGROUP_NAMES.has(row.name)) continue
+      if (row.type === 'product' && FOY_GROUP_NAMES.has(row.product.group_name)) {
+        if (!foyInjected) {
+          foyInjected = true
+          // Always inject all visible categories/models; show booked data if available
+          for (const [cat, models] of allCatModels) {
+            newRows.push({ type: 'foy_cat', category: cat })
+            for (const model of models) {
+              const data = byCat.get(cat)?.get(model)
+              newRows.push({ type: 'foy_item', category: cat, model_name: model, qty: data?.qty ?? 0, amount: data?.amount ?? 0 })
+            }
+          }
+        }
+        continue
+      }
+      newRows.push(row)
+    }
+    return { ...sec, rows: newRows }
+  })
+}
+
+const BUBBLE_GROUPS_SET = new Set(['ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
+
+function getBubbleUnits(product_name: string): number {
+  const w = parseFloat(product_name)
+  if (w === 32.5) return 1
+  if (w === 65)   return 2
+  if (w === 130)  return 4
+  return 0
+}
+
+function fmt2(n: number) {
+  if (!n) return ''
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export default function POPage() {
-  const router = useRouter()
-  const [session, setSession]     = useState<SessionInfo | null>(null)
-  const [products, setProducts]   = useState<CatalogProduct[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [saving, setSaving]       = useState(false)
-  const [supplier, setSupplier]   = useState('')
-  const [notes, setNotes]         = useState('')
-  const [quantities, setQuantities] = useState<Record<number, number>>({})
+// ── Main Component ────────────────────────────────────────────────────────────
 
+function POInner() {
+  const searchParams  = useSearchParams()
+  const router        = useRouter()
+  const editOrderNo    = searchParams.get('edit')         // null = new order, string = edit mode
+  const branchIdParam  = searchParams.get('branch_id')    // from LINE group auto-detect
+  const branchNameParam = searchParams.get('branch_name') // from LINE group auto-detect
+
+  const [products, setProducts]     = useState<CatalogProduct[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [saving, setSaving]         = useState(false)
+  const [saveMsg, setSaveMsg]       = useState<string | null>(null)
+  const [resetKey, setResetKey]     = useState(0)
+  const [qtyPopup, setQtyPopup]     = useState<{ id: number; name: string; subgroupName: string; stockQty: number; accent: string } | null>(null)
+  const [popupVal, setPopupVal]     = useState('')
+  const popupInputRef               = useRef<HTMLInputElement>(null)
+  const [pending, setPending]       = useState<Record<number, number>>({})
+  const [foyPending, setFoyPending]         = useState<Record<string, { qty: number; amount: number }>>({})
+  const [foyItemPending, setFoyItemPending] = useState<Record<number, number>>({})
+  const [foyCategoryVis, setFoyCategoryVis] = useState<Record<string, boolean>>({})
+  const [foyModelVis, setFoyModelVis]       = useState<Record<string, boolean>>({})
+  const [foyStockItems, setFoyStockItems]   = useState<{ id: number; category: string; model_name: string; color_code: string; color_name: string; warehouse_price: string; retail_price: string; stock_qty: string; show_in_booking: boolean }[]>([])
+  const [branchColorGroup, setBranchColorGroup] = useState<'orange' | 'yellow' | 'red' | null>(null)
+  const [stockPrintMode, setStockPrintMode]     = useState(false)
+  const [compactPrintMode, setCompactPrintMode] = useState(false)
+  const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
+  const [vehicleType, setVehicleType] = useState<string>('')
+  const [deliveryMethods, setDeliveryMethods] = useState<{ id: number; name: string }[]>([])
+  const [manualTotal, setManualTotal]   = useState<string>('')
+  const [couponAmount, setCouponAmount] = useState<string>('')
+  const [withdrawalTypes, setWithdrawalTypes]   = useState<{ id: number; name: string }[]>([])
+  const [withdrawalTypeId, setWithdrawalTypeId] = useState<number | null>(null)
+  const [priorityMode, setPriorityMode]         = useState<PriorityLevel | null>(null)
+  const [autoCapEnabled, setAutoCapEnabled]     = useState(true)  // auto-add ฝาปิดกระบอก 2x when กระบอก qty changes
+  const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
+  const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
+  const [supplier, setSupplier] = useState('')
+  const [notes, setNotes] = useState('')
+
+  // Load foy result from booking-foy (new order mode only)
+  useEffect(() => {
+    if (editOrderNo) return
+    try {
+      const stored = localStorage.getItem('cf_foy_result')
+      if (stored) setFoyPending(JSON.parse(stored))
+      const storedItems = localStorage.getItem('cf_foy_items')
+      if (storedItems) setFoyItemPending(JSON.parse(storedItems))
+      // Merge foy priorities set in booking-foy into productPriorities
+      const storedFooPrio = localStorage.getItem('cf_foy_priorities')
+      if (storedFooPrio) {
+        const fooPrio = JSON.parse(storedFooPrio) as Record<string, PriorityLevel>
+        setProductPriorities(prev => ({ ...prev, ...fooPrio }))
+      }
+    } catch { /* ignore */ }
+  }, [editOrderNo])
+
+  // Load draft on mount; admin-only page — redirect if not admin
+  useEffect(() => {
+    if (!editOrderNo) setPending(loadDraft())
+    try {
+      const bs = localStorage.getItem('branch_session')
+      if (bs) {
+        const s = JSON.parse(bs)
+        if (!s?.is_admin) { window.location.replace('/'); return }
+      } else {
+        window.location.replace('/')
+        return
+      }
+    } catch {
+      window.location.replace('/')
+    }
+  }, [editOrderNo])
+
+  // When editing — load existing order quantities + FOY data + selections
+  useEffect(() => {
+    if (!editOrderNo) return
+    fetch(`/api/po?no=${editOrderNo}`)
+      .then(r => r.json())
+      .then((order: {
+        quantities: Record<string, number>;
+        total_amount: string;
+        source_type: string | null;
+        vehicle_type: string | null;
+        foy_quantities?: Record<string, { qty: number; amount: number }>;
+        foy_item_quantities?: Record<string, number>;
+        withdrawal_type_id?: number | null;
+        priorities?: Record<string, string>;
+      } | null) => {
+        if (!order) return
+        const qty: Record<number, number> = {}
+        for (const [k, v] of Object.entries(order.quantities)) qty[Number(k)] = v
+        setPending(qty)
+        // Restore FOY data — prefer localStorage (set by booking-foy after edit) over DB value
+        const freshFoyResult = localStorage.getItem('cf_foy_result')
+        const freshFoyItems  = localStorage.getItem('cf_foy_items')
+        if (freshFoyResult) {
+          try { setFoyPending(JSON.parse(freshFoyResult)) } catch { /* ignore */ }
+        } else if (order.foy_quantities && Object.keys(order.foy_quantities).length > 0) {
+          setFoyPending(order.foy_quantities)
+        }
+        if (freshFoyItems) {
+          try {
+            const itemQty: Record<number, number> = {}
+            for (const [k, v] of Object.entries(JSON.parse(freshFoyItems) as Record<string, number>)) itemQty[Number(k)] = v
+            setFoyItemPending(itemQty)
+          } catch { /* ignore */ }
+        } else if (order.foy_item_quantities && Object.keys(order.foy_item_quantities).length > 0) {
+          const itemQty: Record<number, number> = {}
+          for (const [k, v] of Object.entries(order.foy_item_quantities)) itemQty[Number(k)] = v
+          setFoyItemPending(itemQty)
+          // Save to localStorage so booking-foy can read when editing
+          localStorage.setItem('cf_foy_items', JSON.stringify(order.foy_item_quantities))
+        }
+        if (order.source_type) setSourceType(order.source_type as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
+        if (order.vehicle_type) setVehicleType(order.vehicle_type)
+        if (order.withdrawal_type_id) setWithdrawalTypeId(order.withdrawal_type_id)
+        if (order.priorities && Object.keys(order.priorities).length > 0) {
+          const prio: Record<number, PriorityLevel | null> = {}
+          for (const [k, v] of Object.entries(order.priorities)) {
+            if (v === 'critical' || v === 'important') prio[Number(k)] = v
+          }
+          setProductPriorities(prio)
+        }
+      })
+      .catch(() => {})
+  }, [editOrderNo])
+
+  // Fetch withdrawal types
+  useEffect(() => {
+    fetch('/api/withdrawal')
+      .then(r => r.json())
+      .then((data: { id: number; name: string }[]) => setWithdrawalTypes(data))
+      .catch(() => {})
+  }, [])
+
+  // Fetch delivery methods
+  useEffect(() => {
+    fetch('/api/delivery')
+      .then(r => r.json())
+      .then((data: { id: number; name: string }[]) => setDeliveryMethods(data))
+      .catch(() => {})
+  }, [])
+
+  // Fetch products + load priorities from localStorage
+  useEffect(() => {
+    fetch('/api/booking2')
+      .then(r => r.json())
+      .then((data: CatalogProduct[]) => {
+        setProducts(data)
+        setLoading(false)
+        // Load priorities from localStorage only (not DB)
+        try {
+          const stored = localStorage.getItem('cf_product_priorities')
+          if (stored) setProductPriorities(JSON.parse(stored))
+        } catch { /* ignore */ }
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
+  // Fetch FOY visibility settings + prices
+  useEffect(() => {
+    fetch('/api/stock')
+      .then(r => r.json())
+      .then((data: { items: { id: number; category: string; model_name: string; color_code: string; color_name: string; warehouse_price: string; retail_price: string; stock_qty: string; show_in_booking: boolean }[]; categoryVis: Record<string, boolean>; modelVis: Record<string, boolean> }) => {
+        setFoyCategoryVis(data.categoryVis ?? {})
+        setFoyModelVis(data.modelVis ?? {})
+        setFoyStockItems(data.items ?? [])
+      })
+      .catch(() => {})
+  }, [])
+
+  // Load branchColorGroup from branch_session
   useEffect(() => {
     try {
-      const s = localStorage.getItem('branch_session')
-      if (s) {
-        const parsed: SessionInfo = JSON.parse(s)
-        if (!parsed.is_admin) { window.location.replace('/booking2'); return }
-        setSession(parsed)
+      const bs = localStorage.getItem('branch_session')
+      if (bs) {
+        const s = JSON.parse(bs)
+        if (s?.branch_id) {
+          fetch('/api/branches')
+            .then(r => r.json())
+            .then((branches: { id: number; color_group: string | null }[]) => {
+              const b = branches.find(br => br.id === s.branch_id)
+              if (b?.color_group) setBranchColorGroup(b.color_group as 'orange' | 'yellow' | 'red')
+            })
+            .catch(() => {})
+        }
       }
     } catch { /* ignore */ }
   }, [])
 
-  const handleLogout = () => {
-    localStorage.removeItem('branch_session')
-    router.replace('/branches')
-  }
+  // Load persisted source/vehicle from localStorage (new order only; edit mode uses order values)
+  useEffect(() => {
+    if (editOrderNo) return
+    try {
+      const st = localStorage.getItem('cf_source_type')
+      const vt = localStorage.getItem('cf_vehicle_type')
+      if (st) setSourceType(st as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
+      if (vt) setVehicleType(vt)
+    } catch { /* ignore */ }
+  }, [editOrderNo])
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true)
-    const res  = await fetch('/api/catalog')
-    const data = await res.json() as CatalogProduct[]
-    setProducts(data)
-    setLoading(false)
+  // Persist source/vehicle to localStorage whenever they change
+  useEffect(() => { if (sourceType)  try { localStorage.setItem('cf_source_type',  sourceType)  } catch { /* ignore */ } }, [sourceType])
+  useEffect(() => { if (vehicleType) try { localStorage.setItem('cf_vehicle_type', vehicleType) } catch { /* ignore */ } }, [vehicleType])
+
+  // Auto-reset vehicle if total drops below 25,000
+  useEffect(() => {
+    if (vehicleType !== 'จองรถ60000') return
+    let total = 0
+    if (manualTotal !== '') {
+      total = parseFloat(manualTotal) || 0
+    } else {
+      for (const [idStr, qty] of Object.entries(pending)) {
+        const p = products.find(p => p.id === Number(idStr))
+        if (!p || qty <= 0) continue
+        total += (parseFloat(p.price ?? '0') || 0) * qty
+      }
+    }
+    if (total < 25000) setVehicleType('')
+  }, [pending, manualTotal, vehicleType, products])
+
+  // Auto-force เบิกของ + รถ ตามเงื่อนไขยอด
+  useEffect(() => {
+    if (!products.length) return
+    const BOX_GROUPS = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
+    let bt = 0, otherTotal = 0
+    let hasOther = false
+    for (const p of products) {
+      const qty = pending[p.id] ?? 0
+      const price = parseFloat(p.price ?? '0') || 0
+      const val = qty * price
+      if (BOX_GROUPS.has(p.group_name)) bt += val
+      else { otherTotal += val; if (qty > 0) hasOther = true }
+    }
+    const foyAmt = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
+    if (foyAmt > 0) hasOther = true
+    const total = bt + otherTotal + foyAmt
+
+    // ตรวจบับเบิลล้วน + ยอดเงิน
+    let hasBubble = false, hasNonBubble = false, bubbleAmt = 0
+    for (const p of products) {
+      const qty = pending[p.id] ?? 0
+      const price = parseFloat(p.price ?? '0') || 0
+      if (BUBBLE_GROUPS_SET.has(p.group_name)) {
+        if (qty > 0) { hasBubble = true; bubbleAmt += qty * price }
+      } else if (qty > 0) hasNonBubble = true
+    }
+    if (foyAmt > 0) hasNonBubble = true
+
+    if (hasBubble && !hasNonBubble && bubbleAmt >= 15000) {
+      // บับเบิลล้วน ยอดเกิน 15k → auto-force โรงBB + โรงBBส่งตรง
+      const bbWT = withdrawalTypes.find(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
+      if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
+      if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
+      const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
+      if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
+    } else if (hasBubble && !hasNonBubble && bubbleAmt > 0) {
+      // บับเบิลล้วน ยอดต่ำกว่า 15k — reset ค่าที่ไม่อนุญาต
+      const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+      if (curWT?.name.includes('โรงกล่อง')) setWithdrawalTypeId(null)
+      if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
+    } else if (hasOther && total >= 25000) {
+      setSourceType('โกดัง')
+      setVehicleType('จองรถ60000')
+    } else if (!hasOther && bt >= 20000) {
+      // กล่องล้วน ยอดเกิน 20k → auto-force โรงกล่อง + โรงกล่องส่งตรง
+      const boxWT = withdrawalTypes.find(w => w.name.includes('โรงกล่อง'))
+      if (boxWT && withdrawalTypeId !== boxWT.id) setWithdrawalTypeId(boxWT.id)
+      if (sourceType !== 'โรงกล่อง') setSourceType('โรงกล่อง')
+      const boxDelivery = deliveryMethods.find(d => d.name.includes('กล่องส่งตรง'))
+      if (boxDelivery && vehicleType !== boxDelivery.name) setVehicleType(boxDelivery.name)
+    } else if (!hasOther && bt > 0 && bt < 20000) {
+      // กล่องล้วน ยอดต่ำกว่า 20k — reset ค่าที่ไม่อนุญาต
+      const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+      if (curWT?.name.includes('BB')) setWithdrawalTypeId(null)
+      if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
+    } else if (hasOther) {
+      // มิกซ์ แต่ยอด < 25,000 — reset ตัวเลือกที่ไม่รองรับในโหมดมิกซ์
+      if (sourceType === 'โรงกล่อง' || sourceType === 'โรงบับเบิล') setSourceType('')
+      if (vehicleType === 'จองรถ60000' || vehicleType === 'รถโรงงาน') setVehicleType('')
+    }
+  }, [pending, foyPending, products, sourceType, vehicleType, withdrawalTypes, deliveryMethods, withdrawalTypeId])
+
+  // Extract inch number from a product name, e.g. "กระบอก 3 นิ้ว" → "3", "ฝาปิด 1.5"" → "1.5"
+  const extractInch = useCallback((name: string): string | null => {
+    const m = name.match(/(\d+(?:\.\d+)?)\s*(?:นิ้ว|")/)
+    return m ? m[1] : null
   }, [])
 
-  useEffect(() => { fetchProducts() }, [fetchProducts])
+  // Assign cap qtys based on cylinder qtys (2 caps per cylinder, matched by inch size)
+  const applyAutoCap = useCallback((
+    next: Record<number, number>,
+    cylinders: CatalogProduct[],
+    caps: CatalogProduct[],
+  ) => {
+    // Sum cylinder qty per inch size
+    const cylByInch: Record<string, number> = {}
+    cylinders.forEach(p => {
+      const inch = extractInch(p.product_name)
+      if (inch) cylByInch[inch] = (cylByInch[inch] ?? 0) + (next[p.id] ?? 0)
+    })
 
-  // Filter and group
-  const visibleProducts = products.filter(p =>
-    p.show_in_booking !== false && !FOY_HIDDEN.has(p.group_name)
-  )
-
-  const grouped: Record<string, CatalogProduct[]> = {}
-  for (const p of visibleProducts) {
-    if (!grouped[p.group_name]) grouped[p.group_name] = []
-    grouped[p.group_name].push(p)
-  }
-
-  const totalAmount = visibleProducts.reduce((sum, p) => {
-    const qty   = quantities[p.id] ?? 0
-    const price = parseFloat(p.price ?? '0') || 0
-    return sum + qty * price
-  }, 0)
-
-  async function handleSave() {
-    const nonZero: Record<number, number> = {}
-    for (const [id, qty] of Object.entries(quantities)) {
-      if (qty > 0) nonZero[Number(id)] = qty
-    }
-    if (Object.keys(nonZero).length === 0) {
-      alert('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ')
+    // If regex matched nothing (no inch in names), fall back to positional match
+    const hasInchData = Object.keys(cylByInch).length > 0
+    if (!hasInchData) {
+      // Sort both arrays by product_name for stable positional matching
+      const sortedCyls = [...cylinders].sort((a, b) => a.product_name.localeCompare(b.product_name))
+      const sortedCaps = [...caps].sort((a, b) => a.product_name.localeCompare(b.product_name))
+      sortedCaps.forEach((cap, i) => {
+        const cyl = sortedCyls[i]
+        const capQty = cyl ? (next[cyl.id] ?? 0) * 2 : 0
+        if (capQty > 0) next[cap.id] = capQty; else delete next[cap.id]
+      })
       return
     }
+
+    caps.forEach(p => {
+      const inch = extractInch(p.product_name)
+      const cylSum = inch ? (cylByInch[inch] ?? 0) : 0
+      const capQty = cylSum * 2
+      if (capQty > 0) next[p.id] = capQty; else delete next[p.id]
+    })
+  }, [extractInch])
+
+  const handleQtyChange = useCallback((id: number, val: string) => {
+    const qty = parseInt(val, 10) || 0
+    setPending(prev => {
+      const next: Record<number, number> = qty > 0 ? { ...prev, [id]: qty } : (() => { const n = { ...prev }; delete n[id]; return n })()
+      // Auto-add ฝาปิดกระบอก 2 ฝาต่อ 1 กระบอก เมื่อ qty ของกระบอกเปลี่ยน
+      if (autoCapEnabled) {
+        const changedProd = products.find(p => p.id === id)
+        if (changedProd?.subgroup_name === 'กระบอก') {
+          const cylinders = products.filter(p => p.subgroup_name === 'กระบอก')
+          const caps      = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
+          applyAutoCap(next, cylinders, caps)
+        }
+      }
+      if (!editOrderNo) saveDraft(next)
+      return next
+    })
+  }, [editOrderNo, autoCapEnabled, products, applyAutoCap])
+
+  // ── ปุ่ม "ไม่เอาฝา" / "เพิ่มฝาอัตโนมัติ" ──────────────────────────────────
+  const clearCaps = useCallback(() => {
+    const caps = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
+    setAutoCapEnabled(false)
+    setPending(prev => {
+      const next = { ...prev }
+      caps.forEach(p => delete next[p.id])
+      if (!editOrderNo) saveDraft(next)
+      return next
+    })
+  }, [products, editOrderNo])
+
+  const enableAutoCap = useCallback(() => {
+    setAutoCapEnabled(true)
+    const cylinders = products.filter(p => p.subgroup_name === 'กระบอก')
+    const caps      = products.filter(p => p.subgroup_name === 'ฝาปิดกระบอก')
+    setPending(prev => {
+      const next = { ...prev }
+      applyAutoCap(next, cylinders, caps)
+      if (!editOrderNo) saveDraft(next)
+      return next
+    })
+  }, [products, editOrderNo, applyAutoCap])
+
+  // ── Qty popup (auto-focus + confirm) ─────────────────────────────────────
+  useEffect(() => {
+    if (qtyPopup) {
+      setPopupVal(String(pending[qtyPopup.id] || ''))
+      const t = setTimeout(() => {
+        popupInputRef.current?.focus()
+        popupInputRef.current?.select()
+      }, 40)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qtyPopup?.id])
+
+  const confirmPopup = useCallback(() => {
+    if (!qtyPopup) return
+    handleQtyChange(qtyPopup.id, popupVal)
+    setResetKey(k => k + 1)
+    setQtyPopup(null)
+  }, [qtyPopup, popupVal, handleQtyChange])
+
+  const pendingCount = Object.values(pending).filter(q => q > 0).length
+  const hasFoyPending = Object.keys(foyPending).length > 0
+
+  // Priority counts
+  const priorityCounts: Record<PriorityLevel, number> = { critical: 0, important: 0 }
+  for (const pv of Object.values(productPriorities)) {
+    if (pv) priorityCounts[pv]++
+  }
+  const PRIORITY_LIMITS: Record<PriorityLevel, number> = { critical: 5, important: 10 }
+
+  const handlePriorityClick = (productId: number) => {
+    if (!priorityMode) return
+    const current = productPriorities[productId] ?? null
+    let next: PriorityLevel | null
+    if (current === priorityMode) {
+      next = null
+    } else {
+      if (priorityCounts[priorityMode] >= PRIORITY_LIMITS[priorityMode]) {
+        return  // limit reached
+      }
+      next = priorityMode
+    }
+    setProductPriorities(prev => {
+      const updated = { ...prev, [productId]: next }
+      // Persist in localStorage
+      try { localStorage.setItem('cf_product_priorities', JSON.stringify(updated)) } catch { /* ignore */ }
+      return updated
+    })
+  }
+
+  // Clear all product priorities after a successful booking
+  const clearAllPriorities = () => {
+    setProductPriorities({})
+    setPriorityMode(null)
+    try { localStorage.removeItem('cf_product_priorities') } catch { /* ignore */ }
+  }
+
+  const handleSave = async () => {
+    if (!pendingCount && !hasFoyPending && !editOrderNo) return
     setSaving(true)
+    setSaveMsg(null)
     try {
+      const productMap = new Map(products.map(p => [p.id, p]))
+      const quantities: Record<number, number> = {}
+      let computedTotal = 0
+      for (const [idStr, qty] of Object.entries(pending)) {
+        const id = Number(idStr)
+        const p = productMap.get(id)
+        if (!p || qty <= 0) continue
+        quantities[id] = qty
+        const price = parseFloat(p.price ?? '0') || 0
+        computedTotal += price * qty
+      }
+      if (editOrderNo) {
+        // ── Edit existing order ───────────────────────────────────────────────
+        const res = await fetch('/api/po', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order_no: editOrderNo, total_amount: effectiveTotal, quantities,
+            supplier: supplier || null, notes: notes || null,
+            foy_quantities: foyPending, foy_item_quantities: foyItemPending,
+            priorities: productPriorities,
+            nv_total: noVatColTotal > 0 ? noVatColTotal : null,
+            v_total:  vatColTotal  > 0 ? vatColTotal  : null,
+          }),
+        })
+        if (!res.ok) throw new Error()
+        setPending({})
+        setFoyPending({})
+        setFoyItemPending({})
+        setResetKey(k => k + 1)
+        localStorage.removeItem('cf_foy_result')
+        localStorage.removeItem('cf_foy_items')
+        localStorage.removeItem('cf_foy_priorities')
+        setSaveMsg(`อัพเดทใบPO ${editOrderNo} สำเร็จ`)
+        clearAllPriorities()
+      } else {
+        // ── Create new order ──────────────────────────────────────────────────
+        let branchId: number | null = null
+        try {
+          const bs = localStorage.getItem('branch_session')
+          if (bs) branchId = JSON.parse(bs)?.branch_id ?? null
+        } catch { /* ignore */ }
+        const res = await fetch('/api/po', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            total_amount: effectiveTotal, quantities, supplier: supplier || null, notes: notes || null,
+            foy_quantities: foyPending, foy_item_quantities: foyItemPending,
+            priorities: productPriorities,
+            nv_total: noVatColTotal > 0 ? noVatColTotal : null,
+            v_total:  vatColTotal  > 0 ? vatColTotal  : null,
+          }),
+        })
+        if (!res.ok) throw new Error()
+        setPending({})
+        setFoyPending({})
+        setFoyItemPending({})
+        setResetKey(k => k + 1)
+        localStorage.removeItem(DRAFT_KEY)
+        localStorage.removeItem('cf_foy_result')
+        localStorage.removeItem('cf_foy_items')
+        localStorage.removeItem('cf_foy_priorities')
+        const totalItems = pendingCount + Object.keys(foyPending).length
+        setSaveMsg(`บันทึกสำเร็จ ${totalItems} รายการ`)
+        clearAllPriorities()
+      }
+    } catch {
+      setSaveMsg('เกิดข้อผิดพลาด กรุณาลองใหม่')
+    } finally {
+      setSaving(false)
+      setTimeout(() => setSaveMsg(null), 3000)
+    }
+  }
+
+  // ── Cancel order ──────────────────────────────────────────────────────────
+
+  const handleCancelOrder = async () => {
+    if (!editOrderNo) return
+    if (!confirm(`ยืนยันยกเลิกใบPO ${editOrderNo} ?`)) return
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      // PO ไม่หักสต็อค → ไม่ต้องคืน; แค่อัพเดทสถานะ
       const res = await fetch('/api/po', {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          supplier: supplier.trim() || null,
-          notes:    notes.trim() || null,
-          total_amount: totalAmount,
-          quantities: nonZero,
+          order_no: editOrderNo,
+          status: 'cancelled',
         }),
       })
-      if (res.ok) {
-        router.push('/restock')
-      } else {
-        alert('เกิดข้อผิดพลาด กรุณาลองใหม่')
-      }
+      if (!res.ok) throw new Error()
+      localStorage.removeItem('cf_foy_result')
+      localStorage.removeItem('cf_foy_items')
+      setSaveMsg(`ยกเลิกใบPO ${editOrderNo} สำเร็จ`)
+      setTimeout(() => { window.location.href = '/restock' }, 1500)
+    } catch {
+      setSaveMsg('เกิดข้อผิดพลาด กรุณาลองใหม่')
     } finally {
       setSaving(false)
     }
   }
 
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  // ราคากระดาษฝอยต่อรุ่น ตาม color group ของสาขา
+  const getFoyModelPrice = (category: string, modelName: string): number => {
+    const fi = foyStockItems.find(it => it.category === category && it.model_name === modelName)
+    if (!fi) return 0
+    const wp = parseFloat(fi.warehouse_price) || 0
+    if (branchColorGroup === 'yellow') return Math.round(wp * 1.09 * 100) / 100
+    if (branchColorGroup === 'red')    return Math.round(wp * 1.09 * 1.07 * 100) / 100
+    return wp  // orange or null → warehouse_price
+  }
+
+  // สต็อครวมต่อรุ่น (ผลรวมทุกสี)
+  const getFoyModelStock = (category: string, modelName: string): number =>
+    foyStockItems
+      .filter(it => it.category === category && it.model_name === modelName)
+      .reduce((s, it) => s + (parseInt(it.stock_qty) || 0), 0)
+
+  // ราคาโกดัง (ไม่ปรับตาม color group) สำหรับคำนวณมูลค่าสต็อค
+  const getFoyModelWp = (category: string, modelName: string): number => {
+    const fi = foyStockItems.find(it => it.category === category && it.model_name === modelName)
+    return fi ? (parseFloat(fi.warehouse_price) || 0) : 0
+  }
+
+  // มูลค่าสต็อครวมทั้งหมด (สำหรับพิมพ์สต็อค) — catalog products + FOY
+  const stockPrintTotal = (() => {
+    let total = 0
+    // Catalog products
+    for (const p of products) {
+      const stockQty = parseFloat(p.stock_qty ?? '0') || 0
+      const price    = parseFloat(p.price ?? '0') || 0
+      total += stockQty * price
+    }
+    // FOY models
+    const seen = new Set<string>()
+    for (const it of foyStockItems) {
+      if (foyCategoryVis[it.category] === false) continue
+      if (foyModelVis[it.model_name] === false) continue
+      const key = `${it.category}|${it.model_name}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        total += getFoyModelStock(it.category, it.model_name) * (parseFloat(it.warehouse_price) || 0)
+      }
+    }
+    return total
+  })()
+
+  const handleStockPrint = () => {
+    flushSync(() => setStockPrintMode(true))
+    window.print()
+    setStockPrintMode(false)
+  }
+
+  const handleCompactPrint = () => {
+    flushSync(() => setCompactPrintMode(true))
+    document.documentElement.classList.add('compact-mode')
+    window.print()
+    document.documentElement.classList.remove('compact-mode')
+    setCompactPrintMode(false)
+  }
+
+  const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
+
+  // Pre-scan: ตรวจว่าเป็นบับเบิลล้วน ≥ 15k หรือไม่ (ใช้ก่อน totals loop)
+  // ถ้าใช่ → bubble switchable (โนแวตได้) | ถ้าไม่ใช่ → bubble ล็อคฝั่งแวต
+  let _bbAmt = 0, _hasBB = false, _hasNonBB = false
+  for (const sec of sections) {
+    for (const row of sec.rows) {
+      if (row.type !== 'product') continue
+      const _qty = pending[row.product.id] ?? 0
+      if (BUBBLE_GROUPS_SET.has(row.product.group_name)) {
+        if (_qty > 0) { _hasBB = true; _bbAmt += _qty * (parseFloat(row.product.price ?? '0') || 0) }
+      } else if (_qty > 0) _hasNonBB = true
+    }
+  }
+  if (Object.values(foyPending).some(d => d.amount > 0)) _hasNonBB = true
+  const canBubbleNoVat = _hasBB && !_hasNonBB && _bbAmt >= 15000
+
+  // Precompute print gray index for each subgroup (cycles through 0→1→2)
+  const subgroupPrintGray = new Map<string, number>()
+  let grayCounter = 0
+  for (const sec of sections) {
+    for (const row of sec.rows) {
+      if (row.type === 'subgroup' && !FOY_SUBGROUP_NAMES.has(row.name)) {
+        const key = `${sec.order}-${row.name}`
+        if (!subgroupPrintGray.has(key)) {
+          subgroupPrintGray.set(key, grayCounter % 3)
+          grayCounter++
+        }
+      }
+    }
+  }
+
+  const lastSec     = sections[sections.length - 1]
+  const lastSecRows = lastSec?.rows.length ?? 0
+  const maxRows     = sections.length
+    ? Math.max(...sections.map(s => s.rows.length), lastSecRows + INFO_PANEL_ROWS)
+    : 0
+  const panelStart  = Math.max(lastSecRows, maxRows - INFO_PANEL_ROWS)
+
+  // Compact print: precompute which subgroup/foy_cat rows have active items per section
+  const compactActiveSubgroups: Set<number>[] = sections.map(sec => {
+    const active = new Set<number>()
+    let sgIdx = -1; let hasActive = false
+    sec.rows.forEach((row, idx) => {
+      if (row.type === 'subgroup') {
+        if (sgIdx >= 0 && hasActive) active.add(sgIdx)
+        sgIdx = idx; hasActive = false
+      } else if (row.type === 'product' && (pending[row.product.id] ?? 0) > 0) { hasActive = true }
+        else if (row.type === 'foy_item' && row.qty > 0) { hasActive = true }
+    })
+    if (sgIdx >= 0 && hasActive) active.add(sgIdx)
+    return active
+  })
+  const compactActiveFoyCats: Set<number>[] = sections.map(sec => {
+    const active = new Set<number>()
+    let catIdx = -1; let hasActive = false
+    sec.rows.forEach((row, idx) => {
+      if (row.type === 'foy_cat') {
+        if (catIdx >= 0 && hasActive) active.add(catIdx)
+        catIdx = idx; hasActive = false
+      } else if (row.type === 'foy_item' && row.qty > 0) { hasActive = true }
+    })
+    if (catIdx >= 0 && hasActive) active.add(catIdx)
+    return active
+  })
+
+  let grayTotal = 0, orangeTotal = 0
+  let switchableProductTotal = 0   // excl-VAT switchable (ซองใสปะหน้า ฯลฯ)
+  let switchableBubbleTotal  = 0   // incl-VAT switchable (บับเบิล ฯลฯ) — ต้อง ÷1.07 เมื่อโนแวต
+  const sectionTotals  = new Map<number, number>()
+  const subgroupTotals = new Map<string, number>()   // key = `${sec.order}-${subgroup.name}`
+  for (const sec of sections) {
+    let secTotal = 0
+    let currentSubgroup: string | null = null
+    for (const row of sec.rows) {
+      if (row.type === 'subgroup') {
+        currentSubgroup = row.name
+      } else if (row.type === 'foy_cat') {
+        // category header — no value
+      } else if (row.type === 'foy_item') {
+        // FOY amount tracked separately in foyTotal; add to subgroupTotals for display
+        if (currentSubgroup !== null) {
+          const sgKey = `${sec.order}-${currentSubgroup}`
+          subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + row.amount)
+        }
+        secTotal += row.amount
+      } else {
+        const qty   = pending[row.product.id] ?? 0
+        const price = parseFloat(row.product.price ?? '0') || 0
+        const val   = price * qty
+        if (sec.is_vat_included) grayTotal += val
+        else orangeTotal += val
+        secTotal += val
+        if (BUBBLE_SWITCHABLE_NAMES.has(currentSubgroup ?? '') && canBubbleNoVat) switchableBubbleTotal += val
+        else if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
+        if (currentSubgroup !== null) {
+          const sgKey = `${sec.order}-${currentSubgroup}`
+          subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + val)
+        }
+      }
+    }
+    sectionTotals.set(sec.order, secTotal)
+  }
+  const foyTotal = Object.values(foyPending).reduce((s, d) => s + d.amount, 0)
+  // excl-VAT switchable + กระดาษฝอย
+  const switchableExclVatTotal = switchableProductTotal + foyTotal
+  // fixed = ส่วนที่ไม่สลับได้ (gray + non-switchable orange)
+  const fixedTotal = grayTotal + orangeTotal - switchableProductTotal - switchableBubbleTotal
+  const couponVal  = parseFloat(couponAmount) || 0
+  // ซ้าย (โนแวต): excl-VAT as-is + incl-VAT ÷1.07 (ถอดแวต)
+  const noVatColTotal = vatMode === 'no-vat'
+    ? switchableExclVatTotal + Math.round(switchableBubbleTotal / 1.07 * 100) / 100
+    : 0
+  // ขวา (รวมแวต): fixed เสมอ + (excl-VAT ×1.07 + incl-VAT as-is) เมื่อ vat mode
+  const vatColTotal = fixedTotal + (vatMode === 'vat'
+    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal
+    : 0)
+  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - couponVal)
+  const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
+
+  const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
+  let boxTotal = 0, hasNonBoxItems = false
+  for (const sec of sections) {
+    for (const row of sec.rows) {
+      if (row.type !== 'product') continue
+      const qty = pending[row.product.id] ?? 0
+      const price = parseFloat(row.product.price ?? '0') || 0
+      if (BOX_GROUPS_RENDER.has(row.product.group_name)) boxTotal += qty * price
+      else if (qty > 0) hasNonBoxItems = true
+    }
+  }
+  if (Object.values(foyPending).some(d => d.amount > 0)) hasNonBoxItems = true
+  const hasMixItems        = hasNonBoxItems  // มีสินค้ามิกซ์ (ไม่ใช่กล่องล้วน)
+  const autoForceFactory   = !hasNonBoxItems && boxTotal >= 20000
+  const autoForceWarehouse = hasNonBoxItems && (grayTotal + orangeTotal + foyTotal) >= 25000
+
+  // ── Bubble unit validation ─────────────────────────────────────────────────
+  let totalBubbleUnits = 0, hasBubbleItems = false, hasNonBubbleInOrder = false, bubbleTotalAmt = 0
+  for (const sec of sections) {
+    for (const row of sec.rows) {
+      if (row.type !== 'product') continue
+      const qty = pending[row.product.id] ?? 0
+      if (BUBBLE_GROUPS_SET.has(row.product.group_name)) {
+        totalBubbleUnits += qty * getBubbleUnits(row.product.product_name)
+        if (qty > 0) {
+          hasBubbleItems = true
+          bubbleTotalAmt += qty * (parseFloat(row.product.price ?? '0') || 0)
+        }
+      } else if (qty > 0) {
+        hasNonBubbleInOrder = true
+      }
+    }
+  }
+  if (foyTotal > 0) hasNonBubbleInOrder = true
+
+  const isBubbleOnly    = hasBubbleItems && !hasNonBubbleInOrder
+  const isBubbleOnlyLow = isBubbleOnly && bubbleTotalAmt > 0 && bubbleTotalAmt < 15000
+  const autoForceBubble = isBubbleOnly && bubbleTotalAmt >= 15000
+  const isBoxOnlyLow    = !hasNonBoxItems && boxTotal > 0 && boxTotal < 20000
+  const isAutoForced    = autoForceFactory || autoForceWarehouse || autoForceBubble
+
+  // กรองตัวเลือกตามเงื่อนไข
+  const allowedWithdrawalTypes = isBubbleOnlyLow
+    ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
+    : isBoxOnlyLow
+      ? withdrawalTypes.filter(w => !w.name.includes('BB'))
+      : withdrawalTypes
+  const allowedDeliveryMethods = (isBubbleOnlyLow || isBoxOnlyLow)
+    ? deliveryMethods.filter(d => !d.name.includes('BBส่งตรง') && !d.name.includes('กล่องส่งตรง'))
+    : deliveryMethods
+
+  let bubbleWarning: string | null = null
+  let bubbleBlocking = false
+  if (hasBubbleItems) {
+    if (hasNonBubbleInOrder) {
+      if (totalBubbleUnits > 20) {
+        const over = totalBubbleUnits - 20
+        bubbleBlocking = true
+        bubbleWarning = `⛔ บับเบิลเกิน (ลด ${over} ลูก 32.5)`
+      }
+    } else {
+      if (totalBubbleUnits < 120) {
+        const need = 120 - totalBubbleUnits
+        bubbleBlocking = true
+        bubbleWarning = `⛔ เทียบเท่า 32.5x100 ขาด ${need} ลูก`
+      } else if (totalBubbleUnits > 128) {
+        const over = totalBubbleUnits - 128
+        bubbleBlocking = true
+        bubbleWarning = `⛔ เทียบเท่า 32.5x100 เกิน ${over} ลูก`
+      }
+    }
+  }
+
+  const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
+  // ── Viewport scale for screen display (fits A4 width in window) ─────────────
+  // NOTE: listen to orientationchange only, NOT resize.
+  // On iOS Safari, pinch-zoom changes window.innerWidth → resize fires → viewScale shrinks
+  // progressively until the document disappears. orientationchange only fires on actual rotation.
+  const [viewScale, setViewScale] = useState(1)
+  useEffect(() => {
+    const calc = () => setViewScale(Math.min(1, (window.innerWidth - 16) / A4_W_PX))
+    calc()
+    // Wait 150 ms after rotation so the viewport has finished resizing
+    const onOrient = () => setTimeout(calc, 150)
+    window.addEventListener('orientationchange', onOrient)
+    return () => window.removeEventListener('orientationchange', onOrient)
+  }, [])
+
+  // ── iOS-safe scaling: measure content height so transform layout collapses ───
+  // CSS zoom interacts badly with iOS Safari pinch-to-zoom (thick borders, distortion).
+  // We use transform:scale instead, but it doesn't shrink layout space — we need ref.
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentNaturalH, setContentNaturalH] = useState(0)
+  useEffect(() => {
+    if (!contentRef.current) return
+    // rAF ensures layout is complete before measuring
+    const id = requestAnimationFrame(() => {
+      if (contentRef.current) setContentNaturalH(contentRef.current.scrollHeight)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [sections, loading, maxRows])
+
+  // Derived: visual height of a4-content after CONTENT_SCALE, + frame padding
+  const scaledFrameH = contentNaturalH > 0
+    ? contentNaturalH * CONTENT_SCALE + A4_PAD_PX * 2
+    : 0
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
-    <div className="min-h-screen bg-green-50 pb-24">
+    <div className="min-h-screen bg-green-50 print:bg-white">
+      <style>{`
+        .foy-print-frame { display: none; }
+        .vat-split-print-frame { display: none; }
+
+        /* Prevent iOS Safari text inflation/reflow during pinch-zoom */
+        html, body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+        @media screen {
+          .a4-content input[type="text"] {
+            font-size: 16px !important;
+            touch-action: manipulation;
+          }
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+          /* Mobile touch devices */
+          .a4-content input[type="text"] {
+            min-height: 28px;
+          }
+        }
+
+        @media print {
+          @page            { margin: 0; }
+          @page landscape-p { size: A4 landscape; }
+          @page portrait-p  { size: A4 portrait;  }
+
+          html, body { margin: 0 !important; padding: 0 !important; }
+          .no-print   { display: none !important; }
+
+          /* A4 frame (page 1 — landscape) */
+          .a4-frame {
+            page: landscape-p;
+            width: 297mm !important;
+            height: 210mm !important;
+            min-height: unset !important;
+            padding: 1mm !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            overflow: hidden !important;
+          }
+
+          /* Scale content to fill A4 width at 1mm padding */
+          .a4-content {
+            zoom: 0.72 !important;
+            height: 1090px !important;
+          }
+          /* Table wrapper: fill full height */
+          .a4-content > div { display: block !important; height: 100% !important; }
+          /* Table itself: stretch rows to fill */
+          .a4-content table { height: 100% !important; }
+
+          /* Grayscale print: filter converts all colors → gray shades */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .a4-frame { filter: grayscale(100%) !important; }
+          /* Data cells → white */
+          .a4-frame td:not(.print-sg) { background-color: white !important; }
+          .a4-frame input { background-color: white !important; }
+          /* All text → black */
+          .a4-frame * { color: black !important; }
+
+          /* Compact print: hide empty rows, shrink table; also hide page 2 */
+          html.compact-mode .compact-hide { display: none !important; }
+          html.compact-mode .a4-frame { height: auto !important; min-height: unset !important; }
+          html.compact-mode .a4-content { height: auto !important; }
+          html.compact-mode .a4-content table { height: auto !important; }
+          html.compact-mode .foy-print-frame { display: none !important; }
+          html.compact-mode .vat-split-print-frame { display: none !important; }
+
+          /* VAT split forms (NV / V) — portrait */
+          .vat-split-print-frame {
+            display: block !important;
+            page: portrait-p;
+            break-before: page;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            padding: 8mm !important;
+            box-sizing: border-box !important;
+            background: white !important;
+            filter: grayscale(100%) !important;
+          }
+          .vat-split-print-frame * { color: black !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .vat-split-print-frame td, .vat-split-print-frame th { background-color: transparent !important; }
+          .vat-split-print-frame .sg-header { background-color: #4e7a5e !important; }
+
+          /* Foy page (page 2 — portrait) */
+          .foy-print-frame {
+            display: block !important;
+            page: portrait-p;
+            break-before: page;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            padding: 6mm !important;
+            box-sizing: border-box !important;
+            background: white !important;
+            filter: grayscale(100%) !important;
+          }
+          .foy-print-frame * { color: black !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          /* Data cells → white; th (headers) keep grayscale color */
+          .foy-print-frame td { background-color: white !important; }
+        }
+      `}</style>
+
       {/* Header */}
-      <header className="bg-[#4e7a5e] text-white px-6 py-3 shadow flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
-          {session && <p className="text-green-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
+      <header className="no-print bg-[#4e7a5e] text-white px-4 py-2 shadow flex flex-col gap-2">
+        {/* Row 1: title + right actions */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Link href="/" className="text-green-200 hover:text-white text-sm transition-colors shrink-0">
+                ← กลับหน้าหลัก
+              </Link>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold leading-tight">
+                {editOrderNo ? `แก้ไขใบPO — ${editOrderNo}` : 'ใบPO'}
+              </h1>
+              <p className="text-green-200 text-xs mt-0.5 hidden sm:block">
+                {editOrderNo ? 'แก้ไขรายการแล้วกดบันทึกเพื่ออัพเดท' : 'สร้างใบสั่งซื้อ · Auto-save ใน browser'}
+              </p>
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <Link href="/restock"
+              className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
+              📋 <span className="text-xs">ประวัติใบPO</span>
+            </Link>
+
+
+          </div>
         </div>
-        {session && (
-          <button onClick={handleLogout}
-            className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors whitespace-nowrap">
-            ออกจากระบบ
-          </button>
-        )}
+
+        {/* Row 2: priority buttons + save/cancel actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* ── Priority mode buttons ── */}
+          <div className="flex items-center gap-1.5 no-print">
+            {([
+              { mode: 'critical' as PriorityLevel, label: 'สำคัญสุดๆ', sub: 'ไม่ครบไม่ต้องออกรถ',      limit: 5,        bg: 'bg-red-600',   ring: 'ring-red-300' },
+              { mode: 'important' as PriorityLevel, label: 'สำคัญ',    sub: 'ของครบ/จำนวนไม่ต้องครบ', limit: 10,       bg: 'bg-blue-600',  ring: 'ring-blue-300' },
+            ]).map(({ mode, label, sub, limit, bg, ring }) => {
+              const count = priorityCounts[mode]
+              const isActive = priorityMode === mode
+              const atLimit = count >= limit
+              return (
+                <button
+                  key={mode}
+                  onClick={() => setPriorityMode(isActive ? null : mode)}
+                  className={`px-2 py-1 text-xs rounded font-semibold transition-all border ${bg} text-white ${isActive ? `ring-2 ${ring} shadow-lg scale-105` : 'opacity-75 hover:opacity-100'} ${atLimit && !isActive ? 'opacity-50' : ''}`}
+                >
+                  <div>{label} {count}/{limit}</div>
+                  <div className="text-[9px] font-normal opacity-80 leading-tight">{sub}</div>
+                </button>
+              )
+            })}
+            {priorityMode && (
+              <span className="text-yellow-300 text-xs font-semibold animate-pulse">← คลิกสินค้า</span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {saveMsg && (
+              <span className={`text-sm px-3 py-1 rounded-full text-white ${saveMsg.includes('สำเร็จ') ? 'bg-green-500' : 'bg-red-500'}`}>
+                {saveMsg}
+              </span>
+            )}
+            {/* ── New order: show save when has items ── */}
+            {!editOrderNo && (pendingCount > 0 || hasFoyPending) && (
+              <>
+                {pendingCount > 0 && (
+                  <>
+                    <span className="text-yellow-300 text-sm">✎ แก้ไขค้างอยู่ {pendingCount} รายการ</span>
+                    <button
+                      onClick={() => { setPending({}); localStorage.removeItem(DRAFT_KEY) }}
+                      className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors"
+                    >
+                      ยกเลิก
+                    </button>
+                  </>
+                )}
+                {hasFoyPending && pendingCount === 0 && (
+                  <span className="text-teal-300 text-sm">📦 กระดาษฝอย {Object.keys(foyPending).length} รุ่น พร้อมจอง</span>
+                )}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || bubbleBlocking}
+                  className="px-4 py-1.5 text-sm rounded bg-[#d4edda] hover:bg-[#c3e6cb] text-[#2e7d32] font-semibold transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'กำลังบันทึก...' : '💾 บันทึกใบPO'}
+                </button>
+                {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+              </>
+            )}
+
+            {/* ── Edit mode: save always visible + cancel order when empty ── */}
+            {editOrderNo && (
+              <>
+                {pendingCount > 0 && (
+                  <span className="text-yellow-300 text-sm">✎ แก้ไขค้างอยู่ {pendingCount} รายการ</span>
+                )}
+                {hasFoyPending && pendingCount === 0 && (
+                  <span className="text-teal-300 text-sm">📦 กระดาษฝอย {Object.keys(foyPending).length} รุ่น</span>
+                )}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || bubbleBlocking}
+                  className="px-4 py-1.5 text-sm rounded bg-[#d4edda] hover:bg-[#c3e6cb] text-[#2e7d32] font-semibold transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'กำลังบันทึก...' : '💾 อัพเดทใบPO'}
+                </button>
+                {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+                {pendingCount === 0 && !hasFoyPending && (
+                  <button
+                    onClick={handleCancelOrder}
+                    disabled={saving}
+                    className="px-4 py-1.5 text-sm rounded bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'กำลังดำเนินการ...' : '🗑️ ยกเลิกใบPO'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </header>
 
-      {/* Tab bar */}
-      <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
-        <Link href="/"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          📦 สต็อคสินค้า
-        </Link>
-        <Link href="/stock"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอย
-        </Link>
-        <Link href="/branches"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🏪 สาขาและตัวแทน
-        </Link>
-        <Link href="/delivery"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🚚 จัดส่ง
-        </Link>
-        <Link href="/withdrawal"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          📤 เบิกของ
-        </Link>
-        <Link href="/restock"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          📥 ใบPO
-        </Link>
-        <Link href="/foy-line"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌀 ไลน์ผลิตกระดาษฝอย
-        </Link>
-      </div>
+      {/* Main — transform:scale fits A4 to screen (iOS-safe; zoom causes thick borders on Safari) */}
+      <main>
+        <div className="py-3 px-2 flex justify-center">
 
-      <div className="max-w-3xl mx-auto px-4 py-4">
-        <h2 className="text-base font-bold text-gray-700 mb-3">สร้างใบPO</h2>
+          {loading ? (
+            <div className="flex items-center justify-center h-40 text-gray-400 w-screen">กำลังโหลดข้อมูล...</div>
+          ) : (
+            <><div style={viewScale < 1 ? {
+                transform: `scale(${viewScale})`,
+                transformOrigin: 'top left',
+                marginRight: `${-A4_W_PX * (1 - viewScale)}px`,
+                ...(scaledFrameH > 0 ? { marginBottom: `${-(scaledFrameH * (1 - viewScale))}px` } : {}),
+              } : undefined}>
+            <div className="a4-frame bg-white shadow-xl"
+              style={{ width: '297mm', minHeight: '210mm', padding: '8mm', boxSizing: 'border-box' }}>
+              <div
+                ref={contentRef}
+                className="a4-content"
+                style={{
+                  transform: `scale(${CONTENT_SCALE})`,
+                  transformOrigin: 'top left',
+                  width: TABLE_W,
+                  marginRight: `${-TABLE_W * (1 - CONTENT_SCALE)}px`,
+                  ...(contentNaturalH > 0 ? { marginBottom: `${-(contentNaturalH * (1 - CONTENT_SCALE))}px` } : {}),
+                }}>
 
-        {/* Info row */}
-        <div className="bg-white rounded-lg shadow border border-green-100 p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">ซัพพลายเออร์</label>
-            <input
-              value={supplier}
-              onChange={e => setSupplier(e.target.value)}
-              placeholder="ชื่อซัพพลายเออร์..."
-              className="w-full text-sm border border-green-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-400"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">หมายเหตุ</label>
-            <input
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="หมายเหตุ..."
-              className="w-full text-sm border border-green-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-400"
-            />
-          </div>
-        </div>
+              {/* Table */}
+              <div className="inline-block rounded shadow overflow-hidden border border-gray-400">
+                <table
+                  className="text-[13px] leading-[1.35] border-collapse"
+                  style={{ tableLayout: 'fixed', width: TABLE_W }}
+                >
+                  <colgroup>
+                    <col style={{ width: ROW_NUM_W }} />
+                    {sections.flatMap(sec => [
+                      <col key={`${sec.order}-cn`} style={{ width: COL_NAME }} />,
+                      <col key={`${sec.order}-cp`} style={{ width: COL_PRICE }} />,
+                      <col key={`${sec.order}-cq`} style={{ width: COL_QTY }} />,
+                      <col key={`${sec.order}-ct`} style={{ width: COL_TOTAL }} />,
+                    ])}
+                  </colgroup>
 
-        {/* Product table */}
-        {loading ? (
-          <div className="text-center py-12 text-gray-400">กำลังโหลด...</div>
-        ) : (
-          <div className="bg-white rounded-lg shadow border border-green-100 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-[#6b7d6b] text-white">
-                <tr>
-                  <th className="text-left py-2 px-3 font-medium">สินค้า</th>
-                  <th className="text-right py-2 px-3 font-medium w-28">ราคา/ชิ้น</th>
-                  <th className="text-right py-2 px-3 font-medium w-24">จำนวน</th>
-                  <th className="text-right py-2 px-3 font-medium w-28">รวม</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(grouped).map(([group, prods]) => (
-                  <Fragment key={group}>
-                    <tr className="bg-[#6b7d6b] text-white">
-                      <td colSpan={4} className="py-1.5 px-3 text-xs font-semibold">{group}</td>
-                    </tr>
-                    {prods.map(p => {
-                      const qty   = quantities[p.id] ?? 0
-                      const price = parseFloat(p.price ?? '0') || 0
+                  {/* Body */}
+                  <tbody>
+                    {Array.from({ length: maxRows }, (_, rowIdx) => {
+                      const rowHasOrder = rowIdx >= panelStart
+                        ? true  // info panel rows always visible
+                        : sections.some((sec, si) => {
+                          const cell = sec.rows[rowIdx]
+                          if (!cell) return false
+                          if (cell.type === 'subgroup') return compactPrintMode ? compactActiveSubgroups[si].has(rowIdx) : true
+                          if (cell.type === 'foy_cat') return compactPrintMode ? compactActiveFoyCats[si].has(rowIdx) : true
+                          if (cell.type === 'foy_item') return stockPrintMode ? getFoyModelStock(cell.category, cell.model_name) > 0 : cell.qty > 0
+                          if (cell.type === 'product') return stockPrintMode ? (parseFloat(cell.product.stock_qty ?? '0') || 0) > 0 : (pending[cell.product.id] ?? 0) > 0
+                          return false
+                        })
                       return (
-                        <tr key={p.id} className="border-b border-gray-100 hover:bg-green-50">
-                          <td className="py-2 px-3 text-gray-800">{p.product_name}</td>
-                          <td className="py-2 px-3 text-right text-gray-500">{price > 0 ? fmt(price) : '-'}</td>
-                          <td className="py-2 px-3 text-right">
-                            <input
-                              type="number"
-                              min={0}
-                              value={qty === 0 ? '' : qty}
-                              onChange={e => {
-                                const v = parseInt(e.target.value) || 0
-                                setQuantities(prev => ({ ...prev, [p.id]: v }))
-                              }}
-                              className="w-20 text-right text-sm border border-green-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-green-400"
-                              placeholder="0"
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-right font-medium text-gray-700">
-                            {qty > 0 ? fmt(qty * price) : '-'}
-                          </td>
-                        </tr>
+                      <tr key={rowIdx} className={`hover:bg-green-50/30 transition-colors${!rowHasOrder ? ' compact-hide' : ''}`}>
+                        <td className="border border-gray-300 text-center text-[9px] text-gray-400 py-0.5 select-none">
+                          {rowIdx + 1}
+                        </td>
+
+                        {sections.flatMap((sec, si) => {
+                          // ── Info panel in last section's bottom rows ────────
+                          if (si === sections.length - 1 && rowIdx >= panelStart) {
+                            const pr = rowIdx - panelStart
+                            const base = 'border border-gray-300'
+                            // pr 0-2: ผู้ส่ง | ผู้รับ — rowSpan=3
+                            if (pr === 0) return stockPrintMode ? [
+                              <td key={`${si}-ip0`} colSpan={4} rowSpan={3} className={`${base} bg-gray-50`} />,
+                            ] : [
+                              <td key={`${si}-ip0`} colSpan={4} rowSpan={3} className={`${base} p-1 align-top`}>
+                                <div className="flex h-full">
+                                  <div className="flex-1 border-r border-gray-300 pr-1">
+                                    <div className="text-[11px] font-extrabold text-gray-500 mb-0.5">ผู้ส่งสินค้า</div>
+                                  </div>
+                                  <div className="flex-1 pl-1">
+                                    <div className="text-[11px] font-extrabold text-gray-500 mb-0.5">ผู้รับสินค้า</div>
+                                  </div>
+                                </div>
+                              </td>,
+                            ]
+                            if (pr === 1 || pr === 2) return []
+
+                            // pr 3-4: คูปองส่วนลด — rowSpan=2, light red
+                            if (pr === 3) return [
+                              <td key={`${si}-ipc`} colSpan={4} rowSpan={2} className={`${base} p-1 bg-green-100 align-middle`}>
+                                <div className="flex flex-col items-center justify-center h-full gap-0 px-1">
+                                  <div className="text-[10px] font-extrabold text-green-700 self-start whitespace-nowrap leading-none mb-0.5">คูปองส่วนลด (฿)</div>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={couponAmount}
+                                    onChange={e => { setCouponAmount(e.target.value); setManualTotal('') }}
+                                    placeholder="0"
+                                    className="w-full text-xl font-extrabold text-green-700 text-right bg-transparent focus:outline-none border-b-2 border-green-300 focus:border-green-500 placeholder-green-300 leading-none"
+                                  />
+                                </div>
+                              </td>,
+                            ]
+                            if (pr === 4) return []
+
+                            // pr 5-6: ยอดรวม — rowSpan=2, split no-VAT (left) + VAT (right)
+                            if (pr === 5) {
+                              if (stockPrintMode) return [
+                                <td key={`${si}-ip4`} colSpan={4} rowSpan={2} className={`${base} p-0 bg-blue-50 align-middle`}>
+                                  <div className="flex flex-col items-center justify-center h-full px-1 py-0.5">
+                                    <div className="text-[8px] font-semibold text-blue-400 self-start">มูลค่าสต็อค (฿)</div>
+                                    <div className="w-full text-xl font-bold text-blue-500 text-right">{fmt2(stockPrintTotal)}</div>
+                                  </div>
+                                </td>,
+                              ]
+                              return [
+                                // left: no-VAT
+                                <td key={`${si}-ip4a`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'no-vat' ? 'bg-[#f0fdf4]' : 'bg-gray-50'} align-middle`}>
+                                  <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                    <div className="no-print self-start">
+                                      <button
+                                        onClick={() => setVatMode('no-vat')}
+                                        className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'no-vat' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
+                                        โนแวต
+                                      </button>
+                                    </div>
+                                    <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
+                                    <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-green-600' : 'text-gray-400'}`}>
+                                      {noVatColTotal > 0 ? fmt2(noVatColTotal) : ''}
+                                    </div>
+                                  </div>
+                                </td>,
+                                // right: VAT
+                                <td key={`${si}-ip4b`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'vat' ? 'bg-green-50' : 'bg-gray-50'} align-middle`}>
+                                  <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                    <div className="no-print self-start">
+                                      <button
+                                        onClick={() => setVatMode('vat')}
+                                        className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'vat' ? 'bg-[#4e7a5e] text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
+                                        รวมแวต
+                                      </button>
+                                    </div>
+                                    <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
+                                    <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
+                                      {vatColTotal > 0 ? fmt2(vatColTotal) : ''}
+                                    </div>
+                                  </div>
+                                </td>,
+                              ]
+                            }
+                            if (pr === 6) return []
+
+                            // pr 7-9: วันที่ (left colSpan=2 rowSpan=3) + เบิกของ (right colSpan=2 rowSpan=3)
+                            if (pr === 7) return stockPrintMode ? [
+                              <td key={`${si}-ip6a`} colSpan={4} rowSpan={3}
+                                className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
+                                <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                  <div className="text-[7px] text-gray-400 leading-none">วันที่</div>
+                                  <div className="text-[20px] font-extrabold text-gray-500 leading-none text-center truncate w-full">
+                                    {today}
+                                  </div>
+                                </div>
+                              </td>,
+                            ] : [
+                              <td key={`${si}-ip5a`} colSpan={2} rowSpan={3}
+                                className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
+                                <div className="flex flex-col items-center justify-center h-full gap-0.5">
+                                  <div className="text-[7px] text-gray-400 leading-none">วันที่</div>
+                                  <div className="text-[20px] font-extrabold text-gray-500 leading-none text-center truncate w-full">
+                                    {today}
+                                  </div>
+                                </div>
+                              </td>,
+                              <td key={`${si}-ip5b`} colSpan={2} rowSpan={3}
+                                className={`${base} p-1 align-middle bg-white`}>
+                                <div className="flex flex-col justify-center h-full gap-0.5">
+                                  <div className="text-[7px] text-gray-500 font-semibold leading-none">ซัพพลายเออร์</div>
+                                  <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="ชื่อซัพพลายเออร์..." className="w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none bg-white border-gray-400 text-gray-500" />
+                                </div>
+                              </td>,
+                            ]
+                            if (pr === 8 || pr === 9) return []
+
+                            // pr 10-12: สาขา (left colSpan=2 rowSpan=3) + รถ (right colSpan=2 rowSpan=3)
+                            if (pr === 10 && stockPrintMode) return [
+                              <td key={`${si}-ip10s`} colSpan={4} rowSpan={3} className={`${base} bg-gray-50`} />,
+                            ]
+                            if (pr === 10) return [
+                              <td key={`${si}-ip8a`} colSpan={2} rowSpan={3}
+                                className={`${base} p-1 bg-gray-50 align-middle overflow-hidden`}>
+                                <div className="flex flex-col justify-center h-full gap-0.5">
+                                  <div className="text-[7px] text-gray-500 font-semibold leading-none">หมายเหตุ</div>
+                                  <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="หมายเหตุ..." className="w-full border rounded text-[11px] px-1 focus:outline-none bg-white border-gray-300 text-gray-500 h-6" />
+                                </div>
+                              </td>,
+                              <td key={`${si}-ip8b`} colSpan={2} rowSpan={3}
+                                className={`${base} bg-gray-50`} />,
+                            ]
+                            if (pr === 11 || pr === 12) return []
+                            return [<td key={`${si}-ipx`} colSpan={4} className="border border-gray-200 bg-gray-50" />]
+                          }
+
+                          const cell = sec.rows[rowIdx] ?? null
+
+                          if (!cell) return [
+                            <td key={`${si}-en`} className="border border-gray-200 bg-gray-50" />,
+                            <td key={`${si}-ep`} className="border border-gray-200 bg-gray-50" />,
+                            <td key={`${si}-eq`} className="border border-gray-200 bg-gray-50" />,
+                            <td key={`${si}-et`} className="border border-gray-200 bg-gray-50" />,
+                          ]
+
+                          if (cell.type === 'subgroup') {
+                            const isFoy = FOY_SUBGROUP_NAMES.has(cell.name)
+                            if (isFoy) return [
+                              <td key={`${si}-sg`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />,
+                            ]
+                            // Compact mode: hide subgroup header if this section has no active items under it
+                            if (compactPrintMode && !compactActiveSubgroups[si].has(rowIdx)) {
+                              return [<td key={`${si}-sg`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />]
+                            }
+                            const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
+                            const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
+                            const isSwitchableSg = SWITCHABLE_SUBGROUP_NAMES.has(cell.name)
+                              || (canBubbleNoVat && BUBBLE_SWITCHABLE_NAMES.has(cell.name))
+                            const sgBgClass = isSwitchableSg && vatMode === 'no-vat'
+                              ? 'bg-green-600 text-white border-green-700'
+                              : SUBGROUP_BG[cell.color]
+                            return [
+                              <td key={`${si}-sg`} colSpan={4}
+                                className={`border px-2 py-px text-[11px] font-bold print-sg ${sgBgClass} sg-gray-${sgGray}`}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span>{cell.name}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    {sgTotal > 0 && (
+                                      <span className="text-[8px] font-semibold opacity-90 whitespace-nowrap">฿{fmt2(sgTotal)}</span>
+                                    )}
+                                    {cell.name === 'ฝาปิดกระบอก' && !compactPrintMode && (
+                                      <button
+                                        onClick={e => { e.stopPropagation(); autoCapEnabled ? clearCaps() : enableAutoCap() }}
+                                        className="no-print text-[11px] px-2 py-0.5 rounded font-bold whitespace-nowrap bg-black text-white hover:bg-gray-800 transition-colors"
+                                      >
+                                        {autoCapEnabled ? '-ฝา' : '+ฝา'}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>,
+                            ]
+                          }
+
+                          if (cell.type === 'foy_cat') {
+                            if (compactPrintMode && !compactActiveFoyCats[si].has(rowIdx)) {
+                              return [<td key={`${si}-fc`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />]
+                            }
+                            const catBg = vatMode === 'no-vat' ? '#16a34a' : (FOY_CAT_BG_GREEN[cell.category] ?? '#4e7a5e')
+                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
+                            return [
+                              <td key={`${si}-fc`} colSpan={4}
+                                onClick={foyClick}
+                                style={{ backgroundColor: catBg }}
+                                className="border px-2 py-px text-[10px] font-bold text-white cursor-pointer print-sg">
+                                <div className="flex items-center justify-between gap-1 w-full">
+                                  <span>กระดาษฝอย {cell.category}</span>
+                                  <span className="text-[8px] font-normal opacity-70">→ แก้ไข</span>
+                                </div>
+                              </td>,
+                            ]
+                          }
+
+                          if (cell.type === 'foy_item') {
+                            const itemBg = FOY_ITEM_BG[cell.category] ?? '#fefce8'
+                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
+                            const foyPrice = getFoyModelPrice(cell.category, cell.model_name)
+                            const foyStock = getFoyModelStock(cell.category, cell.model_name)
+                            const foyWp    = getFoyModelWp(cell.category, cell.model_name)
+                            const displayQty    = stockPrintMode ? foyStock : cell.qty
+                            const displayPrice  = stockPrintMode ? foyWp : foyPrice
+                            const displayAmount = stockPrintMode ? foyStock * foyWp : cell.amount
+                            return [
+                              <td key={`${si}-fin`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
+                                <div className="flex items-center justify-between gap-0.5">
+                                  <span className="truncate">{cell.model_name}</span>
+                                  {foyStock > 0 && <span className="text-[8px] text-blue-400 font-semibold shrink-0 whitespace-nowrap">{foyStock.toLocaleString('th-TH')}</span>}
+                                </div>
+                              </td>,
+                              <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer price-col">
+                                {displayPrice > 0 ? displayPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : ''}
+                              </td>,
+                              <td key={`${si}-fiq`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right font-semibold text-gray-700 cursor-pointer">
+                                {displayQty > 0 ? displayQty : ''}
+                              </td>,
+                              <td key={`${si}-fit`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer price-col">
+                                {fmt2(displayAmount)}
+                              </td>,
+                            ]
+                          }
+
+                          const { product: p } = cell
+                          const price      = parseFloat(p.price ?? '0') || 0
+                          const stockQty   = parseFloat(p.stock_qty ?? '0') || 0
+                          const qty        = stockPrintMode ? stockQty : (pending[p.id] ?? 0)
+                          const total      = qty * price
+                          const hasPending = stockPrintMode ? stockQty > 0 : (pending[p.id] ?? 0) > 0
+
+                          if (FOY_GROUP_NAMES.has(p.group_name)) {
+                            // Catalog FOY rows are replaced by foy_cat/foy_item via injectFoyRows.
+                            // This branch only fires when foyPending is empty (no rows injected).
+                            const bg = sec.is_vat_included ? 'bg-gray-200 text-gray-500' : 'bg-[#f0fdf4] text-gray-500'
+                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
+                            return [
+                              <td key={`${si}-pn`} onClick={foyClick} colSpan={4} className={`border border-gray-300 px-1 py-px ${bg} overflow-hidden cursor-pointer`}>
+                                <div className="flex items-center gap-1">
+                                  <span className="truncate">{p.product_name}</span>
+                                  <span className="text-[9px] text-teal-700 ml-2 shrink-0">→</span>
+                                </div>
+                              </td>,
+                            ]
+                          }
+
+                          const nameBg = sec.is_vat_included ? 'bg-gray-200 text-gray-500' : 'bg-[#f0fdf4] text-gray-500'
+                          const pendingRing = hasPending ? 'ring-1 ring-inset ring-green-400' : ''
+                          const qtyBg = hasPending ? 'bg-green-50' : (sec.is_vat_included ? 'bg-gray-200' : 'bg-[#f0fdf4]')
+
+                          const prio = productPriorities[p.id] ?? null
+                          const PRIO_BORDER: Record<PriorityLevel, string> = {
+                            critical:  'border-l-[3px] border-l-red-600',
+                            important: 'border-l-[3px] border-l-blue-600',
+                          }
+                          const PRIO_TEXT: Record<PriorityLevel, string> = {
+                            critical:  'text-red-700 font-semibold',
+                            important: 'text-blue-700 font-semibold',
+                          }
+                          const prioBorderCls = prio ? PRIO_BORDER[prio] : ''
+                          const prioTextCls   = prio ? PRIO_TEXT[prio] : ''
+                          const canClickPrio  = !!priorityMode && !stockPrintMode && !compactPrintMode
+
+                          return [
+                            // ชื่อสินค้า
+                            <td key={`${si}-pn`}
+                              onClick={canClickPrio ? () => handlePriorityClick(p.id) : undefined}
+                              className={`border border-gray-300 px-1 py-px ${nameBg} ${pendingRing} ${prioBorderCls} relative overflow-hidden${canClickPrio ? ' cursor-pointer select-none' : ''}`}
+                              title={p.product_name}>
+                              {p.stock_qty !== null && p.stock_qty !== undefined && (
+                                <span className="absolute top-0 right-0 text-[7px] text-blue-500 leading-none px-0.5 py-px">
+                                  {parseFloat(String(p.stock_qty)).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                                </span>
+                              )}
+                              <div className={`truncate pr-4 ${prioTextCls}`}>{p.product_name}</div>
+                            </td>,
+
+                            // ราคา/หน่วย
+                            <td key={`${si}-pp`} className={`border border-gray-300 px-1 py-px text-right price-col ${nameBg}`}>
+                              {p.price ? price.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '–'}
+                            </td>,
+
+                            // จำนวน
+                            <td key={`${si}-pq`} className={`border border-gray-300 p-0 ${qtyBg}`}>
+                              {p.price && (
+                                stockPrintMode ? (
+                                  <div className={`w-full px-1 py-px text-[13px] text-right ${qty > 0 ? 'font-semibold' : ''}`}>
+                                    {qty > 0 ? qty.toLocaleString('th-TH', { maximumFractionDigits: 2 }) : ''}
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    defaultValue={qty || ''}
+                                    key={`qty-${p.id}-${resetKey}`}
+                                    readOnly
+                                    onFocus={() => setQtyPopup({ id: p.id, name: p.product_name, subgroupName: p.subgroup_name, stockQty: parseFloat(String(p.stock_qty ?? '0')) || 0, accent: sec.is_vat_included ? '#f0f9ff' : '#fff7ed' })}
+                                    onClick={() => setQtyPopup({ id: p.id, name: p.product_name, subgroupName: p.subgroup_name, stockQty: parseFloat(String(p.stock_qty ?? '0')) || 0, accent: sec.is_vat_included ? '#f0f9ff' : '#fff7ed' })}
+                                    className={`w-full px-1 py-px text-[13px] text-gray-900 text-right bg-transparent focus:outline-none cursor-pointer ${hasPending ? 'font-semibold' : ''}`}
+                                  />
+                                )
+                              )}
+                            </td>,
+
+                            // รวม
+                            <td key={`${si}-pt`} className={`border border-gray-300 px-1 py-px text-right price-col ${nameBg}`}>
+                              {total > 0 ? fmt2(total) : ''}
+                            </td>,
+                          ]
+                        })}
+                      </tr>
                       )
                     })}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                  </tbody>
+                </table>
+              </div>
 
-      {/* Sticky bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-green-200 shadow-lg px-4 py-3 flex items-center justify-between">
-        <div className="text-sm text-gray-600">
-          ยอดรวม: <span className="text-lg font-bold text-green-700">{fmt(totalAmount)} บาท</span>
+              </div>
+            </div>
+            </div>{/* end viewScale wrapper */}
+
+            {/* ── Page 2: ใบPO กระดาษฝอย ──────────────────────────────────── */}
+            <div className="foy-print-frame bg-white">
+              {(() => {
+                const FOY_CATS  = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
+                const catBgColor = vatMode === 'no-vat' ? '#16a34a' : '#4e7a5e'
+                const CAT_BG:   Record<string, string> = { '2 มิล': catBgColor, '4 มิล': catBgColor, '1.5 มิล': catBgColor, 'ฝอยหยัก': catBgColor }
+                const MODEL_BG: Record<string, string> = { '2 มิล': '#F7DC6F', '4 มิล': '#F0B27A', '1.5 มิล': '#F1948A', 'ฝอยหยัก': '#C39BD3' }
+                const ROW_BG:   Record<string, string> = { '2 มิล': '#FCF3CF', '4 มิล': '#FAE5D3', '1.5 มิล': '#FADBD8', 'ฝอยหยัก': '#FBDEF0' }
+
+                type FoySeg =
+                  | { kind: 'cat'; name: string }
+                  | { kind: 'model'; catName: string; modelName: string; items: typeof foyStockItems }
+
+                const segs: FoySeg[] = []
+                for (const cat of FOY_CATS) {
+                  if (foyCategoryVis[cat] === false) continue
+                  const catItems = foyStockItems.filter(it => it.category === cat && foyModelVis[it.model_name] !== false)
+                  if (catItems.length === 0) continue
+                  segs.push({ kind: 'cat', name: cat })
+                  const models = [...new Set(catItems.map(it => it.model_name))]
+                  for (const mn of models) segs.push({ kind: 'model', catName: cat, modelName: mn, items: catItems.filter(it => it.model_name === mn) })
+                }
+
+                const NUM_COLS = 3
+                const CW_COLOR = 96, CW_PRICE = 48, CW_QTY = 42, CW_TOTAL = 55
+                const COL_W = CW_COLOR + CW_PRICE + CW_QTY + CW_TOTAL  // 241
+                const GAP   = 4
+                const TOTAL_W = NUM_COLS * COL_W + (NUM_COLS - 1) * GAP
+
+                const perCol = Math.ceil(segs.length / NUM_COLS)
+                const cols   = Array.from({ length: NUM_COLS }, (_, ci) => segs.slice(ci * perCol, (ci + 1) * perCol))
+
+                const fmtP = (n: string | number) => {
+                  const v = parseFloat(String(n))
+                  return isNaN(v) || v === 0 ? '' : v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                }
+
+                return (
+                  <div style={{ zoom: 0.82 }}>
+                    <div className="text-center text-sm font-bold text-gray-500 mb-2 tracking-wide">ใบPO กระดาษฝอย</div>
+                    <div className="flex" style={{ gap: GAP, width: TOTAL_W }}>
+                      {cols.map((col, ci) => (
+                        <div key={ci} style={{ width: COL_W, flexShrink: 0 }}>
+                          {col.map((seg, si) => {
+                            if (seg.kind === 'cat') {
+                              return (
+                                <div key={`cat-${seg.name}`}
+                                  style={{ backgroundColor: CAT_BG[seg.name] ?? '#4e7a5e', color: 'white' }}
+                                  className={`px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-sm mb-1${si > 0 ? ' mt-2' : ''}`}>
+                                  กระดาษฝอย {seg.name}
+                                </div>
+                              )
+                            }
+                            const mBg = MODEL_BG[seg.catName] ?? '#ccc'
+                            const rBg = ROW_BG[seg.catName]   ?? '#f3f4f6'
+                            const totalStock = seg.items.reduce((s, it) => s + (parseInt(it.stock_qty) || 0), 0)
+                            const modelPrice = parseFloat(seg.items[0]?.warehouse_price ?? '0') || 0
+                            return (
+                              <div key={`m-${ci}-${si}`} className="mb-1.5">
+                                <table className="border-collapse" style={{ tableLayout: 'fixed', width: COL_W }}>
+                                  <colgroup>
+                                    <col style={{ width: CW_COLOR }} /><col style={{ width: CW_PRICE }} />
+                                    <col style={{ width: CW_QTY }} /><col style={{ width: CW_TOTAL }} />
+                                  </colgroup>
+                                  <thead>
+                                    <tr style={{ backgroundColor: mBg, color: 'rgb(55,65,81)' }}>
+                                      <th colSpan={3} className="border border-gray-400 px-1 py-0.5 font-bold text-[10px] text-left overflow-hidden">
+                                        <div className="flex items-center gap-1">
+                                          <span className="truncate">{seg.modelName}</span>
+                                          {totalStock > 0 && <span className="text-[8px] font-semibold text-blue-300 whitespace-nowrap shrink-0">{totalStock.toLocaleString('th-TH')}</span>}
+                                        </div>
+                                      </th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right text-[10px] font-bold whitespace-nowrap">
+                                        {fmtP(modelPrice)}
+                                      </th>
+                                    </tr>
+                                    <tr style={{ backgroundColor: mBg, color: 'rgb(55,65,81)' }} className="text-[9px]">
+                                      <th className="border border-gray-400 px-1 py-0.5 text-left font-medium">ชื่อสี</th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">ราคา</th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">จำนวน</th>
+                                      <th className="border border-gray-400 px-1 py-0.5 text-right font-medium">รวม</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {seg.items.map(item => (
+                                      <tr key={item.id}>
+                                        <td className="border border-gray-300 px-1 py-px text-[9px] overflow-hidden"
+                                          style={{ backgroundColor: rBg }}>
+                                          <div className="flex items-start justify-between gap-0.5">
+                                            <span className="truncate text-gray-500">{item.color_name || item.color_code || '–'}</span>
+                                            <span className="text-[7px] text-gray-400 leading-tight shrink-0">{parseInt(item.stock_qty) || 0}</span>
+                                          </div>
+                                        </td>
+                                        <td className="border border-gray-300 px-1 py-px text-right text-[9px] text-gray-500"
+                                          style={{ backgroundColor: rBg }}>
+                                          {fmtP(item.warehouse_price)}
+                                        </td>
+                                        <td className="border border-gray-300 p-0" style={{ backgroundColor: '#ffffff' }}></td>
+                                        <td className="border border-gray-300 px-1 py-px" style={{ backgroundColor: rBg }}></td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Info panel */}
+                    <div className="flex gap-1 mt-2" style={{ width: TOTAL_W }}>
+                      <div className="flex-1 border border-gray-400 rounded overflow-hidden">
+                        <div className="flex h-14">
+                          <div className="flex-1 border-r border-gray-300 p-1">
+                            <div className="text-[8px] font-semibold text-gray-500">ผู้ส่งสินค้า</div>
+                          </div>
+                          <div className="flex-1 p-1">
+                            <div className="text-[8px] font-semibold text-gray-500">ผู้รับสินค้า</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-green-50 flex flex-col justify-center" style={{ width: 130 }}>
+                        <div className="text-[8px] font-semibold text-gray-500">ยอดเงินรวม (฿)</div>
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-gray-50 flex flex-col items-center justify-center" style={{ width: 84 }}>
+                        <div className="text-[7px] text-gray-400 leading-none">วันที่</div>
+                        <div className="text-[12px] font-extrabold text-gray-500 leading-tight text-center">{today}</div>
+                      </div>
+                      <div className="border border-gray-400 rounded p-1 bg-gray-50 flex flex-col justify-center overflow-hidden" style={{ width: 170 }}>
+                        <div className="text-[7px] font-semibold text-gray-500 leading-none">ซัพพลายเออร์</div>
+                        <div className="text-[11px] text-gray-500 truncate mt-0.5">{supplier || '—'}</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* ── Print: NV form (ไม่รวม VAT) + V form (รวม VAT) ───────────── */}
+            {(() => {
+              type PrintItem = { subgroup: string; name: string; qty: number; price: number; total: number }
+              const nvItems: PrintItem[] = []
+              const vItems: PrintItem[] = []
+
+              for (const sec of sections) {
+                let currentSg = ''
+                for (const row of sec.rows) {
+                  if (row.type === 'subgroup') { currentSg = row.name }
+                  else if (row.type === 'foy_item') {
+                    if (row.qty > 0) {
+                      const price = getFoyModelPrice(row.category, row.model_name)
+                      nvItems.push({ subgroup: `กระดาษฝอย ${row.category}`, name: row.model_name, qty: row.qty, price, total: row.amount })
+                    }
+                  } else if (row.type === 'product') {
+                    const qty = pending[row.product.id] ?? 0
+                    if (qty > 0) {
+                      const price = parseFloat(row.product.price ?? '0') || 0
+                      const item: PrintItem = { subgroup: currentSg, name: row.product.product_name, qty, price, total: price * qty }
+                      if (SWITCHABLE_SUBGROUP_NAMES.has(currentSg)) nvItems.push(item)
+                      else vItems.push(item)
+                    }
+                  }
+                }
+              }
+
+              const nvTotal = nvItems.reduce((s, it) => s + it.total, 0)
+              const vTotal  = vItems.reduce((s, it) => s + it.total, 0)
+              const orderNo = editOrderNo ?? ''
+
+              const renderSplitForm = (prefix: string, items: PrintItem[], total: number, isVat: boolean) => {
+                if (items.length === 0) return null
+                const groups = new Map<string, PrintItem[]>()
+                for (const it of items) {
+                  if (!groups.has(it.subgroup)) groups.set(it.subgroup, [])
+                  groups.get(it.subgroup)!.push(it)
+                }
+                const hdrBg = isVat ? '#4e7a5e' : '#16a34a'
+                return (
+                  <div className="vat-split-print-frame">
+                    {/* form header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6, borderBottom: '2px solid #4e7a5e', paddingBottom: 4 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 'bold', color: '#333' }}>
+                          {isVat ? 'ใบPO — รวม VAT 7%' : 'ใบPO — ไม่รวม VAT'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
+                          ซัพพลายเออร์: {supplier || '—'} &nbsp;|&nbsp; วันที่: {today}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 11, color: '#888' }}>เลขที่ใบPO</div>
+                        <div style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }}>{prefix}{orderNo || '—'}</div>
+                      </div>
+                    </div>
+
+                    {/* items table */}
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ backgroundColor: hdrBg }}>
+                          <th style={{ textAlign: 'left', padding: '3px 5px', border: '1px solid #bbb', color: 'white', fontWeight: 'bold' }}>ชื่อสินค้า</th>
+                          <th style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: 'white', width: 52 }}>จำนวน</th>
+                          <th style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: 'white', width: 68 }}>ราคา/หน่วย</th>
+                          <th style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: 'white', width: 82 }}>ยอดรวม (฿)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Array.from(groups.entries()).map(([sg, sgItems]) => (
+                          <Fragment key={sg}>
+                            <tr className="sg-header">
+                              <td colSpan={4} style={{ backgroundColor: hdrBg, color: 'white', fontWeight: 'bold', fontSize: 10, padding: '2px 5px', border: '1px solid #bbb' }}>
+                                {sg}
+                              </td>
+                            </tr>
+                            {sgItems.map((it, i) => (
+                              <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f7f7f5' }}>
+                                <td style={{ padding: '2px 5px', border: '1px solid #e0e0e0' }}>{it.name}</td>
+                                <td style={{ textAlign: 'right', padding: '2px 5px', border: '1px solid #e0e0e0' }}>{it.qty}</td>
+                                <td style={{ textAlign: 'right', padding: '2px 5px', border: '1px solid #e0e0e0' }}>{fmt2(it.price)}</td>
+                                <td style={{ textAlign: 'right', padding: '2px 5px', border: '1px solid #e0e0e0' }}>{fmt2(it.total)}</td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold', padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #4e7a5e' }}>
+                            {isVat ? 'ยอดรวม (รวม VAT 7%)' : 'ยอดรวม (ไม่รวม VAT)'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: 14, padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #4e7a5e' }}>
+                            {fmt2(total)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+
+                    {/* signature row */}
+                    <div style={{ display: 'flex', gap: 16, marginTop: 24 }}>
+                      <div style={{ flex: 1, borderTop: '1px solid #bbb', paddingTop: 4, textAlign: 'center', fontSize: 10, color: '#777' }}>ผู้ส่งสินค้า</div>
+                      <div style={{ flex: 1, borderTop: '1px solid #bbb', paddingTop: 4, textAlign: 'center', fontSize: 10, color: '#777' }}>ผู้รับสินค้า</div>
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <>
+                  {renderSplitForm('NV', nvItems, nvTotal, false)}
+                  {renderSplitForm('V', vItems, vTotal, true)}
+                </>
+              )
+            })()}
+
+            </>
+          )}
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold px-6 py-2 rounded shadow text-sm transition-colors"
-        >
-          {saving ? 'กำลังบันทึก...' : '💾 บันทึกใบPO'}
-        </button>
-      </div>
+      </main>
+
+      {/* ── Qty popup ─────────────────────────────────────────────────────── */}
+      {qtyPopup && (() => {
+        const entered        = parseInt(popupVal) || 0
+        const stock          = qtyPopup.stockQty
+        const remaining      = stock - entered
+        const overStock      = entered > stock
+        const exact          = !overStock && entered === stock && stock > 0
+        const currentPrio    = productPriorities[qtyPopup.id] ?? null
+        const criticalCount  = priorityCounts.critical
+        const importantCount = priorityCounts.important
+        const togglePrio = (level: PriorityLevel) => {
+          const isCurrent = currentPrio === level
+          if (isCurrent) {
+            setProductPriorities(prev => { const n = { ...prev }; delete n[qtyPopup.id]; return n })
+          } else if (level === 'critical' && criticalCount < PRIORITY_LIMITS.critical) {
+            setProductPriorities(prev => ({ ...prev, [qtyPopup.id]: 'critical' }))
+          } else if (level === 'important' && importantCount < PRIORITY_LIMITS.important) {
+            setProductPriorities(prev => ({ ...prev, [qtyPopup.id]: 'important' }))
+          }
+        }
+        return (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center sm:items-center"
+            onClick={() => setQtyPopup(null)}>
+            <div className="rounded-t-3xl sm:rounded-3xl shadow-2xl px-5 pt-4 pb-8 sm:pb-5 w-full max-w-sm border-t-4"
+              style={{ backgroundColor: qtyPopup.accent, borderColor: '#4e7a5e' }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* Drag handle */}
+              <div className="w-10 h-1 bg-gray-400/40 rounded-full mx-auto mb-3 sm:hidden" />
+
+              {/* Product name + stock */}
+              <div className="flex items-start justify-between mb-3 gap-3">
+                <div className="min-w-0 flex-1">
+                  {/* หมวดสินค้า */}
+                  <div className="text-base font-extrabold px-2 py-0.5 rounded-lg inline-block mb-1.5"
+                    style={{ backgroundColor: qtyPopup.accent === '#f0f9ff' ? '#bae6fd' : '#fed7aa', color: '#374151' }}>
+                    {qtyPopup.subgroupName}
+                  </div>
+                  {/* ชื่อสินค้า */}
+                  <div className="text-xl font-extrabold text-gray-900 leading-tight">{qtyPopup.name}</div>
+                </div>
+                <div className="shrink-0 text-right bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5">
+                  <div className="text-[10px] text-blue-400 font-semibold leading-none">สต็อค</div>
+                  <div className="text-2xl font-extrabold text-blue-600 leading-tight">{stock}</div>
+                </div>
+              </div>
+
+              {/* Large input */}
+              <input
+                ref={popupInputRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={popupVal}
+                placeholder="0"
+                onChange={e => setPopupVal(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={e => { if (e.key === 'Enter') confirmPopup(); if (e.key === 'Escape') setQtyPopup(null) }}
+                className="w-full text-5xl font-extrabold text-gray-900 text-center border-2 rounded-2xl px-4 py-3 focus:outline-none bg-white"
+                style={{ borderColor: overStock ? '#ef4444' : exact ? '#16a34a' : '#4e7a5e' }}
+              />
+
+              {/* Feedback */}
+              <div className={`text-center mt-2 text-sm font-bold h-5 ${overStock ? 'text-red-600' : exact ? 'text-green-600' : popupVal ? 'text-green-700' : 'text-transparent'}`}>
+                {popupVal
+                  ? overStock  ? `${entered} / ${stock} ⚠ เกินสต็อค`
+                    : exact    ? `${entered} / ${stock} · หมดพอดี`
+                               : `${entered} / ${stock} · เหลือ ${remaining}`
+                  : '·'}
+              </div>
+
+              {/* Priority buttons */}
+              <div className="flex gap-2 mt-3">
+                {/* Red — ต้องครบ */}
+                <button
+                  onClick={() => togglePrio('critical')}
+                  disabled={currentPrio !== 'critical' && criticalCount >= PRIORITY_LIMITS.critical}
+                  className={`flex-1 py-2 rounded-xl font-extrabold text-sm transition-all active:scale-95 border-2 flex flex-col items-center leading-tight ${
+                    currentPrio === 'critical'
+                      ? 'bg-red-600 text-white border-red-700 shadow-md ring-2 ring-red-300'
+                      : criticalCount >= PRIORITY_LIMITS.critical
+                        ? 'bg-red-50 text-red-300 border-red-200 cursor-not-allowed'
+                        : 'bg-red-500 text-white border-red-600 hover:bg-red-600 shadow-sm'
+                  }`}>
+                  <span>{currentPrio === 'critical' ? '✓ ต้องครบ' : 'ต้องครบ'}</span>
+                  <span className="text-[10px] font-normal mt-0.5 opacity-80">
+                    {currentPrio === 'critical' ? 'คลิกเพื่อยกเลิก' : criticalCount >= PRIORITY_LIMITS.critical ? `เต็มแล้ว (${PRIORITY_LIMITS.critical}/${PRIORITY_LIMITS.critical})` : `เหลือ ${PRIORITY_LIMITS.critical - criticalCount} สิทธิ์`}
+                  </span>
+                </button>
+                {/* Blue — เท่าที่มี */}
+                <button
+                  onClick={() => togglePrio('important')}
+                  disabled={currentPrio !== 'important' && importantCount >= PRIORITY_LIMITS.important}
+                  className={`flex-1 py-2 rounded-xl font-extrabold text-sm transition-all active:scale-95 border-2 flex flex-col items-center leading-tight ${
+                    currentPrio === 'important'
+                      ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-300'
+                      : importantCount >= PRIORITY_LIMITS.important
+                        ? 'bg-blue-50 text-blue-300 border-blue-200 cursor-not-allowed'
+                        : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 shadow-sm'
+                  }`}>
+                  <span>{currentPrio === 'important' ? '✓ เท่าที่มี' : 'เท่าที่มี'}</span>
+                  <span className="text-[10px] font-normal mt-0.5 opacity-80">
+                    {currentPrio === 'important' ? 'คลิกเพื่อยกเลิก' : importantCount >= PRIORITY_LIMITS.important ? `เต็มแล้ว (${PRIORITY_LIMITS.important}/${PRIORITY_LIMITS.important})` : `เหลือ ${PRIORITY_LIMITS.important - importantCount} สิทธิ์`}
+                  </span>
+                </button>
+              </div>
+
+              {/* Confirm/cancel */}
+              <div className="flex gap-3 mt-3">
+                <button onClick={() => setQtyPopup(null)}
+                  className="flex-1 py-3 rounded-2xl bg-white/70 hover:bg-white text-gray-600 font-semibold text-base transition-colors border border-gray-300">
+                  ยกเลิก
+                </button>
+                <button onClick={confirmPopup}
+                  className="flex-[2] py-3 rounded-2xl text-white font-bold text-base transition-colors shadow"
+                  style={{ backgroundColor: '#4e7a5e' }}>
+                  ✓ ยืนยัน
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
+  )
+}
+
+export default function POPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen text-gray-400">กำลังโหลด...</div>}>
+      <POInner />
+    </Suspense>
   )
 }

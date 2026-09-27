@@ -10,6 +10,10 @@ const CREATE_TABLE = `
     notes        TEXT,
     total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     quantities   JSONB NOT NULL DEFAULT '{}',
+    foy_quantities      JSONB NOT NULL DEFAULT '{}',
+    foy_item_quantities JSONB NOT NULL DEFAULT '{}',
+    nv_total     DECIMAL(12,2),
+    v_total      DECIMAL(12,2),
     created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
     received_at  TIMESTAMP
   )
@@ -17,6 +21,11 @@ const CREATE_TABLE = `
 
 async function ensureTable() {
   await pool.query(CREATE_TABLE)
+  // Migrations for columns added after initial deploy
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS foy_quantities JSONB NOT NULL DEFAULT '{}'`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS foy_item_quantities JSONB NOT NULL DEFAULT '{}'`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS nv_total DECIMAL(12,2)`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS v_total DECIMAL(12,2)`)
 }
 
 async function genPoNo(): Promise<string> {
@@ -33,8 +42,17 @@ async function genPoNo(): Promise<string> {
   return `${prefix}-${seq}`
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   await ensureTable()
+
+  // Support ?no=PO... for single order lookup
+  const url = new URL(request.url)
+  const no = url.searchParams.get('no')
+  if (no) {
+    const { rows } = await pool.query(`SELECT * FROM po_orders WHERE po_no = $1`, [no])
+    return NextResponse.json(rows[0] ?? null)
+  }
+
   const { rows } = await pool.query(
     `SELECT * FROM po_orders ORDER BY created_at DESC`
   )
@@ -73,29 +91,49 @@ export async function GET() {
 
 export async function POST(request: Request) {
   await ensureTable()
-  const { supplier, notes, total_amount, quantities } = await request.json()
+  const { supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, priorities } = await request.json()
   const po_no = await genPoNo()
   const { rows } = await pool.query(
-    `INSERT INTO po_orders (po_no, supplier, notes, total_amount, quantities)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [po_no, supplier ?? null, notes ?? null, total_amount ?? 0, JSON.stringify(quantities ?? {})]
+    `INSERT INTO po_orders (po_no, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [
+      po_no,
+      supplier ?? null,
+      notes ?? null,
+      total_amount ?? 0,
+      JSON.stringify(quantities ?? {}),
+      JSON.stringify(foy_quantities ?? {}),
+      JSON.stringify(foy_item_quantities ?? {}),
+      nv_total ?? null,
+      v_total ?? null,
+    ]
   )
   return NextResponse.json(rows[0], { status: 201 })
 }
 
 export async function PATCH(request: Request) {
   await ensureTable()
-  const { id, status, supplier, notes, total_amount, quantities } = await request.json()
+  const body = await request.json()
+  const { id, po_no, order_no, status, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total } = body
+
+  // Support lookup by id, po_no, or order_no
+  const lookupValue = id ?? po_no ?? order_no
+  const lookupColumn = id ? 'id' : 'po_no'
+  if (!lookupValue) return NextResponse.json({ error: 'id or po_no required' }, { status: 400 })
 
   const sets: string[] = []
   const vals: unknown[] = []
   let i = 1
 
-  if (status       !== undefined) { sets.push(`status = $${i++}`);       vals.push(status) }
-  if (supplier     !== undefined) { sets.push(`supplier = $${i++}`);     vals.push(supplier) }
-  if (notes        !== undefined) { sets.push(`notes = $${i++}`);        vals.push(notes) }
-  if (total_amount !== undefined) { sets.push(`total_amount = $${i++}`); vals.push(total_amount) }
-  if (quantities   !== undefined) { sets.push(`quantities = $${i++}`);   vals.push(JSON.stringify(quantities)) }
+  if (status              !== undefined) { sets.push(`status = $${i++}`);              vals.push(status) }
+  if (supplier            !== undefined) { sets.push(`supplier = $${i++}`);            vals.push(supplier) }
+  if (notes               !== undefined) { sets.push(`notes = $${i++}`);               vals.push(notes) }
+  if (total_amount        !== undefined) { sets.push(`total_amount = $${i++}`);        vals.push(total_amount) }
+  if (quantities          !== undefined) { sets.push(`quantities = $${i++}`);          vals.push(JSON.stringify(quantities)) }
+  if (foy_quantities      !== undefined) { sets.push(`foy_quantities = $${i++}`);      vals.push(JSON.stringify(foy_quantities)) }
+  if (foy_item_quantities !== undefined) { sets.push(`foy_item_quantities = $${i++}`); vals.push(JSON.stringify(foy_item_quantities)) }
+  if (nv_total            !== undefined) { sets.push(`nv_total = $${i++}`);            vals.push(nv_total) }
+  if (v_total             !== undefined) { sets.push(`v_total = $${i++}`);             vals.push(v_total) }
 
   if (status === 'received') {
     sets.push(`received_at = NOW()`)
@@ -103,13 +141,13 @@ export async function PATCH(request: Request) {
 
   if (sets.length === 0) return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
 
-  vals.push(id)
+  vals.push(lookupValue)
   const { rows } = await pool.query(
-    `UPDATE po_orders SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    `UPDATE po_orders SET ${sets.join(', ')} WHERE ${lookupColumn} = $${i} RETURNING *`,
     vals
   )
 
-  // If marking received, add stock
+  // If marking received, add catalog stock (skip FOY items — their IDs are from paper_stock, not products_catalog)
   if (status === 'received' && rows[0]) {
     const qty: Record<string, number> = quantities ?? rows[0].quantities ?? {}
     for (const [idStr, q] of Object.entries(qty)) {
