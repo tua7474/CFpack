@@ -30,50 +30,15 @@ async function notifyNewBooking(
 
     const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
     const label = branch_name ?? (branch_id ? `สาขา #${branch_id}` : 'ไม่ระบุสาขา')
-    const ordersUrl = BASE_URL ? `${BASE_URL}/orders` : null
 
     const msg: object = {
-      type: 'flex',
-      altText: `📝 ใบจองใหม่ #${order_no} — ${label}`,
-      contents: {
-        type: 'bubble',
-        header: {
-          type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '10px',
-          contents: [
-            { type: 'text', text: '📝 ใบจองใหม่', color: '#ffffff', weight: 'bold', size: 'sm' },
-          ]
-        },
-        body: {
-          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px',
-          contents: [
-            { type: 'box', layout: 'horizontal', contents: [
-              { type: 'text', text: 'สาขา', size: 'xs', color: '#888888', flex: 3 },
-              { type: 'text', text: label, size: 'xs', weight: 'bold', color: '#333333', flex: 5, wrap: true },
-            ]},
-            { type: 'box', layout: 'horizontal', margin: 'xs', contents: [
-              { type: 'text', text: 'เลขที่', size: 'xs', color: '#888888', flex: 3 },
-              { type: 'text', text: `#${order_no}`, size: 'xs', weight: 'bold', color: '#333333', flex: 5 },
-            ]},
-            { type: 'box', layout: 'horizontal', margin: 'xs', contents: [
-              { type: 'text', text: 'ยอดรวม', size: 'xs', color: '#888888', flex: 3 },
-              { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', weight: 'bold', color: '#CC0000', flex: 5 },
-            ]},
-          ],
-        },
-        ...(ordersUrl ? {
-          footer: {
-            type: 'box', layout: 'vertical', paddingAll: '8px',
-            contents: [{
-              type: 'button', style: 'primary', color: '#9b9484', height: 'sm',
-              action: { type: 'uri', label: 'ดูประวัติใบจอง', uri: ordersUrl },
-            }],
-          }
-        } : {}),
-      },
+      type: 'text',
+      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}`,
     }
 
-    // ส่งไปทั้งกลุ่มสาขา (ถ้ามี) และกลุ่ม "ออกใบจอง" (ถ้ามี)
-    const targets = [...new Set([branchGroupId, centralGroupId].filter(Boolean) as string[])]
+    // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
+    const targets = [...new Set([centralGroupId, branchGroupId].filter(Boolean) as string[])]
+    console.log('[notifyNewBooking] targets:', targets, '| order:', order_no)
     await Promise.all(targets.map(to => pushLineMsg(to, [msg])))
   } catch { /* non-critical — don't fail the order */ }
 }
