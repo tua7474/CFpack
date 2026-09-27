@@ -14,6 +14,7 @@ const CREATE_TABLE = `
     foy_item_quantities JSONB NOT NULL DEFAULT '{}',
     nv_total     DECIMAL(12,2),
     v_total      DECIMAL(12,2),
+    factory_total DECIMAL(12,2),
     created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
     received_at  TIMESTAMP
   )
@@ -26,6 +27,7 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS foy_item_quantities JSONB NOT NULL DEFAULT '{}'`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS nv_total DECIMAL(12,2)`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS v_total DECIMAL(12,2)`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS factory_total DECIMAL(12,2)`)
 }
 
 async function genPoNo(): Promise<string> {
@@ -114,7 +116,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   await ensureTable()
   const body = await request.json()
-  const { id, po_no, order_no, status, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total } = body
+  const { id, po_no, order_no, status, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, factory_total } = body
 
   // Support lookup by id, po_no, or order_no
   const lookupValue = id ?? po_no ?? order_no
@@ -134,6 +136,7 @@ export async function PATCH(request: Request) {
   if (foy_item_quantities !== undefined) { sets.push(`foy_item_quantities = $${i++}`); vals.push(JSON.stringify(foy_item_quantities)) }
   if (nv_total            !== undefined) { sets.push(`nv_total = $${i++}`);            vals.push(nv_total) }
   if (v_total             !== undefined) { sets.push(`v_total = $${i++}`);             vals.push(v_total) }
+  if (factory_total       !== undefined) { sets.push(`factory_total = $${i++}`);       vals.push(factory_total) }
 
   if (status === 'received') {
     sets.push(`received_at = NOW()`)
