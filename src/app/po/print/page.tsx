@@ -247,8 +247,40 @@ function POPrintInner() {
   if (error)   return <div className="flex items-center justify-center h-screen text-red-500">{error}</div>
   if (!order)  return null
 
-  const maxRows = Math.max(...sections.map(s => s.rows.length), 0) + INFO_PANEL_ROWS
+  const maxRows    = Math.max(...sections.map(s => s.rows.length), 0) + INFO_PANEL_ROWS
   const panelStart = Math.max(...sections.map(s => s.rows.length), 0)
+
+  // ── Precompute which rows are "active" (have qty > 0) per section ─────────
+  const activeRowsPerSection: Set<number>[] = sections.map(sec => {
+    const active = new Set<number>()
+
+    // Pass 1 — mark product/foy_item rows that have qty > 0
+    for (let ri = 0; ri < sec.rows.length; ri++) {
+      const cell = sec.rows[ri]
+      if (cell.type === 'product' && !FOY_GROUP_NAMES.has(cell.product.group_name)) {
+        if ((order.quantities[cell.product.id] ?? 0) > 0) active.add(ri)
+      } else if (cell.type === 'foy_item') {
+        if (cell.qty > 0) active.add(ri)
+      }
+    }
+
+    // Pass 2 — activate the nearest subgroup/foy_cat header above each active row
+    let headerIdx = -1
+    for (let ri = 0; ri < sec.rows.length; ri++) {
+      const cell = sec.rows[ri]
+      if (cell.type === 'subgroup' || cell.type === 'foy_cat') {
+        headerIdx = ri
+      } else if (active.has(ri) && headerIdx >= 0) {
+        active.add(headerIdx)
+      }
+    }
+
+    return active
+  })
+
+  // A table row renders in print only if ≥1 section has it active (or it's the info panel)
+  const rowActiveInPrint = (rowIdx: number) =>
+    rowIdx >= panelStart || sections.some((_, si) => activeRowsPerSection[si].has(rowIdx))
 
   const scaledFrameH = contentNaturalH * CONTENT_SCALE + A4_PAD_PX * 2
 
@@ -266,6 +298,7 @@ function POPrintInner() {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .a4-frame td:not(.print-sg) { background-color: white !important; }
           .print-sg { background-color: inherit !important; }
+          .compact-hide { display: none !important; }
         }
       `}</style>
 
@@ -350,7 +383,8 @@ function POPrintInner() {
 
                   <tbody>
                     {Array.from({ length: maxRows }, (_, rowIdx) => (
-                      <tr key={rowIdx} className="hover:bg-green-50/20 transition-colors">
+                      <tr key={rowIdx}
+                        className={`hover:bg-green-50/20 transition-colors${!rowActiveInPrint(rowIdx) ? ' compact-hide' : ''}`}>
                         {/* Row number */}
                         <td className="border border-gray-300 text-center text-[9px] text-gray-400 py-0.5 select-none">
                           {rowIdx + 1}
