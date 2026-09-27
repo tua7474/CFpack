@@ -435,7 +435,7 @@ export async function GET() {
   try {
     await ensureTable()
     const { rows } = await pool.query(`
-      SELECT id, group_name, product_name, price, quantity,
+      SELECT id, group_name, product_name, price, cost, quantity,
              last_added_qty, last_added_at, last_booked_qty, last_booked_at,
              show_in_booking, prev_warehouse_price, price_updated_at
       FROM products_catalog
@@ -511,9 +511,9 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    // Info update: single object { id, group_name?, product_name?, price?, show_in_booking? }
+    // Info update: single object { id, group_name?, product_name?, price?, cost?, show_in_booking? }
     if (!Array.isArray(body)) {
-      const { id, group_name, product_name, price, show_in_booking } = body
+      const { id, group_name, product_name, price, cost, show_in_booking } = body
       // Fetch current state before updating (for booking sync + price snapshot)
       const { rows: curr } = await pool.query(
         'SELECT group_name, product_name, price FROM products_catalog WHERE id=$1', [id]
@@ -523,6 +523,7 @@ export async function PATCH(req: NextRequest) {
       let n = 1
       if (group_name       !== undefined) { fields.push(`group_name=$${n++}`);       vals.push(group_name) }
       if (product_name     !== undefined) { fields.push(`product_name=$${n++}`);     vals.push(product_name) }
+      if (cost             !== undefined) { fields.push(`cost=$${n++}`);             vals.push(cost) }
       if (price            !== undefined) {
         // Snapshot old price before overwriting
         if (curr[0]) {

@@ -25,6 +25,7 @@ interface Product {
   group_name: string
   product_name: string
   price: string | null
+  cost: string | null
   quantity: string | null
   last_added_qty: string | null
   last_added_at: string | null
@@ -68,10 +69,10 @@ export default function Home() {
   const [loading, setLoading]   = useState(true)
   const [addInputs, setAddInputs]   = useState<Record<number, string>>({})
   const [bookInputs, setBookInputs] = useState<Record<number, string>>({})
-  const [rowEdits, setRowEdits] = useState<Record<number, { group_name?: string; product_name?: string; price?: string }>>({})
+  const [rowEdits, setRowEdits] = useState<Record<number, { group_name?: string; product_name?: string; price?: string; cost?: string }>>({})
   const [busy, setBusy]   = useState<Record<string, boolean>>({})
   const [msg, setMsg]     = useState<string | null>(null)
-  const [newRow, setNewRow] = useState({ group_name: '', product_name: '', price: '' })
+  const [newRow, setNewRow] = useState({ group_name: '', product_name: '', price: '', cost: '' })
   const [now, setNow] = useState<Date | null>(null)
   const [pageAllowed, setPageAllowed] = useState<boolean | null>(null)
   const [session, setSession] = useState<SessionInfo | null>(null)
@@ -157,7 +158,7 @@ export default function Home() {
       ...infoEntries.map(([idStr, edits]) => {
         const payload: Record<string, unknown> = { id: Number(idStr) }
         for (const [k, v] of Object.entries(edits)) {
-          payload[k] = k === 'price' ? (parseFloat(String(v)) || null) : v
+          payload[k] = (k === 'price' || k === 'cost') ? (parseFloat(String(v)) || null) : v
         }
         return fetch('/api/catalog', {
           method: 'PATCH',
@@ -186,7 +187,7 @@ export default function Home() {
     setBusy(b => ({ ...b, [`info-${id}`]: true }))
     const payload: Record<string, unknown> = { id }
     for (const [k, v] of Object.entries(edits)) {
-      payload[k] = k === 'price' ? (parseFloat(String(v)) || null) : v
+      payload[k] = (k === 'price' || k === 'cost') ? (parseFloat(String(v)) || null) : v
     }
     const res = await fetch('/api/catalog', {
       method: 'PATCH',
@@ -204,7 +205,7 @@ export default function Home() {
   const setEdit = (id: number, key: string, val: string) =>
     setRowEdits(p => ({ ...p, [id]: { ...p[id], [key]: val } }))
 
-  const editVal = (p: Product, key: 'group_name' | 'product_name' | 'price') =>
+  const editVal = (p: Product, key: 'group_name' | 'product_name' | 'price' | 'cost') =>
     rowEdits[p.id]?.[key] !== undefined ? String(rowEdits[p.id][key]) : String(p[key] ?? '')
 
   // ── Toggle show_in_booking ────────────────────────────────────────────────────
@@ -228,10 +229,11 @@ export default function Home() {
         group_name: newRow.group_name.trim(),
         product_name: newRow.product_name.trim(),
         price: newRow.price ? parseFloat(newRow.price) : null,
+        cost: newRow.cost ? parseFloat(newRow.cost) : null,
       }),
     })
     setBusy(b => ({ ...b, new: false }))
-    if (res.ok) { setNewRow({ group_name: '', product_name: '', price: '' }); load(); showMsg('เพิ่มสินค้าสำเร็จ') }
+    if (res.ok) { setNewRow({ group_name: '', product_name: '', price: '', cost: '' }); load(); showMsg('เพิ่มสินค้าสำเร็จ') }
     else showMsg('❌ เพิ่มสินค้าไม่สำเร็จ')
   }
 
@@ -432,6 +434,7 @@ export default function Home() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">สต็อคล่าสุด</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">ใบPO</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">จำนวนจอง</th>
+                  <th className="px-3 py-2 border-r border-blue-400 whitespace-nowrap text-right bg-blue-500">ราคาทุน ✎</th>
                   <th className="px-3 py-2 border-r border-orange-400 whitespace-nowrap text-right bg-orange-400">ราคาโกดัง ✎</th>
                   <th className="px-3 py-2 border-r border-yellow-400 whitespace-nowrap text-right bg-yellow-500 text-gray-500 w-12">+9%</th>
                   <th className="px-3 py-2 border-r border-red-500 whitespace-nowrap text-right bg-red-600 w-14">+9%+7%</th>
@@ -458,6 +461,11 @@ export default function Home() {
                   <td className="border-r border-gray-200" />
                   <td className="border-r border-gray-200" />
                   <td className="border-r border-gray-200" />
+                  <td className="px-2 py-1.5 border-r border-blue-200 bg-blue-50">
+                    <input type="text" inputMode="numeric" placeholder="ราคาทุน" value={newRow.cost}
+                      onChange={e => setNewRow(p => ({ ...p, cost: e.target.value }))}
+                      className="w-full px-1.5 py-1 text-xs rounded border border-blue-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 text-right" />
+                  </td>
                   <td className="px-2 py-1.5 border-r border-orange-200 bg-orange-50">
                     <input type="text" inputMode="numeric" placeholder="ราคาโกดัง" value={newRow.price}
                       onChange={e => setNewRow(p => ({ ...p, price: e.target.value }))}
@@ -482,7 +490,7 @@ export default function Home() {
                     const allOn = groupProducts.length > 0 && groupProducts.every(p => p.show_in_booking)
                     return (
                       <tr key={`g-${ei}`} className="bg-[#9b9484] text-white">
-                        <td colSpan={9} className="px-3 py-1.5 font-bold text-sm tracking-wide">
+                        <td colSpan={10} className="px-3 py-1.5 font-bold text-sm tracking-wide">
                           {entry.name}
                         </td>
                         <td className="px-2 py-1 text-center">
@@ -589,7 +597,14 @@ export default function Home() {
                         </div>
                       </td>
 
-                      {/* 6. ราคาโกดัง */}
+                      {/* 6. ราคาทุน */}
+                      <td className="px-2 py-1 border-r border-blue-100 bg-blue-50">
+                        <input type="text" inputMode="numeric" value={editVal(p, 'cost')}
+                          onChange={e => setEdit(p.id, 'cost', e.target.value)}
+                          className={`${inputCls(!!rowEdits[p.id]?.cost)} text-right`} />
+                      </td>
+
+                      {/* 7. ราคาโกดัง */}
                       <td className="px-2 py-1 border-r border-orange-200 bg-orange-50">
                         {p.price_updated_at && p.prev_warehouse_price !== null && (
                           <div className="text-[9px] text-gray-400 leading-tight mb-0.5 whitespace-nowrap">
@@ -644,7 +659,7 @@ export default function Home() {
               </tbody>
               <tfoot>
                 <tr className="bg-[#9b9484] text-white text-xs">
-                  <td colSpan={7} className="px-3 py-2 text-right font-semibold">
+                  <td colSpan={8} className="px-3 py-2 text-right font-semibold">
                     มูลค่าสต็อครวมทั้งหมด
                   </td>
                   <td colSpan={3} className="px-3 py-2 text-right font-bold text-base whitespace-nowrap">
