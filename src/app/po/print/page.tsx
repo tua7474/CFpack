@@ -67,11 +67,12 @@ const FOY_ITEM_BG: Record<string, string> = {
 // Portrait A4: width=210mm, pad=8mm each side → content ≈ 733 CSS px
 const A4_W_PX   = 210 * (96 / 25.4)   // ≈ 793 px
 const A4_PAD_PX = 8   * (96 / 25.4)   // ≈ 30 px
-// Table columns (portrait single-column list)
-const ROW_NUM_W = 22
-const COL_NAME  = 611
-const COL_QTY   = 100
-const TABLE_W   = ROW_NUM_W + COL_NAME + COL_QTY   // ≈ 733
+// Each half-column table width (two tables side-by-side, 1px divider)
+const HALF_ROW_NUM_W = 20
+const HALF_COL_NAME  = 284
+const HALF_COL_QTY   = 60
+const HALF_W    = HALF_ROW_NUM_W + HALF_COL_NAME + HALF_COL_QTY   // 364
+const TABLE_W   = HALF_W * 2 + 5   // 733 (5px gap)
 const CONTENT_SCALE = (A4_W_PX - A4_PAD_PX * 2) / TABLE_W   // ≈ 1.0
 
 // ── Build sections ────────────────────────────────────────────────────────────
@@ -182,6 +183,22 @@ function buildFlatRows(
   return flat
 }
 
+// ── Split flat rows into two columns ─────────────────────────────────────────
+
+function splitFlatRows(rows: FlatRow[]): [FlatRow[], FlatRow[]] {
+  // Count item rows (product / foy_item) — split at the ceiling midpoint
+  const itemCount = rows.filter(r => r.type === 'product' || r.type === 'foy_item').length
+  const half = Math.ceil(itemCount / 2)
+  let seen = 0, splitIdx = rows.length
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].type === 'product' || rows[i].type === 'foy_item') {
+      seen++
+      if (seen === half) { splitIdx = i + 1; break }
+    }
+  }
+  return [rows.slice(0, splitIdx), rows.slice(splitIdx)]
+}
+
 // ── Date helper ───────────────────────────────────────────────────────────────
 
 function fmtThaiDate(iso: string) {
@@ -249,7 +266,7 @@ function POPrintInner() {
   if (error)   return <div className="flex items-center justify-center h-screen text-red-500">{error}</div>
   if (!order)  return null
 
-  const total = parseFloat(order.total_amount) || 0
+  const [leftRows, rightRows] = splitFlatRows(flatRows)
   const scaledFrameH = contentNaturalH * CONTENT_SCALE + A4_PAD_PX * 2
 
   return (
@@ -322,98 +339,69 @@ function POPrintInner() {
                 </div>
               </div>
 
-              {/* ── Product table (portrait single-column) ────────────────── */}
-              <div className="rounded overflow-hidden border border-gray-400 shadow-sm">
-                <table className="text-[13px] leading-[1.4] border-collapse w-full"
-                  style={{ tableLayout: 'fixed', width: TABLE_W }}>
-                  <colgroup>
-                    <col style={{ width: ROW_NUM_W }} />
-                    <col style={{ width: COL_NAME }} />
-                    <col style={{ width: COL_QTY }} />
-                  </colgroup>
-                  <thead>
-                    <tr className="bg-[#4e7a5e] text-white">
-                      <th className="border border-[#3d6149] px-1 py-1.5 text-center text-[10px] font-semibold">#</th>
-                      <th className="border border-[#3d6149] px-2 py-1.5 text-left text-[11px] font-semibold">รายการสินค้า</th>
-                      <th className="border border-[#3d6149] px-2 py-1.5 text-right text-[11px] font-semibold">จำนวน</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      let rowNum = 0
-                      return flatRows.map((row, i) => {
-                        if (row.type === 'subgroup') {
-                          return (
-                            <tr key={i}>
-                              <td colSpan={3}
-                                className="border px-3 py-px text-[11px] font-bold text-white print-sg bg-[#4e7a5e]">
-                                {row.name}
-                              </td>
-                            </tr>
-                          )
-                        }
-                        if (row.type === 'foy_cat') {
-                          return (
-                            <tr key={i}>
-                              <td colSpan={3}
-                                style={{ backgroundColor: '#4e7a5e' }}
-                                className="border px-3 py-px text-[10px] font-bold text-white print-sg">
-                                กระดาษฝอย {row.category}
-                              </td>
-                            </tr>
-                          )
-                        }
-                        if (row.type === 'foy_item') {
-                          rowNum++
-                          const bg = FOY_ITEM_BG[row.category] ?? '#fefce8'
-                          return (
-                            <tr key={i} className={rowNum % 2 === 0 ? '' : ''}>
-                              <td style={{ backgroundColor: bg }}
-                                className="border border-gray-200 text-center text-[10px] text-gray-400 py-1">
-                                {rowNum}
-                              </td>
-                              <td style={{ backgroundColor: bg }}
-                                className="border border-gray-200 px-2 py-1 text-gray-700">
-                                {row.model_name}
-                              </td>
-                              <td style={{ backgroundColor: bg }}
-                                className="border border-gray-200 px-2 py-1 text-right font-semibold text-gray-700">
-                                ×{row.qty.toLocaleString('th-TH')}
-                              </td>
-                            </tr>
-                          )
-                        }
-                        // product
-                        rowNum++
-                        return (
-                          <tr key={i} className={rowNum % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                            <td className="border border-gray-200 text-center text-[10px] text-gray-400 py-1">
-                              {rowNum}
-                            </td>
-                            <td className="border border-gray-200 px-2 py-1 text-gray-700">
-                              {row.name}
-                            </td>
-                            <td className="border border-gray-200 px-2 py-1 text-right font-semibold text-[#4e7a5e]">
-                              ×{row.qty.toLocaleString('th-TH')}
-                            </td>
+              {/* ── Product table — 2 columns side by side ────────────────── */}
+              <div className="flex gap-[5px]">
+                {[leftRows, rightRows].map((colRows, colIdx) => {
+                  let rowNum = colIdx === 0 ? 0 : leftRows.filter(r => r.type === 'product' || r.type === 'foy_item').length
+                  return (
+                    <div key={colIdx} className="rounded overflow-hidden border border-gray-400 shadow-sm" style={{ width: HALF_W }}>
+                      <table className="text-[12px] leading-[1.4] border-collapse"
+                        style={{ tableLayout: 'fixed', width: HALF_W }}>
+                        <colgroup>
+                          <col style={{ width: HALF_ROW_NUM_W }} />
+                          <col style={{ width: HALF_COL_NAME }} />
+                          <col style={{ width: HALF_COL_QTY }} />
+                        </colgroup>
+                        <thead>
+                          <tr className="bg-[#4e7a5e] text-white">
+                            <th className="border border-[#3d6149] px-1 py-1.5 text-center text-[10px] font-semibold">#</th>
+                            <th className="border border-[#3d6149] px-2 py-1.5 text-left text-[11px] font-semibold">รายการสินค้า</th>
+                            <th className="border border-[#3d6149] px-2 py-1.5 text-right text-[11px] font-semibold">จำนวน</th>
                           </tr>
-                        )
-                      })
-                    })()}
-                  </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                          {colRows.map((row, i) => {
+                            if (row.type === 'subgroup') return (
+                              <tr key={i}>
+                                <td colSpan={3} className="border px-2 py-px text-[11px] font-bold text-white print-sg bg-[#4e7a5e]">
+                                  {row.name}
+                                </td>
+                              </tr>
+                            )
+                            if (row.type === 'foy_cat') return (
+                              <tr key={i}>
+                                <td colSpan={3} style={{ backgroundColor: '#4e7a5e' }}
+                                  className="border px-2 py-px text-[10px] font-bold text-white print-sg">
+                                  กระดาษฝอย {row.category}
+                                </td>
+                              </tr>
+                            )
+                            if (row.type === 'foy_item') {
+                              rowNum++
+                              const bg = FOY_ITEM_BG[row.category] ?? '#fefce8'
+                              return (
+                                <tr key={i}>
+                                  <td style={{ backgroundColor: bg }} className="border border-gray-200 text-center text-[10px] text-gray-400 py-1">{rowNum}</td>
+                                  <td style={{ backgroundColor: bg }} className="border border-gray-200 px-2 py-1 text-gray-700">{row.model_name}</td>
+                                  <td style={{ backgroundColor: bg }} className="border border-gray-200 px-2 py-1 text-right font-semibold text-gray-700">×{row.qty.toLocaleString('th-TH')}</td>
+                                </tr>
+                              )
+                            }
+                            rowNum++
+                            return (
+                              <tr key={i} className={rowNum % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                                <td className="border border-gray-200 text-center text-[10px] text-gray-400 py-1">{rowNum}</td>
+                                <td className="border border-gray-200 px-2 py-1 text-gray-700">{row.name}</td>
+                                <td className="border border-gray-200 px-2 py-1 text-right font-semibold text-[#4e7a5e]">×{row.qty.toLocaleString('th-TH')}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })}
               </div>
-
-              {/* ── Total ─────────────────────────────────────────────────── */}
-              {total > 0 && (
-                <div className="text-right mt-2 pr-1">
-                  <span className="text-[14px] font-bold text-gray-600">ยอดรวม </span>
-                  <span className="text-[22px] font-extrabold text-[#4e7a5e]">
-                    {total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className="text-[14px] font-bold text-gray-600"> บาท</span>
-                </div>
-              )}
 
               {/* ── Signature boxes ───────────────────────────────────────── */}
               <div className="flex gap-4 mt-4" style={{ width: TABLE_W }}>
