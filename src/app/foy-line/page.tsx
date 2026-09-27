@@ -83,9 +83,9 @@ export default function FoyLinePage() {
     Promise.all([
       fetch('/api/stock').then(r => r.json()),
       fetch('/api/foy-production').then(r => r.json()).catch(() => []),
-    ]).then(([stock, production]: [StockColor[], ProductionRow[]]) => {
-      // เก็บเฉพาะ model_name + color_name จาก paper_stock
-      setStockColors((stock as StockColor[]).filter(s => s.color_name))
+    ]).then(([stockRes, production]: [{ items: StockColor[] }, ProductionRow[]]) => {
+      // /api/stock คืน { items, categoryVis, modelVis }
+      setStockColors((stockRes.items ?? []).filter((s: StockColor) => s.color_name))
       const dbRows = (production as ProductionRow[]).map(r => ({
         ...r,
         sessions: trimSessions(r.sessions?.length ? r.sessions : [{}]),
