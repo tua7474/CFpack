@@ -1,6 +1,69 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 
+const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN
+const BASE_URL   = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : 'https://cf-production-6234.up.railway.app'
+
+async function getWarehouseGroupId(): Promise<string | null> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'warehouse_group_id' LIMIT 1`
+    )
+    return rows[0]?.value ?? null
+  } catch { return null }
+}
+
+async function pushToWarehouse(messages: object[]) {
+  if (!LINE_TOKEN) return
+  const groupId = await getWarehouseGroupId()
+  if (!groupId) return
+  await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
+    body: JSON.stringify({ to: groupId, messages }),
+  }).catch(() => {})
+}
+
+function poNotifyBubble(opts: {
+  icon: string; title: string; poNo: string
+  supplier?: string | null; detail?: string; detailColor?: string
+}) {
+  const detailUrl = `${BASE_URL}/po/detail?no=${encodeURIComponent(opts.poNo)}`
+  return {
+    type: 'flex',
+    altText: `${opts.icon} ${opts.title} ${opts.poNo}`,
+    contents: {
+      type: 'bubble', size: 'kilo',
+      body: {
+        type: 'box', layout: 'vertical',
+        paddingAll: '10px', spacing: 'xs',
+        backgroundColor: '#e8f5e9',
+        contents: [
+          {
+            type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center',
+            contents: [
+              { type: 'text', text: opts.icon, size: 'xl', flex: 0 },
+              { type: 'text', text: opts.title, size: 'sm', weight: 'bold', color: '#1b5e20', flex: 3, wrap: true },
+            ],
+          },
+          { type: 'separator', color: '#a5d6a7' },
+          { type: 'text', text: opts.poNo, size: 'md', weight: 'bold', color: '#2e7d32' },
+          ...(opts.supplier ? [{ type: 'text', text: opts.supplier, size: 'xs', color: '#555555' }] : []),
+          ...(opts.detail   ? [{ type: 'text', text: opts.detail,   size: 'xs', color: opts.detailColor ?? '#777777', wrap: true }] : []),
+          {
+            type: 'box', layout: 'vertical', margin: 'sm',
+            backgroundColor: '#4e7a5e', cornerRadius: '4px', paddingAll: '6px',
+            action: { type: 'uri', uri: detailUrl },
+            contents: [{ type: 'text', text: 'ดูรายละเอียด', size: 'xs', color: '#ffffff', align: 'center', weight: 'bold' }],
+          },
+        ],
+      },
+    },
+  }
+}
+
 const CREATE_TABLE = `
   CREATE TABLE IF NOT EXISTS po_orders (
     id           SERIAL PRIMARY KEY,
@@ -112,7 +175,16 @@ export async function POST(request: Request) {
       v_total ?? null,
     ]
   )
-  return NextResponse.json(rows[0], { status: 201 })
+  const created = rows[0]
+  // Push notification to warehouse group
+  pushToWarehouse([poNotifyBubble({
+    icon: '📋', title: 'สร้างใบPO ใหม่',
+    poNo: created.po_no,
+    supplier: created.supplier,
+    detail: `ยอดรวม ${parseFloat(created.total_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
+  })]).catch(() => {})
+
+  return NextResponse.json(created, { status: 201 })
 }
 
 export async function PATCH(request: Request) {
@@ -160,6 +232,7 @@ export async function PATCH(request: Request) {
   // If marking received, add catalog stock (skip FOY items — their IDs are from paper_stock, not products_catalog)
   if (status === 'received' && rows[0]) {
     const qty: Record<string, number> = quantities ?? rows[0].quantities ?? {}
+    let itemCount = 0
     for (const [idStr, q] of Object.entries(qty)) {
       if (!q || (q as number) <= 0) continue
       await pool.query(
@@ -170,6 +243,30 @@ export async function PATCH(request: Request) {
         `INSERT INTO catalog_stock_log (product_id, action, qty) VALUES ($1, 'po_receive', $2)`,
         [Number(idStr), q]
       )
+      itemCount++
+    }
+    pushToWarehouse([poNotifyBubble({
+      icon: '✅', title: 'รับสินค้าแล้ว — อัพเดทสต็อค',
+      poNo: rows[0].po_no,
+      supplier: rows[0].supplier,
+      detail: `อัพเดทสต็อค ${itemCount} รายการเรียบร้อย`, detailColor: '#2e7d32',
+    })]).catch(() => {})
+  } else if (rows[0]) {
+    // อัพเดทข้อมูลอื่นๆ
+    const changed: string[] = []
+    if (supplier    !== undefined) changed.push(`โรงงาน: ${supplier ?? '-'}`)
+    if (notes       !== undefined) changed.push(`หมายเหตุ: ${notes ?? '-'}`)
+    if (factory_total !== undefined) changed.push(`ยอดโรงงาน: ${factory_total ?? '-'}`)
+    if (ordered_at  === 'now')     changed.push('สั่งสินค้าแล้ว')
+    if (ordered_at  === null)      changed.push('ยกเลิกสถานะสั่ง')
+    if (delivery_due !== undefined) changed.push(`กำหนดส่ง: ${delivery_due ?? '-'}`)
+    if (changed.length > 0) {
+      pushToWarehouse([poNotifyBubble({
+        icon: '✏️', title: 'แก้ไขใบPO',
+        poNo: rows[0].po_no,
+        supplier: rows[0].supplier,
+        detail: changed.join(' · '),
+      })]).catch(() => {})
     }
   }
 
@@ -179,6 +276,34 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   await ensureTable()
   const { id } = await request.json()
+  // Get PO info before delete for notification
+  const { rows: before } = await pool.query(`SELECT po_no, supplier FROM po_orders WHERE id = $1`, [id])
   await pool.query(`DELETE FROM po_orders WHERE id = $1`, [id])
+  if (before[0]) {
+    pushToWarehouse([{
+      type: 'flex',
+      altText: `🗑️ ลบใบPO ${before[0].po_no}`,
+      contents: {
+        type: 'bubble', size: 'kilo',
+        body: {
+          type: 'box', layout: 'vertical',
+          paddingAll: '10px', spacing: 'xs',
+          backgroundColor: '#ffebee',
+          contents: [
+            {
+              type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center',
+              contents: [
+                { type: 'text', text: '🗑️', size: 'xl', flex: 0 },
+                { type: 'text', text: 'ลบใบPO แล้ว', size: 'sm', weight: 'bold', color: '#b71c1c', flex: 3 },
+              ],
+            },
+            { type: 'separator', color: '#ef9a9a' },
+            { type: 'text', text: before[0].po_no, size: 'md', weight: 'bold', color: '#c62828' },
+            ...(before[0].supplier ? [{ type: 'text', text: before[0].supplier, size: 'xs', color: '#555555' }] : []),
+          ],
+        },
+      },
+    }]).catch(() => {})
+  }
   return NextResponse.json({ ok: true })
 }

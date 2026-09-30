@@ -1604,6 +1604,9 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     // ถ้าไม่ใช่กลุ่ม CFสั่งเข้าโกดัง → เงียบ ไม่ตอบสนองใดๆ
     if (!grpName || !grpName.includes('CFสั่งเข้าโกดัง')) return
 
+    // บันทึก group ID ไว้สำหรับ push notification จาก /api/po
+    await setSetting('warehouse_group_id', source.groupId).catch(() => {})
+
     const poUrl      = `${BASE_URL}/po`
     const restockUrl = `${BASE_URL}/restock`
 
