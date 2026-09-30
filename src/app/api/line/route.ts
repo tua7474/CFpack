@@ -429,6 +429,19 @@ async function getPendingOrders(branchId: number) {
   return rows
 }
 
+async function getCurrentWeekOrders(branchId: number) {
+  const { rows } = await pool.query(`
+    SELECT order_no, total_amount::float AS total_amount, status, payment_status, created_at
+    FROM booking_orders
+    WHERE branch_id = $1
+      AND created_at AT TIME ZONE 'Asia/Bangkok'
+          >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
+    ORDER BY created_at DESC
+    LIMIT 10
+  `, [branchId])
+  return rows
+}
+
 // ── Flex Builders ─────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 7
@@ -1743,120 +1756,104 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       }
     }
 
-    // ── สรุปรายสัปดาห์ + ตรวจสอบการบล็อก ────────────────────────────────────
-    const { year: curYear, week: curWeek } = getISOWeekInfo()
-    let weekRows: WeekSummary[] = []
+    // ── ดึงข้อมูล: ตรวจสอบบล็อก + ใบจองสัปดาห์นี้ ──────────────────────────
+    let weekOrders: { order_no: string; total_amount: number; payment_status: string; created_at: string }[] = []
     let blocked = false
 
     if (branchId !== null) {
-      const [wRows, blockedResult] = await Promise.all([
-        getWeeklySummary(branchId),
-        checkBlockedFromDB(branchId),   // ตรวจทุกออเดอร์ใน DB ไม่จำกัด 3 สัปดาห์
+      const [wOrders, blockedResult] = await Promise.all([
+        getCurrentWeekOrders(branchId),
+        checkBlockedFromDB(branchId),
       ])
-      weekRows = wRows
-      blocked  = blockedResult
+      weekOrders = wOrders
+      blocked    = blockedResult
     }
 
-    // ── สร้าง body rows สรุปแต่ละสัปดาห์ ─────────────────────────────────────
-    const weekBodyRows: object[] = weekRows.map(w => {
-      const allPaid = w.pending_amount === 0
-      const label   = weekLabel(w.yr, w.wk)
-      return {
-        type: 'box', layout: 'vertical', margin: 'sm', paddingAll: '8px',
-        backgroundColor: allPaid ? '#f0fff4' : '#fff1f2', cornerRadius: '6px',
-        contents: [
-          {
-            type: 'box', layout: 'horizontal',
+    // ── แถวรายการใบจองสัปดาห์นี้ ─────────────────────────────────────────────
+    const orderRows: object[] = weekOrders.length === 0
+      ? [{ type: 'text', text: 'ยังไม่มีใบจองสัปดาห์นี้', size: 'xs', color: '#aaaaaa', align: 'center', margin: 'sm' }]
+      : weekOrders.map(o => {
+          const paid    = o.payment_status === 'paid'
+          const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
+            day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
+          })
+          return {
+            type: 'box', layout: 'horizontal', paddingAll: '4px',
             contents: [
-              { type: 'text', text: label, size: 'xs', color: '#555555', weight: 'bold', flex: 5 },
-              { type: 'text', text: allPaid ? '✅ ครบ' : '🔴 ค้าง', size: 'xs',
-                color: allPaid ? '#4ade80' : '#ef4444', weight: 'bold', flex: 2, align: 'end' }
-            ]
-          },
-          {
-            type: 'box', layout: 'horizontal', margin: 'xs',
-            contents: [
-              { type: 'text', text: `${w.total_count} ใบจอง`, size: 'xs', color: '#888888', flex: 3 },
-              { type: 'text',
-                text: allPaid
-                  ? `฿${fmt(w.total_amount)}`
-                  : `ค้าง ฿${fmt(w.pending_amount)} / ฿${fmt(w.total_amount)}`,
-                size: 'xs', color: allPaid ? '#4ade80' : '#ef4444', flex: 7, align: 'end', weight: 'bold' }
-            ]
+              { type: 'text', text: o.order_no, size: 'xs', color: '#333333', weight: 'bold', flex: 4 },
+              { type: 'text', text: dateStr, size: 'xxs', color: '#aaaaaa', flex: 3, align: 'center' },
+              { type: 'text', text: paid ? 'ชำระแล้ว' : 'รอชำระ', size: 'xxs',
+                color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+            ],
           }
-        ]
-      }
-    })
+        })
 
-    // ── Footer buttons ────────────────────────────────────────────────────────
-    const footerBtns: object[] = []
+    // ── 3 ปุ่มแถวเดียว ───────────────────────────────────────────────────────
+    const ordersUrl = `${BASE_URL}/orders`
+    const summaryAction = branchId
+      ? { type: 'uri', uri: `${ordersUrl}?branch_id=${branchId}` }
+      : { type: 'postback', data: 'C', displayText: 'สรุปยอด' }
 
-    if (blocked) {
-      footerBtns.push({
-        type: 'box', layout: 'vertical', backgroundColor: '#fef2f2',
-        cornerRadius: '8px', paddingAll: '10px', margin: 'none',
-        contents: [
-          { type: 'text', text: '🔴 ค้างชำระ — จองสินค้าไม่ได้', weight: 'bold', size: 'sm', color: '#dc2626', align: 'center' },
-          { type: 'text', text: 'ต้องชำระยอดค้างทั้งหมดก่อนจึงจะจองได้', size: 'xs', color: '#dc2626', align: 'center', margin: 'xs', wrap: true }
-        ]
-      })
-    } else {
-      footerBtns.push({
-        type: 'button',
-        action: { type: 'uri', label: '🛒 เปิดใบจองสินค้า', uri: bookingUrl },
-        style: 'primary', color: '#9b9484', height: 'md'
-      })
+    const threeButtons = {
+      type: 'box', layout: 'horizontal', spacing: 'sm',
+      contents: [
+        {
+          type: 'box', layout: 'vertical', flex: 1,
+          backgroundColor: blocked ? '#9ca3af' : '#9b9484',
+          cornerRadius: '4px', paddingAll: '6px',
+          action: blocked ? { type: 'postback', data: 'NOOP', displayText: 'ค้างชำระอยู่' } : { type: 'uri', uri: bookingUrl },
+          contents: [{ type: 'text', text: 'ใบจอง', size: 'xs', color: '#ffffff', align: 'center', weight: 'bold' }],
+        },
+        {
+          type: 'box', layout: 'vertical', flex: 1,
+          backgroundColor: '#e5e7eb', cornerRadius: '4px', paddingAll: '6px',
+          action: { type: 'uri', uri: ordersUrl },
+          contents: [{ type: 'text', text: 'ประวัติจอง', size: 'xs', color: '#374151', align: 'center', weight: 'bold' }],
+        },
+        {
+          type: 'box', layout: 'vertical', flex: 1,
+          backgroundColor: '#e5e7eb', cornerRadius: '4px', paddingAll: '6px',
+          action: summaryAction,
+          contents: [{ type: 'text', text: 'สรุปยอด', size: 'xs', color: '#374151', align: 'center', weight: 'bold' }],
+        },
+      ],
     }
 
-    footerBtns.push({
-      type: 'button',
-      action: { type: 'uri', label: '📋 ประวัติใบจอง', uri: `${BASE_URL}/orders` },
-      style: 'secondary', height: 'sm'
-    })
-
-    footerBtns.push({
-      type: 'button',
-      action: { type: 'uri', label: '💳 แจ้งชำระเงิน', uri: branchId && branchLabel.startsWith('สาขา: ')
-        ? `${BASE_URL}/orders?pay=1&branch_name=${encodeURIComponent(branchLabel.replace('สาขา: ', ''))}`
-        : `${BASE_URL}/orders?pay=1` },
-      style: 'primary', color: '#ea580c', height: 'sm'
-    })
-
-
+    // ── สร้าง body ────────────────────────────────────────────────────────────
     const bodyContents: object[] = [
-      {
-        type: 'box', layout: 'horizontal',
+      ...(blocked ? [{
+        type: 'box', layout: 'vertical', backgroundColor: '#fef2f2',
+        cornerRadius: '6px', paddingAll: '6px', margin: 'none',
         contents: [
-          { type: 'text', text: 'สรุปรายสัปดาห์', size: 'sm', weight: 'bold', color: '#9b9484', flex: 4 },
-          { type: 'text', text: `สัปดาห์ปัจจุบัน W${curWeek}`, size: 'xs', color: '#aaaaaa', flex: 3, align: 'end' }
+          { type: 'text', text: 'ค้างชำระ — จองสินค้าไม่ได้', weight: 'bold', size: 'xs', color: '#dc2626', align: 'center' },
         ]
-      },
-      ...(weekBodyRows.length
-        ? [{ type: 'separator', margin: 'sm' }, ...weekBodyRows]
-        : [{ type: 'text', text: 'ยังไม่มีประวัติการสั่งซื้อ', size: 'sm', color: '#aaaaaa', margin: 'sm' }])
+      }, { type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
+      ...orderRows,
+      { type: 'separator', margin: 'sm', color: '#d1d5db' },
+      threeButtons,
     ]
+
+    const branchShort = branchLabel.startsWith('สาขา: ') ? branchLabel.replace('สาขา: ', '') : branchLabel
 
     return reply(replyToken, [{
       type: 'flex',
-      altText: blocked ? '🔴 ค้างชำระ — จองสินค้าไม่ได้' : '📋 เปิดใบจองสินค้า',
+      altText: blocked ? 'ค้างชำระ — จองสินค้าไม่ได้' : 'ใบจองสินค้า',
       contents: {
-        type: 'bubble',
+        type: 'bubble', size: 'kilo',
         header: {
-          type: 'box', layout: 'vertical',
-          backgroundColor: blocked ? '#dc2626' : '#9b9484', paddingAll: '16px',
+          type: 'box', layout: 'horizontal', alignItems: 'center',
+          backgroundColor: blocked ? '#dc2626' : '#9b9484',
+          paddingAll: '10px', spacing: 'sm',
           contents: [
-            { type: 'text', text: '📋 ใบจองสินค้า', color: '#ffffff', weight: 'bold', size: 'xl' },
-            { type: 'text', text: branchLabel, color: blocked ? '#fecaca' : '#aaffaa', size: 'sm', margin: 'sm' }
+            { type: 'text', text: 'ใบจองสินค้า', color: '#ffffff', weight: 'bold', size: 'sm', flex: 3 },
+            { type: 'text', text: branchShort, color: blocked ? '#fecaca' : '#f5f5f4', size: 'xxs', flex: 3, align: 'end', wrap: false },
           ]
         },
         body: {
-          type: 'box', layout: 'vertical', paddingAll: '16px', backgroundColor: '#F5EED8',
-          contents: bodyContents
+          type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'none',
+          backgroundColor: '#F5EED8',
+          contents: bodyContents,
         },
-        footer: {
-          type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm', backgroundColor: '#F5EED8',
-          contents: footerBtns
-        }
       }
     }])
   }
