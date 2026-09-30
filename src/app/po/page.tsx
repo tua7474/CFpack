@@ -281,6 +281,7 @@ function POInner() {
   const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
   const [supplier, setSupplier] = useState('')
   const [notes, setNotes] = useState('')
+  const [supplierList, setSupplierList] = useState<{ id: number; name: string }[]>([])
 
   // Load foy result from booking-foy (new order mode only)
   useEffect(() => {
@@ -411,6 +412,14 @@ function POInner() {
         setFoyModelVis(data.modelVis ?? {})
         setFoyStockItems(data.items ?? [])
       })
+      .catch(() => {})
+  }, [])
+
+  // Fetch supplier list
+  useEffect(() => {
+    fetch('/api/suppliers')
+      .then(r => r.json())
+      .then((data: { id: number; name: string }[]) => setSupplierList(Array.isArray(data) ? data : []))
       .catch(() => {})
   }, [])
 
@@ -1465,7 +1474,10 @@ function POInner() {
                                 className={`${base} p-1 align-middle bg-white`}>
                                 <div className="flex flex-col justify-center h-full gap-0.5">
                                   <div className="text-[7px] text-gray-500 font-semibold leading-none">ซัพพลายเออร์</div>
-                                  <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="ชื่อซัพพลายเออร์..." className="w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none bg-white border-gray-400 text-gray-500" />
+                                  <select value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none bg-white border-gray-400 text-gray-500">
+                                    <option value="">— เลือกซัพพลายเออร์ —</option>
+                                    {supplierList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                  </select>
                                 </div>
                               </td>,
                             ]

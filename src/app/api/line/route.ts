@@ -1573,44 +1573,22 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     const restockUrl = `${BASE_URL}/restock`
     return reply(replyToken, [{
       type: 'flex',
-      altText: '📥 ใบPO — กดเพื่อสร้างใบPO ใหม่',
+      altText: 'ใบPO',
       contents: {
         type: 'bubble',
-        size: 'kilo',
-        header: {
-          type: 'box', layout: 'vertical', paddingAll: '16px',
-          backgroundColor: '#4e7a5e',
-          contents: [
-            {
-              type: 'text', text: '📥 ใบPO', color: '#ffffff',
-              weight: 'bold', size: 'xl',
-            },
-            {
-              type: 'text', text: 'CF ระบบจัดการข้อมูล',
-              color: '#c8e6c9', size: 'xs', margin: 'xs',
-            },
-          ],
-        },
+        size: 'micro',
         body: {
-          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px',
-          contents: [
-            {
-              type: 'text',
-              text: 'กดปุ่มด้านล่างเพื่อสร้างใบ PO ใหม่\nระบบจะเปิดฟอร์มพร้อมพิมพ์ได้ทันที',
-              wrap: true, size: 'sm', color: '#555555',
-            },
-          ],
-        },
-        footer: {
-          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
+          type: 'box', layout: 'horizontal',
+          spacing: 'sm', paddingAll: '10px',
+          backgroundColor: '#e8f5e9',
           contents: [
             {
               type: 'button', style: 'primary', height: 'sm',
-              color: '#4e7a5e',
-              action: { type: 'uri', label: '➕ สร้างใบPO ใหม่', uri: poUrl },
+              color: '#4e7a5e', flex: 1,
+              action: { type: 'uri', label: '➕ สร้างใบPO', uri: poUrl },
             },
             {
-              type: 'button', style: 'secondary', height: 'sm',
+              type: 'button', style: 'secondary', height: 'sm', flex: 1,
               action: { type: 'uri', label: '📋 ประวัติใบPO', uri: restockUrl },
             },
           ],

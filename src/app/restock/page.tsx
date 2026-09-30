@@ -36,7 +36,7 @@ export default function RestockPage() {
   const [orders, setOrders]     = useState<POOrder[]>([])
   const [loading, setLoading]   = useState(true)
   const [busy, setBusy]         = useState<Record<number, boolean>>({})
-  const [suppliers, setSuppliers] = useState<string[]>([])
+  const [suppliers, setSuppliers] = useState<{ id: number; name: string }[]>([])
 
   // Inline edit buffers (keyed by order id)
   const [editSupplier, setEditSupplier]         = useState<Record<number, string>>({})
@@ -63,10 +63,14 @@ export default function RestockPage() {
     const res  = await fetch('/api/po')
     const data = await res.json() as POOrder[]
     setOrders(data)
-    // Collect unique non-empty supplier names for datalist
-    const unique = [...new Set(data.map(o => o.supplier).filter(Boolean))] as string[]
-    setSuppliers(unique)
     setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/suppliers')
+      .then(r => r.json())
+      .then((data: { id: number; name: string }[]) => setSuppliers(Array.isArray(data) ? data : []))
+      .catch(() => {})
   }, [])
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
@@ -235,7 +239,10 @@ export default function RestockPage() {
 
                       {/* เลขที่ใบPO */}
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-gray-800 whitespace-nowrap">{order.po_no}</div>
+                        <Link href={`/po/detail?no=${encodeURIComponent(order.po_no)}`}
+                          className="font-semibold text-green-700 hover:text-green-900 hover:underline whitespace-nowrap">
+                          {order.po_no}
+                        </Link>
                         <div className="text-xs text-gray-400 mt-0.5">{fmtDate(order.created_at)}</div>
                         {order.notes && (
                           <div className="text-xs text-gray-400 mt-0.5 max-w-[160px] truncate" title={order.notes}>
@@ -244,20 +251,17 @@ export default function RestockPage() {
                         )}
                       </td>
 
-                      {/* ชื่อโรงงาน — datalist dropdown */}
+                      {/* ชื่อโรงงาน — dropdown */}
                       <td className="px-4 py-3">
-                        <input
-                          list={`sup-${order.id}`}
+                        <select
                           value={supplierValue(order)}
                           onChange={e => setEditSupplier(prev => ({ ...prev, [order.id]: e.target.value }))}
                           onBlur={() => blurSupplier(order)}
                           disabled={busy[order.id]}
-                          placeholder="เลือกหรือพิมพ์"
-                          className="border border-gray-200 rounded px-2 py-1.5 text-sm w-40 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50"
-                        />
-                        <datalist id={`sup-${order.id}`}>
-                          {suppliers.map(s => <option key={s} value={s} />)}
-                        </datalist>
+                          className="border border-gray-200 rounded px-2 py-1.5 text-sm w-40 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50">
+                          <option value="">— เลือก —</option>
+                          {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        </select>
                       </td>
 
                       {/* ยอดรวมPO (เรา) */}
