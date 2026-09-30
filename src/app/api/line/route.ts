@@ -1585,11 +1585,11 @@ async function handleText(text: string, userId: string, replyToken: string, sour
             {
               type: 'button', style: 'primary', height: 'sm',
               color: '#4e7a5e', flex: 1,
-              action: { type: 'uri', label: '➕ สร้างใบPO', uri: poUrl },
+              action: { type: 'uri', label: 'ออกPO', uri: poUrl },
             },
             {
               type: 'button', style: 'secondary', height: 'sm', flex: 1,
-              action: { type: 'uri', label: '📋 ประวัติใบPO', uri: restockUrl },
+              action: { type: 'uri', label: 'ประวัติ', uri: restockUrl },
             },
           ],
         },
