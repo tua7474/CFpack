@@ -314,8 +314,8 @@ export default function FoyLinePage() {
               <tr className="bg-[#7a7568] text-white text-[10px]">
                 {Array.from({ length: maxSessions }, (_, i) => (
                   <Fragment key={i}>
-                    <th className="px-0.5 py-1 border border-white/20 text-center" style={{ minWidth: 26 }}>กก.</th>
-                    <th className="px-0.5 py-1 border border-white/20 text-center bg-amber-900/40" style={{ minWidth: 36 }}>หมวด</th>
+                    <th className="px-0.5 py-1 border border-white/20 text-center" style={{ minWidth: 13 }}>กก.</th>
+                    <th className="px-0.5 py-1 border border-white/20 text-center bg-amber-900/40" style={{ minWidth: 18 }}>หมวด</th>
                   </Fragment>
                 ))}
               </tr>
@@ -383,7 +383,7 @@ export default function FoyLinePage() {
                       return (
                         <Fragment key={si}>
                           {/* กก. */}
-                          <td className="px-0.5 py-1 border-r border-gray-100 align-top" style={{ minWidth: 26 }}>
+                          <td className="px-0.5 py-1 border-r border-gray-100 align-top" style={{ minWidth: 13 }}>
                             {dateLbl(active && sess?.kg != null ? sess?.date : undefined)}
                             <input
                               type="number" inputMode="decimal" step="0.1"
@@ -395,7 +395,7 @@ export default function FoyLinePage() {
                             />
                           </td>
                           {/* หมวด */}
-                          <td className="px-0 py-1 border-r border-gray-200 align-top bg-amber-50/40" style={{ minWidth: 36 }}>
+                          <td className="px-0 py-1 border-r border-gray-200 align-top bg-amber-50/40" style={{ minWidth: 18 }}>
                             <div className="h-3 mb-0.5" />
                             <select
                               value={active ? (sess?.cut_type ?? '') : ''}
