@@ -15,6 +15,8 @@ interface POOrder {
   quantities:    Record<string, number>
   created_at:    string
   received_at:   string | null
+  ordered_at:    string | null
+  delivery_due:  string | null
 }
 
 interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
@@ -41,6 +43,7 @@ export default function RestockPage() {
   // Inline edit buffers (keyed by order id)
   const [editSupplier, setEditSupplier]         = useState<Record<number, string>>({})
   const [editFactoryTotal, setEditFactoryTotal] = useState<Record<number, string>>({})
+  const [editDeliveryDue, setEditDeliveryDue]   = useState<Record<number, string>>({})
 
   useEffect(() => {
     try {
@@ -143,6 +146,33 @@ export default function RestockPage() {
     }
   }
 
+  async function handleToggleOrdered(order: POOrder) {
+    setBusy(prev => ({ ...prev, [order.id]: true }))
+    try {
+      await patchOrder(order.id, { ordered_at: order.ordered_at ? null : 'now' })
+    } finally {
+      setBusy(prev => ({ ...prev, [order.id]: false }))
+    }
+  }
+
+  function deliveryDueValue(order: POOrder) {
+    return editDeliveryDue[order.id] !== undefined ? editDeliveryDue[order.id] : (order.delivery_due ? order.delivery_due.slice(0, 10) : '')
+  }
+
+  async function blurDeliveryDue(order: POOrder) {
+    const val = editDeliveryDue[order.id]
+    if (val === undefined) return
+    const cur = order.delivery_due ? order.delivery_due.slice(0, 10) : ''
+    if (val === cur) return
+    setBusy(prev => ({ ...prev, [order.id]: true }))
+    try {
+      await patchOrder(order.id, { delivery_due: val || null })
+    } finally {
+      setBusy(prev => ({ ...prev, [order.id]: false }))
+      setEditDeliveryDue(prev => { const n = { ...prev }; delete n[order.id]; return n })
+    }
+  }
+
   return (
     <div className="min-h-screen bg-green-50">
       {/* Header */}
@@ -222,6 +252,8 @@ export default function RestockPage() {
                   <th className="px-4 py-3 text-right whitespace-nowrap font-semibold">ยอดรวมPO (เรา)</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap font-semibold">ยอดรวมPO (โรงงาน)</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap font-semibold">ส่วนต่าง</th>
+                  <th className="px-4 py-3 text-center whitespace-nowrap font-semibold">สั่ง</th>
+                  <th className="px-4 py-3 text-center whitespace-nowrap font-semibold">กำหนดส่ง</th>
                   <th className="px-4 py-3 text-center whitespace-nowrap font-semibold">สถานะ</th>
                   <th className="px-4 py-3 text-center whitespace-nowrap font-semibold"></th>
                 </tr>
@@ -294,6 +326,35 @@ export default function RestockPage() {
                         ) : (
                           <span className="text-red-600">{fmt(diff)}</span>
                         )}
+                      </td>
+
+                      {/* สั่ง */}
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => handleToggleOrdered(order)}
+                          disabled={busy[order.id]}
+                          className={`text-xs px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap border transition-colors disabled:opacity-40 ${
+                            order.ordered_at
+                              ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
+                              : 'bg-red-100 text-red-600 border-red-300 hover:bg-red-200'
+                          }`}>
+                          {order.ordered_at ? 'สั่งแล้ว' : 'ยังไม่สั่ง'}
+                        </button>
+                        {order.ordered_at && (
+                          <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{fmtDate(order.ordered_at)}</div>
+                        )}
+                      </td>
+
+                      {/* กำหนดส่ง */}
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="date"
+                          value={deliveryDueValue(order)}
+                          onChange={e => setEditDeliveryDue(prev => ({ ...prev, [order.id]: e.target.value }))}
+                          onBlur={() => blurDeliveryDue(order)}
+                          disabled={busy[order.id]}
+                          className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50"
+                        />
                       </td>
 
                       {/* สถานะ */}

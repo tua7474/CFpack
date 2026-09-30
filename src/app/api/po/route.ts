@@ -28,6 +28,8 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS nv_total DECIMAL(12,2)`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS v_total DECIMAL(12,2)`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS factory_total DECIMAL(12,2)`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS ordered_at TIMESTAMP`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS delivery_due DATE`)
 }
 
 async function genPoNo(): Promise<string> {
@@ -116,7 +118,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   await ensureTable()
   const body = await request.json()
-  const { id, po_no, order_no, status, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, factory_total } = body
+  const { id, po_no, order_no, status, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, factory_total, ordered_at, delivery_due } = body
 
   // Support lookup by id, po_no, or order_no
   const lookupValue = id ?? po_no ?? order_no
@@ -137,6 +139,11 @@ export async function PATCH(request: Request) {
   if (nv_total            !== undefined) { sets.push(`nv_total = $${i++}`);            vals.push(nv_total) }
   if (v_total             !== undefined) { sets.push(`v_total = $${i++}`);             vals.push(v_total) }
   if (factory_total       !== undefined) { sets.push(`factory_total = $${i++}`);       vals.push(factory_total) }
+  if (ordered_at          !== undefined) {
+    if (ordered_at === 'now') { sets.push(`ordered_at = NOW()`) }
+    else { sets.push(`ordered_at = $${i++}`); vals.push(ordered_at) }
+  }
+  if (delivery_due        !== undefined) { sets.push(`delivery_due = $${i++}`);        vals.push(delivery_due) }
 
   if (status === 'received') {
     sets.push(`received_at = NOW()`)
