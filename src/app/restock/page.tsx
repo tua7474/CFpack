@@ -247,15 +247,15 @@ export default function RestockPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#4e7a5e] text-white">
-                  <th className="px-4 py-3 text-left whitespace-nowrap font-semibold">เลขที่ใบPO</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap font-semibold">ชื่อโรงงาน</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap font-semibold">ยอดรวมPO (เรา)</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap font-semibold">ยอดรวมPO (โรงงาน)</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap font-semibold">ส่วนต่าง</th>
-                  <th className="px-4 py-3 text-center whitespace-nowrap font-semibold">สั่ง</th>
-                  <th className="px-4 py-3 text-center whitespace-nowrap font-semibold">กำหนดส่ง</th>
-                  <th className="px-4 py-3 text-center whitespace-nowrap font-semibold">สถานะ</th>
-                  <th className="px-4 py-3 text-center whitespace-nowrap font-semibold"></th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap font-semibold">เลขที่ใบPO</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap font-semibold">ชื่อโรงงาน</th>
+                  <th className="px-2 py-2 text-right whitespace-nowrap font-semibold">ยอดรวม (เรา)</th>
+                  <th className="px-2 py-2 text-right whitespace-nowrap font-semibold">ยอดรวม (โรงงาน)</th>
+                  <th className="px-2 py-2 text-right whitespace-nowrap font-semibold">ส่วนต่าง</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap font-semibold">สั่ง</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap font-semibold">กำหนดส่ง</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap font-semibold">สถานะ</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap font-semibold"></th>
                 </tr>
               </thead>
               <tbody>
@@ -270,39 +270,39 @@ export default function RestockPage() {
                       className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
 
                       {/* เลขที่ใบPO */}
-                      <td className="px-4 py-3">
+                      <td className="px-2 py-2">
                         <Link href={`/po/detail?no=${encodeURIComponent(order.po_no)}`}
-                          className="font-semibold text-green-700 hover:text-green-900 hover:underline whitespace-nowrap">
+                          className="font-semibold text-green-700 hover:text-green-900 hover:underline whitespace-nowrap text-xs">
                           {order.po_no}
                         </Link>
-                        <div className="text-xs text-gray-400 mt-0.5">{fmtDate(order.created_at)}</div>
+                        <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{fmtDate(order.created_at)}</div>
                         {order.notes && (
-                          <div className="text-xs text-gray-400 mt-0.5 max-w-[160px] truncate" title={order.notes}>
+                          <div className="text-xs text-gray-400 mt-0.5 max-w-[100px] truncate" title={order.notes}>
                             {order.notes}
                           </div>
                         )}
                       </td>
 
                       {/* ชื่อโรงงาน — dropdown */}
-                      <td className="px-4 py-3">
+                      <td className="px-2 py-2">
                         <select
                           value={supplierValue(order)}
                           onChange={e => setEditSupplier(prev => ({ ...prev, [order.id]: e.target.value }))}
                           onBlur={() => blurSupplier(order)}
                           disabled={busy[order.id]}
-                          className="border border-gray-200 rounded px-2 py-1.5 text-sm w-40 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50">
+                          className="border border-gray-200 rounded px-1 py-1 text-xs w-24 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50">
                           <option value="">— เลือก —</option>
                           {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                         </select>
                       </td>
 
                       {/* ยอดรวมPO (เรา) */}
-                      <td className="px-4 py-3 text-right font-medium text-gray-700 whitespace-nowrap">
+                      <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap text-xs">
                         {fmt(ourTotal)}
                       </td>
 
                       {/* ยอดรวมPO (โรงงาน) — editable */}
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-2 py-2 text-right">
                         <input
                           type="text"
                           inputMode="decimal"
@@ -311,12 +311,12 @@ export default function RestockPage() {
                           onBlur={() => blurFactoryTotal(order)}
                           disabled={busy[order.id]}
                           placeholder="กรอกยอด"
-                          className="border border-gray-200 rounded px-2 py-1.5 text-sm w-36 text-right focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50"
+                          className="border border-gray-200 rounded px-1 py-1 text-xs w-24 text-right focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50"
                         />
                       </td>
 
                       {/* ส่วนต่าง */}
-                      <td className="px-4 py-3 text-right font-bold whitespace-nowrap">
+                      <td className="px-2 py-2 text-right font-bold whitespace-nowrap text-xs">
                         {diff === null ? (
                           <span className="text-gray-300 font-normal">-</span>
                         ) : diff > 0 ? (
@@ -329,11 +329,11 @@ export default function RestockPage() {
                       </td>
 
                       {/* สั่ง */}
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-2 py-2 text-center">
                         <button
                           onClick={() => handleToggleOrdered(order)}
                           disabled={busy[order.id]}
-                          className={`text-xs px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap border transition-colors disabled:opacity-40 ${
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap border transition-colors disabled:opacity-40 ${
                             order.ordered_at
                               ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
                               : 'bg-red-100 text-red-600 border-red-300 hover:bg-red-200'
@@ -346,42 +346,54 @@ export default function RestockPage() {
                       </td>
 
                       {/* กำหนดส่ง */}
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-2 py-2 text-center">
                         <input
                           type="date"
                           value={deliveryDueValue(order)}
                           onChange={e => setEditDeliveryDue(prev => ({ ...prev, [order.id]: e.target.value }))}
                           onBlur={() => blurDeliveryDue(order)}
                           disabled={busy[order.id]}
-                          className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50"
+                          className="border border-gray-200 rounded px-1 py-1 text-xs w-28 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50"
                         />
                       </td>
 
                       {/* สถานะ */}
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${isPending ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                          {isPending ? 'รอรับสินค้า' : 'รับสินค้าแล้ว'}
-                        </span>
-                        {!isPending && order.received_at && (
-                          <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{fmtDate(order.received_at)}</div>
+                      <td className="px-2 py-2 text-center">
+                        {!order.ordered_at ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-red-100 text-red-600">
+                            รอสั่ง
+                          </span>
+                        ) : isPending ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-orange-100 text-orange-700">
+                            รอรับสินค้า
+                          </span>
+                        ) : (
+                          <>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-green-100 text-green-700">
+                              รับสินค้าแล้ว
+                            </span>
+                            {order.received_at && (
+                              <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{fmtDate(order.received_at)}</div>
+                            )}
+                          </>
                         )}
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 justify-center">
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1 justify-center">
                           <Link
                             href={`/po/print?no=${encodeURIComponent(order.po_no)}`}
                             target="_blank"
-                            className="bg-[#4e7a5e] hover:bg-[#3d6149] text-white text-xs font-medium px-3 py-1.5 rounded shadow transition-colors whitespace-nowrap">
-                            🖨️ ใบสั่งพิมพ์
+                            className="bg-[#4e7a5e] hover:bg-[#3d6149] text-white text-xs font-medium px-2 py-1 rounded shadow transition-colors whitespace-nowrap">
+                            🖨️ พิมพ์
                           </Link>
                           {isPending && (
                             <button
                               onClick={() => handleReceive(order.id)}
                               disabled={busy[order.id]}
-                              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white text-xs font-medium px-3 py-1.5 rounded shadow transition-colors whitespace-nowrap">
-                              {busy[order.id] ? '...' : '📥 เติมสต็อค'}
+                              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white text-xs font-medium px-2 py-1 rounded shadow transition-colors whitespace-nowrap">
+                              {busy[order.id] ? '...' : '📥 สต็อค'}
                             </button>
                           )}
                           <button
