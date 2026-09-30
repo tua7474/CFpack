@@ -979,6 +979,41 @@ async function monthDetailView(branchId: number, branchName: string, month: numb
 // ── Postback handler ──────────────────────────────────────────────────────────
 
 async function handlePostback(data: string, userId: string, replyToken: string, source?: Record<string, string>) {
+  // PO_RECEIVE:{id} — เติมสต็อคจาก LINE popup
+  if (data.startsWith('PO_RECEIVE:')) {
+    const id = parseInt(data.split(':')[1])
+    await ensureTable()
+    const { rows } = await pool.query('SELECT * FROM po_orders WHERE id = $1', [id])
+    const order = rows[0]
+    if (!order) return reply(replyToken, [{ type: 'text', text: '❌ ไม่พบใบPO' }])
+    if (order.status === 'received') return reply(replyToken, [{ type: 'text', text: `✅ ${order.po_no} รับสินค้าแล้ว` }])
+
+    // Mark as received
+    await pool.query(
+      `UPDATE po_orders SET status='received', received_at=NOW() WHERE id=$1`,
+      [id]
+    )
+    // Update catalog stock
+    const quantities: Record<string, number> = order.quantities ?? {}
+    let itemCount = 0
+    for (const [idStr, q] of Object.entries(quantities)) {
+      if (!q || (q as number) <= 0) continue
+      await pool.query(
+        `UPDATE products_catalog SET quantity = COALESCE(quantity, 0) + $1 WHERE id = $2`,
+        [q, Number(idStr)]
+      )
+      await pool.query(
+        `INSERT INTO catalog_stock_log (product_id, action, qty) VALUES ($1, 'po_receive', $2)`,
+        [Number(idStr), q]
+      ).catch(() => {})
+      itemCount++
+    }
+    return reply(replyToken, [{
+      type: 'text',
+      text: `✅ เติมสต็อค ${order.po_no} สำเร็จ!\nอัพเดทสินค้า ${itemCount} รายการเรียบร้อยแล้วครับ`,
+    }])
+  }
+
   // MENU
   if (data === 'M') {
     return reply(replyToken, [await mainMenu(userId)])
@@ -1571,6 +1606,52 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
     const poUrl      = `${BASE_URL}/po`
     const restockUrl = `${BASE_URL}/restock`
+
+    // ดึง PO pending ล่าสุด 6 รายการ
+    await ensureTable()
+    const { rows: pendingPOs } = await pool.query(
+      `SELECT id, po_no, supplier, status, ordered_at FROM po_orders
+       WHERE status = 'pending' ORDER BY created_at DESC LIMIT 6`
+    )
+
+    // สร้าง row สำหรับแต่ละ PO
+    const poRows = pendingPOs.map((po: { id: number; po_no: string; supplier: string | null; ordered_at: string | null }) => {
+      const statusText  = po.ordered_at ? 'สั่งแล้ว' : 'รอสั่ง'
+      const statusColor = po.ordered_at ? '#2e7d32' : '#c62828'
+      return {
+        type: 'box', layout: 'horizontal',
+        spacing: 'xs', paddingAll: '5px',
+        backgroundColor: '#ffffff', cornerRadius: '4px',
+        margin: 'xs',
+        contents: [
+          {
+            type: 'box', layout: 'vertical', flex: 3,
+            justifyContent: 'center',
+            action: { type: 'uri', uri: `${BASE_URL}/po/detail?no=${encodeURIComponent(po.po_no)}` },
+            contents: [
+              { type: 'text', text: po.po_no, size: 'xs', weight: 'bold', color: '#1b5e20' },
+              { type: 'text', text: po.supplier ?? '(ไม่ระบุโรงงาน)', size: 'xxs', color: '#666666', wrap: false },
+              { type: 'text', text: statusText, size: 'xxs', color: statusColor, weight: 'bold' },
+            ],
+          },
+          {
+            type: 'box', layout: 'vertical', flex: 2,
+            backgroundColor: '#388e3c', cornerRadius: '4px',
+            paddingAll: '4px', justifyContent: 'center',
+            action: { type: 'postback', data: `PO_RECEIVE:${po.id}`, displayText: `เติมสต็อค ${po.po_no}` },
+            contents: [{ type: 'text', text: 'เติมสต็อค', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
+          },
+        ],
+      }
+    })
+
+    const listSection = pendingPOs.length === 0
+      ? [{ type: 'text', text: 'ไม่มีใบPO รอดำเนินการ', size: 'xs', color: '#888888', align: 'center', margin: 'sm' }]
+      : [
+          { type: 'text', text: `ใบPO รอดำเนินการ (${pendingPOs.length})`, size: 'xs', color: '#4e7a5e', weight: 'bold', margin: 'sm' },
+          ...poRows,
+        ]
+
     return reply(replyToken, [{
       type: 'flex',
       altText: 'ใบPO',
@@ -1578,32 +1659,30 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         type: 'bubble',
         size: 'kilo',
         body: {
-          type: 'box', layout: 'horizontal',
-          spacing: 'sm', paddingAll: '6px',
+          type: 'box', layout: 'vertical',
+          paddingAll: '8px', spacing: 'none',
           backgroundColor: '#e8f5e9',
           contents: [
+            // ปุ่มหลัก
             {
-              type: 'box', layout: 'vertical', flex: 1,
-              backgroundColor: '#4e7a5e', cornerRadius: '4px',
-              paddingAll: '6px',
-              action: { type: 'uri', uri: poUrl },
-              contents: [{
-                type: 'text', text: 'ออกPO',
-                color: '#ffffff', align: 'center',
-                size: 'xs', weight: 'bold',
-              }],
+              type: 'box', layout: 'horizontal', spacing: 'sm',
+              contents: [
+                {
+                  type: 'box', layout: 'vertical', flex: 1,
+                  backgroundColor: '#4e7a5e', cornerRadius: '4px', paddingAll: '6px',
+                  action: { type: 'uri', uri: poUrl },
+                  contents: [{ type: 'text', text: 'ออกPO', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
+                },
+                {
+                  type: 'box', layout: 'vertical', flex: 1,
+                  backgroundColor: '#c8e6c9', cornerRadius: '4px', paddingAll: '6px',
+                  action: { type: 'uri', uri: restockUrl },
+                  contents: [{ type: 'text', text: 'ประวัติ', color: '#2e7d32', align: 'center', size: 'xs', weight: 'bold' }],
+                },
+              ],
             },
-            {
-              type: 'box', layout: 'vertical', flex: 1,
-              backgroundColor: '#f0f0f0', cornerRadius: '4px',
-              paddingAll: '6px',
-              action: { type: 'uri', uri: restockUrl },
-              contents: [{
-                type: 'text', text: 'ประวัติ',
-                color: '#555555', align: 'center',
-                size: 'xs', weight: 'bold',
-              }],
-            },
+            { type: 'separator', margin: 'sm', color: '#a5d6a7' },
+            ...listSection,
           ],
         },
       },
