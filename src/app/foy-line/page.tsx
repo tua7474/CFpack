@@ -314,7 +314,7 @@ export default function FoyLinePage() {
               <tr className="bg-[#7a7568] text-white text-[10px]">
                 {Array.from({ length: maxSessions }, (_, i) => (
                   <Fragment key={i}>
-                    <th className="px-0.5 py-1 border border-white/20 text-center" style={{ minWidth: 13 }}>กก.</th>
+                    <th className="px-0.5 py-1 border border-white/20 text-center" style={{ minWidth: 18 }}>กก.</th>
                     <th className="px-0.5 py-1 border border-white/20 text-center bg-amber-900/40" style={{ minWidth: 18 }}>หมวด</th>
                   </Fragment>
                 ))}
@@ -383,7 +383,7 @@ export default function FoyLinePage() {
                       return (
                         <Fragment key={si}>
                           {/* กก. */}
-                          <td className="px-0.5 py-1 border-r border-gray-100 align-top" style={{ minWidth: 13 }}>
+                          <td className="px-0.5 py-1 border-r border-gray-100 align-top" style={{ minWidth: 18 }}>
                             {dateLbl(active && sess?.kg != null ? sess?.date : undefined)}
                             <input
                               type="number" inputMode="decimal" step="0.1"
