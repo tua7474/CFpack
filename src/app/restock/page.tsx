@@ -369,7 +369,7 @@ export default function RestockPage() {
 
                       {/* Actions */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 justify-center flex-wrap">
+                        <div className="flex items-center gap-2 justify-center">
                           <Link
                             href={`/po/print?no=${encodeURIComponent(order.po_no)}`}
                             target="_blank"
