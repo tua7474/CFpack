@@ -1620,7 +1620,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     // บันทึก group ID ไว้สำหรับ push notification จาก /api/po
     await setSetting('warehouse_group_id', source.groupId).catch(() => {})
 
-    const poUrl      = `${BASE_URL}/po`
+    const poUrl      = `${BASE_URL}/po?wh=1`
     const restockUrl = `${BASE_URL}/restock`
 
     // ดึง PO pending ล่าสุด 6 รายการ

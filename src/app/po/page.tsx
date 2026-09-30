@@ -301,8 +301,11 @@ function POInner() {
   }, [editOrderNo])
 
   // Load draft on mount; admin-only page — redirect if not admin
+  // Exception: ?wh=1 allows warehouse LINE group members to access directly
   useEffect(() => {
     if (!editOrderNo) setPending(loadDraft())
+    const warehouseAccess = new URLSearchParams(window.location.search).get('wh') === '1'
+    if (warehouseAccess) return   // LINE warehouse group — allow through
     try {
       const bs = localStorage.getItem('branch_session')
       if (bs) {
