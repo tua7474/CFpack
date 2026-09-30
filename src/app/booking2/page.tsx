@@ -490,9 +490,10 @@ function Booking2Inner() {
     if (total < 25000) setVehicleType('')
   }, [pending, manualTotal, vehicleType, products])
 
-  // Auto-force เบิกของ + รถ ตามเงื่อนไขยอด
+  // Auto-force เบิกของ + รถ ตามเงื่อนไขยอด (ข้ามทั้งหมดถ้าเลือกรับเอง)
   useEffect(() => {
     if (!products.length) return
+    if (vehicleType.includes('รับเอง')) return
     const BOX_GROUPS = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
     let bt = 0, otherTotal = 0
     let hasOther = false
@@ -672,7 +673,7 @@ function Booking2Inner() {
     if (current === priorityMode) {
       next = null
     } else {
-      if (priorityCounts[priorityMode] >= PRIORITY_LIMITS[priorityMode]) {
+      if (priorityCounts[priorityMode] >= PRIORITY_LIMITS[priorityMode] && !vehicleType.includes('รับเอง')) {
         return  // limit reached
       }
       next = priorityMode
@@ -998,7 +999,7 @@ function Booking2Inner() {
     ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal
     : 0)
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - couponVal)
-  const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
+  const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000 && !vehicleType.includes('รับเอง')
 
   const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
   let boxTotal = 0, hasNonBoxItems = false
@@ -1013,8 +1014,9 @@ function Booking2Inner() {
   }
   if (Object.values(foyPending).some(d => d.amount > 0)) hasNonBoxItems = true
   const hasMixItems        = hasNonBoxItems  // มีสินค้ามิกซ์ (ไม่ใช่กล่องล้วน)
-  const autoForceFactory   = !hasNonBoxItems && boxTotal >= 20000
-  const autoForceWarehouse = hasNonBoxItems && (grayTotal + orangeTotal + foyTotal) >= 25000
+  const isPickup           = vehicleType.includes('รับเอง')
+  const autoForceFactory   = !isPickup && !hasNonBoxItems && boxTotal >= 20000
+  const autoForceWarehouse = !isPickup && hasNonBoxItems && (grayTotal + orangeTotal + foyTotal) >= 25000
 
   // ── Bubble unit validation ─────────────────────────────────────────────────
   let totalBubbleUnits = 0, hasBubbleItems = false, hasNonBubbleInOrder = false, bubbleTotalAmt = 0
