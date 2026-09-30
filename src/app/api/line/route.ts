@@ -1561,62 +1561,62 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
   }
 
-  // ── PO: เฉพาะกลุ่ม CFสั่งเข้าโกดัง เมื่อข้อความมีคำว่า "PO" ─────────────────
-  if (
-    text.toUpperCase().includes('PO') &&
-    source?.type === 'group' && source.groupId
-  ) {
+  // ── PO: เฉพาะกลุ่ม CFสั่งเข้าโกดัง — กลุ่มอื่นทุกกลุ่มไม่ตอบสนองเลย ──────────
+  if (text.toUpperCase().includes('PO')) {
+    // ถ้าไม่ได้มาจากกลุ่ม → เงียบ
+    if (source?.type !== 'group' || !source.groupId) return
     const grpName = await getGroupName(source.groupId)
-    if (grpName && grpName.includes('CFสั่งเข้าโกดัง')) {
-      const poUrl      = `${BASE_URL}/po`
-      const restockUrl = `${BASE_URL}/restock`
-      return reply(replyToken, [{
-        type: 'flex',
-        altText: '📥 ใบPO — กดเพื่อสร้างใบPO ใหม่',
-        contents: {
-          type: 'bubble',
-          size: 'kilo',
-          header: {
-            type: 'box', layout: 'vertical', paddingAll: '16px',
-            backgroundColor: '#4e7a5e',
-            contents: [
-              {
-                type: 'text', text: '📥 ใบPO', color: '#ffffff',
-                weight: 'bold', size: 'xl',
-              },
-              {
-                type: 'text', text: 'CF ระบบจัดการข้อมูล',
-                color: '#c8e6c9', size: 'xs', margin: 'xs',
-              },
-            ],
-          },
-          body: {
-            type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px',
-            contents: [
-              {
-                type: 'text',
-                text: 'กดปุ่มด้านล่างเพื่อสร้างใบ PO ใหม่\nระบบจะเปิดฟอร์มพร้อมพิมพ์ได้ทันที',
-                wrap: true, size: 'sm', color: '#555555',
-              },
-            ],
-          },
-          footer: {
-            type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
-            contents: [
-              {
-                type: 'button', style: 'primary', height: 'sm',
-                color: '#4e7a5e',
-                action: { type: 'uri', label: '➕ สร้างใบPO ใหม่', uri: poUrl },
-              },
-              {
-                type: 'button', style: 'secondary', height: 'sm',
-                action: { type: 'uri', label: '📋 ประวัติใบPO', uri: restockUrl },
-              },
-            ],
-          },
+    // ถ้าไม่ใช่กลุ่ม CFสั่งเข้าโกดัง → เงียบ ไม่ตอบสนองใดๆ
+    if (!grpName || !grpName.includes('CFสั่งเข้าโกดัง')) return
+
+    const poUrl      = `${BASE_URL}/po`
+    const restockUrl = `${BASE_URL}/restock`
+    return reply(replyToken, [{
+      type: 'flex',
+      altText: '📥 ใบPO — กดเพื่อสร้างใบPO ใหม่',
+      contents: {
+        type: 'bubble',
+        size: 'kilo',
+        header: {
+          type: 'box', layout: 'vertical', paddingAll: '16px',
+          backgroundColor: '#4e7a5e',
+          contents: [
+            {
+              type: 'text', text: '📥 ใบPO', color: '#ffffff',
+              weight: 'bold', size: 'xl',
+            },
+            {
+              type: 'text', text: 'CF ระบบจัดการข้อมูล',
+              color: '#c8e6c9', size: 'xs', margin: 'xs',
+            },
+          ],
         },
-      }])
-    }
+        body: {
+          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px',
+          contents: [
+            {
+              type: 'text',
+              text: 'กดปุ่มด้านล่างเพื่อสร้างใบ PO ใหม่\nระบบจะเปิดฟอร์มพร้อมพิมพ์ได้ทันที',
+              wrap: true, size: 'sm', color: '#555555',
+            },
+          ],
+        },
+        footer: {
+          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
+          contents: [
+            {
+              type: 'button', style: 'primary', height: 'sm',
+              color: '#4e7a5e',
+              action: { type: 'uri', label: '➕ สร้างใบPO ใหม่', uri: poUrl },
+            },
+            {
+              type: 'button', style: 'secondary', height: 'sm',
+              action: { type: 'uri', label: '📋 ประวัติใบPO', uri: restockUrl },
+            },
+          ],
+        },
+      },
+    }])
   }
 
   // ลงทะเบียน 0xxxxxxxxx — link phone to LINE userId
