@@ -328,7 +328,7 @@ export default function FoyLinePage() {
                 const colors    = colorOptions(row.model_name ?? '')
 
                 return (
-                  <tr key={rowIdx} className={`border-b border-gray-100 hover:bg-yellow-50/30 align-top ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                  <tr key={rowIdx} className={`border-b border-gray-100 hover:bg-yellow-50/30 align-top ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-200'}`}>
 
                     {/* ── Col 1: วัตถุดิบ ── */}
                     <td className="px-2 py-1.5 border-r border-gray-200 align-top">
