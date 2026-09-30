@@ -1610,7 +1610,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
   }
 
   // ── PO: เฉพาะกลุ่ม CFสั่งเข้าโกดัง — กลุ่มอื่นทุกกลุ่มไม่ตอบสนองเลย ──────────
-  if (text.toUpperCase().includes('PO')) {
+  if (text.trim().toUpperCase() === 'PO') {
     // ถ้าไม่ได้มาจากกลุ่ม → เงียบ
     if (source?.type !== 'group' || !source.groupId) return
     const grpName = await getGroupName(source.groupId)
