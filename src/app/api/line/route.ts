@@ -1937,105 +1937,109 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
   const fmtAmount = Number(slip.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const slipDateIso = typeof slip.slip_date === 'string'
     ? slip.slip_date.slice(0, 10) : (slip.slip_date as Date).toISOString().slice(0, 10)
-  const transferDateDisplay = new Date(slipDateIso + 'T12:00:00').toLocaleDateString('th-TH', {
-    day: 'numeric', month: 'long', year: 'numeric'
+
+  // "30 ก.ย. 69" — สั้น ไม่มีไอคอน
+  const transferDateShort = new Date(slipDateIso + 'T12:00:00').toLocaleDateString('th-TH', {
+    day: 'numeric', month: 'short', year: '2-digit'
   })
-  const sentDisplay = new Date(slip.created_at).toLocaleString('th-TH', {
-    day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit',
+  // เวลาส่ง เช่น "30 ก.ย. 14:32"
+  const sentShort = new Date(slip.created_at).toLocaleString('th-TH', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     timeZone: 'Asia/Bangkok'
   })
 
   const autoBox: object = suggest
     ? {
-        type: 'box', layout: 'vertical', backgroundColor: suggest.purpose === 'PAY' ? '#dcfce7' : '#fef9c3',
-        cornerRadius: '6px', paddingAll: '6px', margin: 'xs',
-        contents: [
-          {
-            type: 'text', size: 'xxs', wrap: false,
-            color: suggest.purpose === 'PAY' ? '#15803d' : '#92400e',
-            text: suggest.purpose === 'PAY'
-              ? `พบใบจอง ${suggest.orderNo} ฿${Number(suggest.orderAmt).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`
-              : 'ไม่พบใบจองที่ตรงกับยอดนี้'
-          }
-        ]
+        type: 'box', layout: 'vertical',
+        backgroundColor: suggest.purpose === 'PAY' ? '#dcfce7' : '#fef9c3',
+        cornerRadius: '4px', paddingAll: '4px', margin: 'xs',
+        contents: [{
+          type: 'text', size: 'xxs', wrap: false,
+          color: suggest.purpose === 'PAY' ? '#15803d' : '#92400e',
+          text: suggest.purpose === 'PAY'
+            ? `พบใบจอง ${suggest.orderNo} ฿${Number(suggest.orderAmt).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`
+            : 'ไม่พบใบจองที่ตรงกับยอดนี้',
+        }],
       }
     : { type: 'text', text: ' ', size: 'xxs', color: '#ffffff', margin: 'none' }
 
+  // ชำระบิล: แสดงเฉพาะเมื่อพบใบจองตรงกัน (เหนือปุ่ม 3 ปุ่ม)
+  const payRow: object[] = suggest?.purpose === 'PAY' ? [{
+    type: 'box', layout: 'vertical', margin: 'xs',
+    backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '5px',
+    action: { type: 'postback', data: `SLIP_PURPOSE:${slip.id}:PAY`, displayText: 'ชำระบิล' },
+    contents: [{ type: 'text', text: 'ชำระบิล', size: 'xs', color: '#ffffff', align: 'center', weight: 'bold' }],
+  }] : []
+
   return {
     type: 'flex',
-    altText: `🧾 สลิป ฿${fmtAmount} — กรุณายืนยัน`,
+    altText: `สลิป ฿${fmtAmount} — กรุณายืนยัน`,
     contents: {
-      type: 'bubble',
+      type: 'bubble', size: 'kilo',
       header: {
-        type: 'box', layout: 'horizontal', backgroundColor: '#9b9484', paddingAll: '10px',
+        type: 'box', layout: 'horizontal', alignItems: 'center',
+        backgroundColor: '#9b9484', paddingAll: '8px', spacing: 'sm',
         contents: [
-          {
-            type: 'box', layout: 'vertical', flex: 1,
-            contents: [
-              { type: 'text', text: '🧾 สลิปโอนเงิน', color: '#ffffff', weight: 'bold', size: 'sm' },
-              { type: 'text', text: `${sentDisplay}`, color: '#ffe8cc', size: 'xxs', margin: 'xs' }
-            ]
-          },
-          {
-            type: 'button', flex: 0,
-            action: { type: 'postback', label: '✕ ไม่ใช่', data: `SLIP_CANCEL:${slip.id}` },
-            style: 'primary', color: '#CC0000', height: 'sm',
-          }
-        ]
+          { type: 'text', text: 'สลิปโอนเงิน', color: '#ffffff', weight: 'bold', size: 'xs', flex: 3 },
+          { type: 'text', text: sentShort, color: '#f5f5f4', size: 'xxs', flex: 3, align: 'end', wrap: false },
+        ],
       },
       body: {
-        type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px', backgroundColor: '#F5EED8',
+        type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '10px', backgroundColor: '#F5EED8',
         contents: [
-          // Row 1: วันที่ | ยอดเงิน — กดข้อความเพื่อแก้ไข
+          // Row 1: วันที่สั้น | ยอดเงิน (กดแก้ไขได้)
           {
-            type: 'box', layout: 'horizontal', margin: 'none', alignItems: 'center',
+            type: 'box', layout: 'horizontal', alignItems: 'center',
             contents: [
               {
-                type: 'text', text: `📅 ${transferDateDisplay}`, size: 'sm', flex: 1,
-                weight: 'bold', color: '#333333', wrap: true,
-                action: { type: 'postback', label: 'แก้วันที่', data: `SLIP_EDIT:${slip.id}:date` }
+                type: 'text', text: transferDateShort, size: 'xs', flex: 1,
+                weight: 'bold', color: '#333333', wrap: false,
+                action: { type: 'postback', label: 'แก้วันที่', data: `SLIP_EDIT:${slip.id}:date` },
               },
               {
-                type: 'text', text: `฿${fmtAmount}`, size: 'md', flex: 0,
+                type: 'text', text: `฿${fmtAmount}`, size: 'sm', flex: 0,
                 weight: 'bold', color: '#9b5e00', align: 'end',
-                action: { type: 'postback', label: 'แก้ยอด', data: `SLIP_EDIT:${slip.id}:amount` }
+                action: { type: 'postback', label: 'แก้ยอด', data: `SLIP_EDIT:${slip.id}:amount` },
               },
-            ]
+            ],
           },
           // Row 2: ผู้รับ
           {
-            type: 'text', text: `👤 ${slip.account_name ?? '-'}`, size: 'sm', margin: 'xs',
+            type: 'text', text: slip.account_name ?? '-', size: 'xxs', margin: 'xs',
             color: '#555555', wrap: true,
-            action: { type: 'postback', label: 'แก้ผู้รับ', data: `SLIP_EDIT:${slip.id}:account_name` }
+            action: { type: 'postback', label: 'แก้ผู้รับ', data: `SLIP_EDIT:${slip.id}:account_name` },
           },
           autoBox,
-          { type: 'separator', margin: 'xs' },
-          // ปุ่มล่าง: ชำระบิล (เขียว) เฉพาะเมื่อพบใบจองตรงกัน + หักค่าของ + แวต
+          ...payRow,
+          { type: 'separator', margin: 'xs', color: '#d1d5db' },
+          // 3 ปุ่ม: หักค่าของ | แวต | ไม่ใช่สลิป
           {
             type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
             contents: [
-              // ชำระบิล: แสดงเฉพาะเมื่อ suggest.purpose === 'PAY' (พบใบจองตรงกัน)
-              ...(suggest?.purpose === 'PAY' ? [{
-                type: 'button',
-                action: { type: 'postback', label: 'ชำระบิล', data: `SLIP_PURPOSE:${slip.id}:PAY` },
-                style: 'primary', color: '#16a34a', flex: 1, height: 'sm',
-              }] : []),
               {
-                type: 'button',
-                action: { type: 'postback', label: 'หักค่าของ', data: `SLIP_PURPOSE:${slip.id}:STORE` },
-                style: suggest?.purpose === 'STORE' ? 'primary' : 'secondary',
-                color: '#f97316', flex: 1, height: 'sm',
+                type: 'box', layout: 'vertical', flex: 1,
+                backgroundColor: suggest?.purpose === 'STORE' ? '#ea580c' : '#fed7aa',
+                cornerRadius: '4px', paddingAll: '5px',
+                action: { type: 'postback', data: `SLIP_PURPOSE:${slip.id}:STORE`, displayText: 'หักค่าของ' },
+                contents: [{ type: 'text', text: 'หักค่าของ', size: 'xxs', color: suggest?.purpose === 'STORE' ? '#ffffff' : '#9a3412', align: 'center', weight: 'bold' }],
               },
               {
-                type: 'button',
-                action: { type: 'postback', label: 'แวต', data: `SLIP_VAT:${slip.id}` },
-                style: 'secondary', height: 'sm', color: '#9b9484', flex: 1,
-              }
-            ]
-          }
-        ]
-      }
-    }
+                type: 'box', layout: 'vertical', flex: 1,
+                backgroundColor: '#e5e7eb', cornerRadius: '4px', paddingAll: '5px',
+                action: { type: 'postback', data: `SLIP_VAT:${slip.id}`, displayText: 'แวต' },
+                contents: [{ type: 'text', text: 'แวต', size: 'xxs', color: '#374151', align: 'center', weight: 'bold' }],
+              },
+              {
+                type: 'box', layout: 'vertical', flex: 1,
+                backgroundColor: '#dc2626', cornerRadius: '4px', paddingAll: '5px',
+                action: { type: 'postback', data: `SLIP_CANCEL:${slip.id}`, displayText: 'ไม่ใช่สลิป' },
+                contents: [{ type: 'text', text: 'ไม่ใช่สลิป', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
+              },
+            ],
+          },
+        ],
+      },
+    },
   }
 }
 
