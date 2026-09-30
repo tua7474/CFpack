@@ -1576,20 +1576,33 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       altText: 'ใบPO',
       contents: {
         type: 'bubble',
-        size: 'micro',
+        size: 'kilo',
         body: {
           type: 'box', layout: 'horizontal',
-          spacing: 'sm', paddingAll: '10px',
+          spacing: 'sm', paddingAll: '6px',
           backgroundColor: '#e8f5e9',
           contents: [
             {
-              type: 'button', style: 'primary', height: 'sm',
-              color: '#4e7a5e', flex: 1,
-              action: { type: 'uri', label: 'ออกPO', uri: poUrl },
+              type: 'box', layout: 'vertical', flex: 1,
+              backgroundColor: '#4e7a5e', cornerRadius: '4px',
+              paddingAll: '6px',
+              action: { type: 'uri', uri: poUrl },
+              contents: [{
+                type: 'text', text: 'ออกPO',
+                color: '#ffffff', align: 'center',
+                size: 'xs', weight: 'bold',
+              }],
             },
             {
-              type: 'button', style: 'secondary', height: 'sm', flex: 1,
-              action: { type: 'uri', label: 'ประวัติ', uri: restockUrl },
+              type: 'box', layout: 'vertical', flex: 1,
+              backgroundColor: '#f0f0f0', cornerRadius: '4px',
+              paddingAll: '6px',
+              action: { type: 'uri', uri: restockUrl },
+              contents: [{
+                type: 'text', text: 'ประวัติ',
+                color: '#555555', align: 'center',
+                size: 'xs', weight: 'bold',
+              }],
             },
           ],
         },
