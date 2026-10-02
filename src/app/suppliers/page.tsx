@@ -148,6 +148,9 @@ export default function SuppliersPage() {
         <Link href="/foy-line" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🌀 ไลน์ผลิตกระดาษฝอย
         </Link>
+        <Link href="/finance" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          💰 การเงิน
+        </Link>
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-4">
