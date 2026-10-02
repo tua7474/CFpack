@@ -503,10 +503,17 @@ export default function OrdersPage() {
           </div>{/* end 2-column */}
 
           {/* Grand total + signature — full width, never split */}
+          {(() => {
+            // คำนวณยอดรวมจากรายการที่แสดงจริง (ไม่ใช่จาก DB) เพื่อให้ตรงกับสิ่งที่พิมพ์
+            const itemsTotal = sections.reduce((sum, [, { items }]) =>
+              sum + items.reduce((s, it) => s + it.total, 0), 0)
+            const foyCalcTotal = Array.from(foyModelMap.values()).flat().reduce((s, fi) => s + fi.total, 0)
+            const displayTotal = itemsTotal + foyCalcTotal
+            return (
           <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm', marginTop: '3mm', borderTop: '2px solid #888', paddingTop: '2mm' }}>
               <span style={{ fontSize: '11pt', fontWeight: 'bold', color: '#111' }}>ยอดเงินรวม</span>
-              <span style={{ fontSize: '12pt', fontWeight: 'bold', color: '#111' }}>{fmtMoney(grandTotal)} บาท</span>
+              <span style={{ fontSize: '12pt', fontWeight: 'bold', color: '#111' }}>{fmtMoney(displayTotal)} บาท</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
               {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
@@ -519,6 +526,8 @@ export default function OrdersPage() {
               ))}
             </div>
           </div>
+            )
+          })()}
         </div>
       )
     }
