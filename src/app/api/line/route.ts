@@ -1410,6 +1410,32 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     return reply(replyToken, [{ type: 'text', text: prompts[field] ?? 'พิมพ์ข้อมูลใหม่:' }])
   }
 
+  // SLIP_FEE:{id} — บันทึก Fee โดยตรง
+  if (data.startsWith('SLIP_FEE:')) {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้' }])
+    }
+    const slipId = parseInt(data.split(':')[1])
+    const { rows: existing } = await pool.query('SELECT status, amount FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+    const { rows: [slip] } = await pool.query(
+      `UPDATE slips SET status='confirmed', category='fee', applied=false WHERE id=$1 RETURNING amount, branch_id`,
+      [slipId]
+    )
+    const fmtAmt = Number(slip?.amount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })
+    // บันทึก fee ลงในตาราง branch_finance_fee
+    if (slip?.branch_id) {
+      await pool.query(`
+        INSERT INTO branch_finance_fee (branch_id, fee, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (branch_id) DO UPDATE SET fee = branch_finance_fee.fee + $2, updated_at = NOW()
+      `, [slip.branch_id, Number(slip?.amount ?? 0)]).catch(() => {})
+    }
+    return reply(replyToken, [{ type: 'text', text: `✅ บันทึก Fee ฿${fmtAmt} เรียบร้อยแล้วครับ` }])
+  }
+
   // SLIP_VAT:{id} — บันทึกค่าแวตโดยตรง (ไม่ผ่านขั้นตอน purpose/type)
   if (data.startsWith('SLIP_VAT:')) {
     if (!await isLineAdmin(userId, source)) {
@@ -2012,7 +2038,7 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
           autoBox,
           ...payRow,
           { type: 'separator', margin: 'xs', color: '#d1d5db' },
-          // 3 ปุ่ม: หักค่าของ | แวต | ไม่ใช่สลิป
+          // 4 ปุ่ม: หักค่าของ | แวต | FEE | ไม่ใช่สลิป
           {
             type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
             contents: [
@@ -2028,6 +2054,12 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
                 backgroundColor: '#e5e7eb', cornerRadius: '4px', paddingAll: '5px',
                 action: { type: 'postback', data: `SLIP_VAT:${slip.id}`, displayText: 'แวต' },
                 contents: [{ type: 'text', text: 'แวต', size: 'xxs', color: '#374151', align: 'center', weight: 'bold' }],
+              },
+              {
+                type: 'box', layout: 'vertical', flex: 1,
+                backgroundColor: '#7c3aed', cornerRadius: '4px', paddingAll: '5px',
+                action: { type: 'postback', data: `SLIP_FEE:${slip.id}`, displayText: 'Fee' },
+                contents: [{ type: 'text', text: 'Fee', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
               },
               {
                 type: 'box', layout: 'vertical', flex: 1,

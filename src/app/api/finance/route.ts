@@ -67,10 +67,10 @@ export async function GET(req: NextRequest) {
       b.name,
       b.color_group,
       COALESCE(SUM(s.amount) FILTER (
-        WHERE s.status = 'confirmed' AND s.applied = true  AND s.category != 'vat' ${slipDateFilter}
+        WHERE s.status = 'confirmed' AND s.applied = true  AND s.category NOT IN ('vat','fee') ${slipDateFilter}
       ), 0)::float AS pay_total,
       COALESCE(SUM(s.amount) FILTER (
-        WHERE s.status = 'confirmed' AND s.applied = false AND s.category != 'vat' ${slipDateFilter}
+        WHERE s.status = 'confirmed' AND s.applied = false AND s.category NOT IN ('vat','fee') ${slipDateFilter}
       ), 0)::float AS store_total,
       COALESCE(SUM(s.amount) FILTER (
         WHERE s.status = 'confirmed' AND s.category = 'vat' ${slipDateFilter}
