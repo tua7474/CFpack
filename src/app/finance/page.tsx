@@ -48,27 +48,53 @@ const GROUP_LABEL: Record<ColorGroup, string> = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface SlipEntry { date: string; amount: number }
 interface BranchFinance {
-  id: number
-  name: string
-  color_group: string | null
-  pay_total: number
-  store_total: number
-  vat_total: number
-  fee: number
-  order_total: number
-  order_paid: number
-  order_pending: number
+  id: number; name: string; color_group: string | null
+  pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[]
+  order_total: number; order_paid: number; order_pending: number
 }
 
 type Period = 'week' | 'month' | 'all'
 
-function fmt(n: number): string {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtAmt(n: number): string {
+  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function fmtDateShort(iso: string): string {
+  // "2026-10-02" → "2 ต.ค."
+  const d = new Date(iso + 'T12:00:00')
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+}
+
+function fmtTotal(n: number): string {
   if (n === 0) return '-'
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const COLS = 9  // total columns
+// ── SlipCell — stacked dated entries ─────────────────────────────────────────
+
+function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: string }) {
+  if (entries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  const total = entries.reduce((s, e) => s + e.amount, 0)
+  return (
+    <div className="flex flex-col gap-0.5">
+      {entries.map((e, i) => (
+        <div key={i} className="flex flex-col leading-tight">
+          <span className="text-[9px] text-gray-400">{fmtDateShort(e.date)}</span>
+          <span className={`text-[11px] font-semibold font-mono ${amtColor}`}>{fmtAmt(e.amount)}</span>
+        </div>
+      ))}
+      {entries.length > 1 && (
+        <div className="border-t border-gray-300 mt-0.5 pt-0.5">
+          <span className={`text-[10px] font-bold font-mono ${amtColor}`}>รวม {fmtAmt(total)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -76,8 +102,6 @@ export default function FinancePage() {
   const [data, setData]       = useState<BranchFinance[]>([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod]   = useState<Period>('month')
-  const [feeEdits, setFeeEdits] = useState<Record<number, string>>({})
-  const [saving, setSaving]   = useState<Record<number, boolean>>({})
 
   const load = useCallback(() => {
     setLoading(true)
@@ -89,22 +113,6 @@ export default function FinancePage() {
 
   useEffect(() => { load() }, [load])
 
-  const saveFee = async (branchId: number) => {
-    const raw = feeEdits[branchId]
-    if (raw === undefined) return
-    const fee = parseFloat(raw) || 0
-    setSaving(s => ({ ...s, [branchId]: true }))
-    await fetch('/api/finance', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ branch_id: branchId, fee }),
-    })
-    setSaving(s => ({ ...s, [branchId]: false }))
-    setFeeEdits(e => { const n = { ...e }; delete n[branchId]; return n })
-    setData(prev => prev.map(b => b.id === branchId ? { ...b, fee } : b))
-  }
-
-  // Group branches by color
   type GroupedItem = { color: ColorGroup; items: BranchFinance[] }
   const grouped: GroupedItem[] = (() => {
     const map: Record<ColorGroup, BranchFinance[]> = { black: [], editor: [], green: [], yellow: [], red: [], orange: [] }
@@ -112,23 +120,22 @@ export default function FinancePage() {
     return GROUP_ORDER.filter(g => map[g].length > 0).map(g => ({ color: g, items: map[g] }))
   })()
 
+  const sumEntries = (rows: BranchFinance[], key: 'pay' | 'store' | 'vat' | 'fee') =>
+    rows.reduce((s, b) => s + b[key].reduce((ss, e) => ss + e.amount, 0), 0)
+
   const grand = {
-    pay:     data.reduce((s, b) => s + b.pay_total,     0),
-    store:   data.reduce((s, b) => s + b.store_total,   0),
-    vat:     data.reduce((s, b) => s + b.vat_total,     0),
-    fee:     data.reduce((s, b) => s + b.fee,           0),
-    total:   data.reduce((s, b) => s + b.order_total,   0),
-    paid:    data.reduce((s, b) => s + b.order_paid,    0),
-    pending: data.reduce((s, b) => s + b.order_pending, 0),
+    pay:     (rows: BranchFinance[]) => sumEntries(rows, 'pay'),
+    store:   (rows: BranchFinance[]) => sumEntries(rows, 'store'),
+    vat:     (rows: BranchFinance[]) => sumEntries(rows, 'vat'),
+    fee:     (rows: BranchFinance[]) => sumEntries(rows, 'fee'),
+    total:   (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_total,   0),
+    paid:    (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_paid,    0),
+    pending: (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_pending, 0),
   }
 
-  const periodLabel: Record<Period, string> = {
-    week:  'สัปดาห์นี้',
-    month: 'เดือนนี้',
-    all:   'ทั้งหมด',
-  }
+  const periodLabel: Record<Period, string> = { week: 'สัปดาห์นี้', month: 'เดือนนี้', all: 'ทั้งหมด' }
 
-  const thCls = 'px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right'
+  const thBase = 'px-3 py-2 border-r border-gray-500 whitespace-nowrap text-right'
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -140,20 +147,20 @@ export default function FinancePage() {
 
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
-        <Link href="/"         className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📦 สต็อคสินค้า</Link>
-        <Link href="/stock"    className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคกระดาษฝอย</Link>
-        <Link href="/orders"   className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📋 ใบจอง</Link>
-        <Link href="/branches" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏪 สาขาและตัวแทน</Link>
-        <Link href="/delivery" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🚚 จัดส่ง</Link>
+        <Link href="/"          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📦 สต็อคสินค้า</Link>
+        <Link href="/stock"     className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคกระดาษฝอย</Link>
+        <Link href="/orders"    className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📋 ใบจอง</Link>
+        <Link href="/branches"  className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏪 สาขาและตัวแทน</Link>
+        <Link href="/delivery"  className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🚚 จัดส่ง</Link>
         <Link href="/withdrawal" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📤 เบิกของ</Link>
-        <Link href="/restock"  className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📥 ใบPO</Link>
+        <Link href="/restock"   className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📥 ใบPO</Link>
         <Link href="/suppliers" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏭 ซัพพลายเออร์</Link>
-        <Link href="/foy-line" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌀 ไลน์ผลิตกระดาษฝอย</Link>
+        <Link href="/foy-line"  className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌀 ไลน์ผลิตกระดาษฝอย</Link>
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">💰 การเงิน</span>
       </div>
 
       {/* Period selector */}
-      <div className="px-4 pt-4 flex gap-2">
+      <div className="px-4 pt-4 flex gap-2 items-center">
         {(['week', 'month', 'all'] as Period[]).map(p => (
           <button key={p} onClick={() => setPeriod(p)}
             className={`px-4 py-1.5 text-xs rounded-full font-semibold border transition-colors ${
@@ -162,6 +169,9 @@ export default function FinancePage() {
             {periodLabel[p]}
           </button>
         ))}
+        <button onClick={load} className="px-3 py-1.5 text-xs rounded-full border border-gray-300 bg-white text-gray-500 hover:bg-gray-50">
+          🔄 รีเฟรช
+        </button>
       </div>
 
       {/* Main table */}
@@ -170,93 +180,76 @@ export default function FinancePage() {
           <div className="flex items-center justify-center h-40 text-gray-400">กำลังโหลดข้อมูล...</div>
         ) : (
           <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 150px)' }}>
-              <table className="min-w-full text-xs">
+            <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 155px)' }}>
+              <table className="text-xs border-collapse" style={{ tableLayout: 'auto' }}>
                 <thead className="sticky top-0 z-20">
-                  {/* Column group headers */}
+                  {/* Group headers */}
                   <tr className="bg-[#7a7568] text-white text-center text-[10px]">
-                    <th className="px-3 py-1 border-r border-gray-500 text-left">สาขา / ตัวแทน</th>
-                    <th colSpan={3} className="px-3 py-1 border-r border-gray-500">สลิปจาก LINE</th>
-                    <th className="px-3 py-1 border-r border-gray-500">ค่าธรรมเนียม</th>
-                    <th colSpan={3} className="px-3 py-1">ยอดใบจอง</th>
+                    <th className="px-3 py-1 border-r border-gray-500 text-left whitespace-nowrap">สาขา / ตัวแทน</th>
+                    <th colSpan={4} className="px-3 py-1 border-r border-gray-500 whitespace-nowrap">สลิปจาก LINE</th>
+                    <th colSpan={3} className="px-3 py-1 whitespace-nowrap">ยอดใบจอง</th>
                   </tr>
                   <tr className="bg-[#9b9484] text-white text-left">
-                    <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap min-w-[160px]">ชื่อสาขา</th>
-                    <th className={thCls + ' min-w-[110px] bg-green-700'}>ยอดตรงใบจอง</th>
-                    <th className={thCls + ' min-w-[110px] bg-amber-700'}>หักค่าของ</th>
-                    <th className={thCls + ' min-w-[100px] bg-blue-700 border-r-2 border-white/40'}>แวต</th>
-                    <th className={thCls + ' min-w-[100px] bg-purple-700 border-r-2 border-white/40'}>Fee</th>
-                    <th className={thCls + ' min-w-[120px]'}>รวมทั้งหมด</th>
-                    <th className={thCls + ' min-w-[120px] bg-green-600'}>ชำระแล้ว</th>
-                    <th className="px-3 py-2 whitespace-nowrap text-right min-w-[120px] bg-red-700">ค้างชำระ</th>
+                    <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
+                    <th className={`${thBase} bg-green-700`}>ยอดตรงใบจอง</th>
+                    <th className={`${thBase} bg-amber-700`}>หักค่าของ</th>
+                    <th className={`${thBase} bg-blue-700`}>แวต</th>
+                    <th className={`${thBase} bg-purple-700 border-r-2 border-white/40`}>Fee</th>
+                    <th className={`${thBase}`}>รวมทั้งหมด</th>
+                    <th className={`${thBase} bg-green-600`}>ชำระแล้ว</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right bg-red-700">ค้างชำระ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {grouped.map(({ color, items }) => {
-                    const gPay     = items.reduce((s, b) => s + b.pay_total,     0)
-                    const gStore   = items.reduce((s, b) => s + b.store_total,   0)
-                    const gVat     = items.reduce((s, b) => s + b.vat_total,     0)
-                    const gFee     = items.reduce((s, b) => s + b.fee,           0)
+                    const gPay     = sumEntries(items, 'pay')
+                    const gStore   = sumEntries(items, 'store')
+                    const gVat     = sumEntries(items, 'vat')
+                    const gFee     = sumEntries(items, 'fee')
                     const gTotal   = items.reduce((s, b) => s + b.order_total,   0)
                     const gPaid    = items.reduce((s, b) => s + b.order_paid,    0)
                     const gPending = items.reduce((s, b) => s + b.order_pending, 0)
                     return [
                       <tr key={`g-${color}`} className={GROUP_HEADER_BG[color]}>
-                        <td colSpan={COLS} className="px-3 py-1.5 font-bold text-sm">{GROUP_LABEL[color]}</td>
+                        <td colSpan={8} className="px-3 py-1.5 font-bold text-sm">{GROUP_LABEL[color]}</td>
                       </tr>,
 
-                      ...items.map(b => {
-                        const feeVal = feeEdits[b.id] !== undefined ? feeEdits[b.id] : String(b.fee === 0 ? '' : b.fee)
-                        const feePending = feeEdits[b.id] !== undefined
-                        return (
-                          <tr key={b.id} className={`border-b border-gray-100 hover:brightness-95 transition-all ${ROW_BG[color]}`}>
-                            <td className="px-3 py-2 border-r border-gray-200 font-medium">{b.name}</td>
-                            <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.pay_total > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}`}>
-                              {fmt(b.pay_total)}
-                            </td>
-                            <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.store_total > 0 ? 'text-amber-700 font-semibold' : 'text-gray-300'}`}>
-                              {fmt(b.store_total)}
-                            </td>
-                            <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.vat_total > 0 ? 'text-blue-700 font-semibold' : 'text-gray-300'}`}>
-                              {fmt(b.vat_total)}
-                            </td>
-                            {/* Fee — editable */}
-                            <td className="px-2 py-1 border-r border-gray-200">
-                              <div className="flex items-center gap-1 justify-end">
-                                <input
-                                  type="number" inputMode="decimal" step="0.01"
-                                  placeholder="0"
-                                  value={feeVal}
-                                  onChange={e => setFeeEdits(fe => ({ ...fe, [b.id]: e.target.value }))}
-                                  onBlur={() => saveFee(b.id)}
-                                  onKeyDown={e => e.key === 'Enter' && saveFee(b.id)}
-                                  className={`w-20 px-1.5 py-0.5 text-xs rounded border text-right focus:outline-none focus:ring-1 focus:ring-purple-400 ${feePending ? 'border-purple-400 bg-purple-50' : 'border-gray-200 bg-white'} ${saving[b.id] ? 'opacity-50' : ''}`}
-                                />
-                              </div>
-                            </td>
-                            {/* Order totals */}
-                            <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_total > 0 ? 'text-gray-700 font-semibold' : 'text-gray-300'}`}>
-                              {fmt(b.order_total)}
-                            </td>
-                            <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_paid > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}`}>
-                              {fmt(b.order_paid)}
-                            </td>
-                            <td className={`px-3 py-2 text-right font-mono ${b.order_pending > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}`}>
-                              {fmt(b.order_pending)}
-                            </td>
-                          </tr>
-                        )
-                      }),
+                      ...items.map(b => (
+                        <tr key={b.id} className={`border-b border-gray-100 hover:brightness-95 transition-all align-top ${ROW_BG[color]}`}>
+                          <td className="px-3 py-2 border-r border-gray-200 font-medium whitespace-nowrap">{b.name}</td>
+                          <td className="px-3 py-2 border-r border-gray-200 text-right">
+                            <SlipCell entries={b.pay}   amtColor="text-green-700" />
+                          </td>
+                          <td className="px-3 py-2 border-r border-gray-200 text-right">
+                            <SlipCell entries={b.store} amtColor="text-amber-700" />
+                          </td>
+                          <td className="px-3 py-2 border-r border-gray-200 text-right">
+                            <SlipCell entries={b.vat}   amtColor="text-blue-700" />
+                          </td>
+                          <td className="px-3 py-2 border-r border-gray-200 text-right">
+                            <SlipCell entries={b.fee}   amtColor="text-purple-700" />
+                          </td>
+                          <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_total > 0 ? 'text-gray-700 font-semibold' : 'text-gray-300'}`}>
+                            {fmtTotal(b.order_total)}
+                          </td>
+                          <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_paid > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}`}>
+                            {fmtTotal(b.order_paid)}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${b.order_pending > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}`}>
+                            {fmtTotal(b.order_pending)}
+                          </td>
+                        </tr>
+                      )),
 
-                      <tr key={`gt-${color}`} className={`border-b-2 border-gray-300 text-xs font-semibold ${GROUP_HEADER_BG[color]} opacity-80`}>
-                        <td className="px-3 py-1 text-right border-r border-gray-300">รวมกลุ่ม</td>
-                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300">{fmt(gPay)}</td>
-                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300">{fmt(gStore)}</td>
-                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300">{fmt(gVat)}</td>
-                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300">{fmt(gFee)}</td>
-                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300">{fmt(gTotal)}</td>
-                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300">{fmt(gPaid)}</td>
-                        <td className="px-3 py-1 text-right font-mono">{fmt(gPending)}</td>
+                      <tr key={`gt-${color}`} className={`border-b-2 border-gray-300 text-[10px] font-semibold ${GROUP_HEADER_BG[color]} opacity-80`}>
+                        <td className="px-3 py-1 text-right border-r border-gray-300 whitespace-nowrap">รวมกลุ่ม</td>
+                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gPay)}</td>
+                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gStore)}</td>
+                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gVat)}</td>
+                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gFee)}</td>
+                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gTotal)}</td>
+                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gPaid)}</td>
+                        <td className="px-3 py-1 text-right font-mono whitespace-nowrap">{fmtTotal(gPending)}</td>
                       </tr>,
                     ]
                   })}
@@ -264,13 +257,13 @@ export default function FinancePage() {
                 <tfoot>
                   <tr className="bg-[#9b9484] text-white font-bold text-xs">
                     <td className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">รวมทั้งหมด ({periodLabel[period]})</td>
-                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono">{fmt(grand.pay)}</td>
-                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono">{fmt(grand.store)}</td>
-                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono">{fmt(grand.vat)}</td>
-                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono">{fmt(grand.fee)}</td>
-                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono">{fmt(grand.total)}</td>
-                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono">{fmt(grand.paid)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{grand.pending > 0 ? grand.pending.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-'}</td>
+                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.pay(data))}</td>
+                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.store(data))}</td>
+                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.vat(data))}</td>
+                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.fee(data))}</td>
+                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.total(data))}</td>
+                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.paid(data))}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{fmtTotal(grand.pending(data))}</td>
                   </tr>
                 </tfoot>
               </table>

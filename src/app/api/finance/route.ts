@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 
-// Bangkok date helpers
 function todayBkk(): Date {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
 }
@@ -27,58 +26,59 @@ function getMonthRange() {
 async function ensureFeeTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS branch_finance_fee (
-      branch_id INT PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
-      fee       DECIMAL(12,2) NOT NULL DEFAULT 0,
+      branch_id  INT PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
+      fee        DECIMAL(12,2) NOT NULL DEFAULT 0,
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `)
 }
 
+export interface SlipEntry { date: string; amount: number }
+export interface BranchFinanceRow {
+  id: number; name: string; color_group: string | null
+  pay:   SlipEntry[]
+  store: SlipEntry[]
+  vat:   SlipEntry[]
+  fee:   SlipEntry[]
+  order_total: number; order_paid: number; order_pending: number
+}
+
 export async function GET(req: NextRequest) {
   await ensureFeeTable()
-
   const url    = new URL(req.url)
-  const period = url.searchParams.get('period') ?? 'month'  // week | month | all
+  const period = url.searchParams.get('period') ?? 'month'
 
-  // Date range for slips (slip_date) and orders (created_at in Bangkok)
-  let slipDateFilter  = ''
-  let orderDateFilter = ''
-  const slipVals:  string[] = []
-  const orderVals: string[] = []
+  let dateFilter  = ''
+  let orderFilter = ''
+  const slipVals: string[] = []
+  const ordVals:  string[] = []
 
   if (period === 'week') {
     const r = getWeekRange()
-    slipDateFilter  = `AND s.slip_date   >= $1 AND s.slip_date   <= $2`
-    orderDateFilter = `AND o.created_at AT TIME ZONE 'Asia/Bangkok' >= $1 AND o.created_at AT TIME ZONE 'Asia/Bangkok' <= ($2::date + interval '1 day')`
+    dateFilter  = `AND s.slip_date >= $1 AND s.slip_date <= $2`
+    orderFilter = `AND o.created_at AT TIME ZONE 'Asia/Bangkok' >= $1 AND o.created_at AT TIME ZONE 'Asia/Bangkok' < ($2::date + interval '1 day')`
     slipVals.push(r.start, r.end)
-    orderVals.push(r.start, r.end)
+    ordVals.push(r.start, r.end)
   } else if (period === 'month') {
     const r = getMonthRange()
-    slipDateFilter  = `AND s.slip_date   >= $1 AND s.slip_date   <= $2`
-    orderDateFilter = `AND o.created_at AT TIME ZONE 'Asia/Bangkok' >= $1 AND o.created_at AT TIME ZONE 'Asia/Bangkok' <= ($2::date + interval '1 day')`
+    dateFilter  = `AND s.slip_date >= $1 AND s.slip_date <= $2`
+    orderFilter = `AND o.created_at AT TIME ZONE 'Asia/Bangkok' >= $1 AND o.created_at AT TIME ZONE 'Asia/Bangkok' < ($2::date + interval '1 day')`
     slipVals.push(r.start, r.end)
-    orderVals.push(r.start, r.end)
+    ordVals.push(r.start, r.end)
   }
 
-  // Slips per branch
+  // All branches
+  const { rows: branches } = await pool.query(
+    `SELECT id, name, color_group FROM branches ORDER BY name`
+  )
+
+  // Individual confirmed slips per branch
   const { rows: slipRows } = await pool.query(`
-    SELECT
-      b.id,
-      b.name,
-      b.color_group,
-      COALESCE(SUM(s.amount) FILTER (
-        WHERE s.status = 'confirmed' AND s.applied = true  AND s.category NOT IN ('vat','fee') ${slipDateFilter}
-      ), 0)::float AS pay_total,
-      COALESCE(SUM(s.amount) FILTER (
-        WHERE s.status = 'confirmed' AND s.applied = false AND s.category NOT IN ('vat','fee') ${slipDateFilter}
-      ), 0)::float AS store_total,
-      COALESCE(SUM(s.amount) FILTER (
-        WHERE s.status = 'confirmed' AND s.category = 'vat' ${slipDateFilter}
-      ), 0)::float AS vat_total
-    FROM branches b
-    LEFT JOIN slips s ON s.branch_id = b.id
-    GROUP BY b.id, b.name, b.color_group
-    ORDER BY b.name
+    SELECT s.branch_id, s.category, s.applied,
+           s.amount::float, s.slip_date::text
+    FROM slips s
+    WHERE s.status = 'confirmed' AND s.branch_id IS NOT NULL ${dateFilter}
+    ORDER BY s.branch_id, s.slip_date ASC, s.created_at ASC
   `, slipVals)
 
   // Order totals per branch
@@ -89,38 +89,41 @@ export async function GET(req: NextRequest) {
       COALESCE(SUM(o.total_amount) FILTER (WHERE o.payment_status = 'paid'), 0)::float AS order_paid,
       COALESCE(SUM(o.total_amount) FILTER (WHERE o.payment_status != 'paid' AND o.status != 'cancelled'), 0)::float AS order_pending
     FROM booking_orders o
-    WHERE o.branch_id IS NOT NULL AND o.status != 'cancelled' ${orderDateFilter}
+    WHERE o.branch_id IS NOT NULL AND o.status != 'cancelled' ${orderFilter}
     GROUP BY o.branch_id
-  `, orderVals)
-
-  // Fee per branch
-  const { rows: feeRows } = await pool.query(`SELECT branch_id, fee::float FROM branch_finance_fee`)
+  `, ordVals)
 
   const orderMap: Record<number, { order_total: number; order_paid: number; order_pending: number }> = {}
   for (const r of orderRows) orderMap[r.branch_id] = r
 
-  const feeMap: Record<number, number> = {}
-  for (const r of feeRows) feeMap[r.branch_id] = r.fee
+  // Group slips per branch by type
+  const slipMap: Record<number, { pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[] }> = {}
+  for (const s of slipRows) {
+    if (!slipMap[s.branch_id]) slipMap[s.branch_id] = { pay: [], store: [], vat: [], fee: [] }
+    const entry: SlipEntry = { date: s.slip_date, amount: s.amount }
+    if (s.category === 'vat') {
+      slipMap[s.branch_id].vat.push(entry)
+    } else if (s.category === 'fee') {
+      slipMap[s.branch_id].fee.push(entry)
+    } else if (s.applied) {
+      slipMap[s.branch_id].pay.push(entry)
+    } else {
+      slipMap[s.branch_id].store.push(entry)
+    }
+  }
 
-  const result = slipRows.map(b => ({
-    ...b,
+  const result: BranchFinanceRow[] = branches.map(b => ({
+    id:            b.id,
+    name:          b.name,
+    color_group:   b.color_group,
+    pay:           slipMap[b.id]?.pay   ?? [],
+    store:         slipMap[b.id]?.store ?? [],
+    vat:           slipMap[b.id]?.vat   ?? [],
+    fee:           slipMap[b.id]?.fee   ?? [],
     order_total:   orderMap[b.id]?.order_total   ?? 0,
     order_paid:    orderMap[b.id]?.order_paid     ?? 0,
     order_pending: orderMap[b.id]?.order_pending  ?? 0,
-    fee:           feeMap[b.id] ?? 0,
   }))
 
   return NextResponse.json(result)
-}
-
-// PATCH — save fee for a branch
-export async function PATCH(req: NextRequest) {
-  await ensureFeeTable()
-  const { branch_id, fee } = await req.json()
-  if (!branch_id) return NextResponse.json({ error: 'branch_id required' }, { status: 400 })
-  await pool.query(`
-    INSERT INTO branch_finance_fee (branch_id, fee, updated_at) VALUES ($1, $2, NOW())
-    ON CONFLICT (branch_id) DO UPDATE SET fee = $2, updated_at = NOW()
-  `, [branch_id, fee ?? 0])
-  return NextResponse.json({ ok: true })
 }
