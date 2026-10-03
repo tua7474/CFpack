@@ -1570,10 +1570,6 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       text: `✅ บันทึกสลิปเรียบร้อย\n${slipTypeLabel} — ${purposeLabel}\n฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${branchName ? `\nสาขา: ${branchName}` : ''}`
     })
 
-    if (purpose === 'PAY' && slipBranchId !== null) {
-      const stillBlocked = await checkBlockedFromDB(slipBranchId)
-      if (!stillBlocked) msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}`))
-    }
     return reply(replyToken, msgs)
   }
 }
