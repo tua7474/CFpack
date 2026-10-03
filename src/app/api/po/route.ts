@@ -236,7 +236,7 @@ export async function PATCH(request: Request) {
     for (const [idStr, q] of Object.entries(qty)) {
       if (!q || (q as number) <= 0) continue
       await pool.query(
-        `UPDATE products_catalog SET quantity = COALESCE(quantity, 0) + $1 WHERE id = $2`,
+        `UPDATE products_catalog SET quantity = COALESCE(quantity, 0) + $1, last_added_qty = $1, last_added_at = NOW() WHERE id = $2`,
         [q, Number(idStr)]
       )
       await pool.query(
