@@ -1816,8 +1816,8 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     const buildOrderRows = (orders: OrderRow[], label: string): object[] => {
       if (orders.length === 0) return []
       const pendingAmt = orders
-        .filter(o => o.payment_status !== 'paid' && o.status !== 'cancelled')
-        .reduce((s, o) => s + o.total_amount, 0)
+        .filter(o => o.payment_status !== 'paid')
+        .reduce((s, o) => s + Number(o.total_amount), 0)
       const allPaid = pendingAmt === 0
       return [
         ...(allPaid
