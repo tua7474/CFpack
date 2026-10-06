@@ -30,16 +30,27 @@ async function notifyNewBooking(
 
     const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
     const label = branch_name ?? (branch_id ? `สาขา #${branch_id}` : 'ไม่ระบุสาขา')
+    const baseUrl = BASE_URL ? `https://${BASE_URL}` : 'https://cf-production-6234.up.railway.app'
+    const ordersUrl = `${baseUrl}/orders?role=manager`
 
-    const msg: object = {
+    // ข้อความสำหรับกลุ่ม "ออกใบจอง" — มีลิงค์ประวัติใบจอง
+    const centralMsg: object = {
+      type: 'text',
+      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}\n\n📋 ดูประวัติใบจอง:\n${ordersUrl}`,
+    }
+
+    // ข้อความสำหรับกลุ่มสาขา — ข้อความเดิม ไม่มีลิงค์
+    const branchMsg: object = {
       type: 'text',
       text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}`,
     }
 
     // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
-    const targets = [...new Set([centralGroupId, branchGroupId].filter(Boolean) as string[])]
-    console.log('[notifyNewBooking] targets:', targets, '| order:', order_no)
-    await Promise.all(targets.map(to => pushLineMsg(to, [msg])))
+    const pushTasks: Promise<unknown>[] = []
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchMsg]))
+    console.log('[notifyNewBooking] targets centralGroupId:', centralGroupId, 'branchGroupId:', branchGroupId, '| order:', order_no)
+    await Promise.all(pushTasks)
   } catch { /* non-critical — don't fail the order */ }
 }
 

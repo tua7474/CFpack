@@ -153,19 +153,25 @@ export default function OrdersPage() {
     fetch('/api/withdrawal').then(r => r.json()).then(setWithdrawalTypes).catch(() => {})
   }, [])
 
-  // Read role + branch from branch_session
+  // Read role + branch from branch_session (or ?role=manager URL param)
   useEffect(() => {
     try {
-      const bs = localStorage.getItem('branch_session')
-      if (bs) {
-        const s = JSON.parse(bs)
-        setIsAdmin(s?.is_admin === true)
-        setIsManager(s?.is_manager === true)
-        if (s?.branch_name) setBranchName(s.branch_name)
-        if (s?.branch_id)   setBranchId(s.branch_id)
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('role') === 'manager') {
+        // กลุ่มออกใบจอง: เข้าผ่านลิงค์จาก LINE → ได้สิทธิ์ manager เต็ม
+        setIsManager(true)
       } else {
-        // ไม่มี session → ถือว่าเป็น admin (เข้าตรง)
-        setIsAdmin(true)
+        const bs = localStorage.getItem('branch_session')
+        if (bs) {
+          const s = JSON.parse(bs)
+          setIsAdmin(s?.is_admin === true)
+          setIsManager(s?.is_manager === true)
+          if (s?.branch_name) setBranchName(s.branch_name)
+          if (s?.branch_id)   setBranchId(s.branch_id)
+        } else {
+          // ไม่มี session → ถือว่าเป็น admin (เข้าตรง)
+          setIsAdmin(true)
+        }
       }
     } catch { /* ignore */ }
     setSessionLoaded(true)
