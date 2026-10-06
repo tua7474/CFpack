@@ -442,6 +442,21 @@ async function getCurrentWeekOrders(branchId: number) {
   return rows
 }
 
+async function getLastWeekOrders(branchId: number) {
+  const { rows } = await pool.query(`
+    SELECT order_no, total_amount::float AS total_amount, status, payment_status, created_at
+    FROM booking_orders
+    WHERE branch_id = $1
+      AND created_at AT TIME ZONE 'Asia/Bangkok'
+          >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - interval '7 days'
+      AND created_at AT TIME ZONE 'Asia/Bangkok'
+          < date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
+    ORDER BY created_at DESC
+    LIMIT 10
+  `, [branchId])
+  return rows
+}
+
 // ── Flex Builders ─────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 7
@@ -1779,47 +1794,68 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
 
     // ── ดึงข้อมูล: ตรวจสอบบล็อก + ใบจองสัปดาห์นี้ ──────────────────────────
-    let weekOrders: { order_no: string; total_amount: number; payment_status: string; created_at: string }[] = []
+    type OrderRow = { order_no: string; total_amount: number; status: string; payment_status: string; created_at: string }
+    let weekOrders: OrderRow[] = []
+    let lastWeekOrders: OrderRow[] = []
     let blocked = false
 
     if (branchId !== null) {
-      const [wOrders, blockedResult] = await Promise.all([
+      const [wOrders, lwOrders, blockedResult] = await Promise.all([
         getCurrentWeekOrders(branchId),
+        getLastWeekOrders(branchId),
         checkBlockedFromDB(branchId),
       ])
-      weekOrders = wOrders
-      blocked    = blockedResult
+      weekOrders     = wOrders
+      lastWeekOrders = lwOrders
+      blocked        = blockedResult
     }
 
-    // ── แถวรายการใบจองสัปดาห์นี้ ─────────────────────────────────────────────
+    // ── helper: สร้างแถวรายการ ──────────────────────────────────────────────
     const fmtAmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
-    const pendingTotal = weekOrders.filter(o => o.payment_status !== 'paid' && (o as {status?:string}).status !== 'cancelled').reduce((s, o) => s + o.total_amount, 0)
 
-    const orderRows: object[] = weekOrders.length === 0
-      ? [{ type: 'text', text: 'ยังไม่มีใบจองสัปดาห์นี้', size: 'xs', color: '#aaaaaa', align: 'center', margin: 'sm' }]
-      : [
-          ...weekOrders.map(o => {
-            const paid    = o.payment_status === 'paid'
-            const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
-              day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
-            })
-            return {
-              type: 'box', layout: 'horizontal', paddingAll: '4px',
-              contents: [
-                { type: 'text', text: o.order_no, size: 'xs', color: '#333333', weight: 'bold', flex: 4 },
-                { type: 'text', text: dateStr, size: 'xxs', color: '#aaaaaa', flex: 3, align: 'center' },
-                { type: 'text', text: fmtAmt(o.total_amount), size: 'xxs',
-                  color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
-              ],
-            }
-          }),
-          ...(pendingTotal > 0 ? [{
-            type: 'box', layout: 'horizontal', paddingAll: '4px', paddingTop: '6px',
+    const buildOrderRows = (orders: OrderRow[], label: string): object[] => {
+      if (orders.length === 0) return []
+      const pendingAmt = orders
+        .filter(o => o.payment_status !== 'paid' && o.status !== 'cancelled')
+        .reduce((s, o) => s + o.total_amount, 0)
+      return [
+        { type: 'text', text: label, size: 'xxs', color: '#9ca3af', weight: 'bold', margin: 'sm' },
+        ...orders.map(o => {
+          const paid    = o.payment_status === 'paid'
+          const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
+            day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
+          })
+          return {
+            type: 'box', layout: 'horizontal',
+            paddingTop: '2px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
             contents: [
-              { type: 'text', text: 'ยอดคงค้างสัปดาห์นี้', size: 'xxs', color: '#dc2626', weight: 'bold', flex: 7 },
-              { type: 'text', text: fmtAmt(pendingTotal), size: 'xxs', color: '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+              { type: 'text', text: o.order_no, size: 'xxs', color: '#333333', weight: 'bold', flex: 4 },
+              { type: 'text', text: dateStr, size: 'xxs', color: '#aaaaaa', flex: 3, align: 'center' },
+              { type: 'text', text: fmtAmt(o.total_amount), size: 'xxs',
+                color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
             ],
-          }] : []),
+          }
+        }),
+        ...(pendingAmt > 0 ? [{
+          type: 'box', layout: 'horizontal',
+          paddingTop: '4px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
+          contents: [
+            { type: 'text', text: `ยอดคงค้าง${label}`, size: 'xxs', color: '#dc2626', weight: 'bold', flex: 7 },
+            { type: 'text', text: fmtAmt(pendingAmt), size: 'xxs', color: '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+          ],
+        }] : []),
+      ]
+    }
+
+    const thisWeekRows  = buildOrderRows(weekOrders, 'สัปดาห์นี้')
+    const lastWeekRows  = buildOrderRows(lastWeekOrders, 'สัปดาห์ที่แล้ว')
+
+    const orderRows: object[] = (thisWeekRows.length === 0 && lastWeekRows.length === 0)
+      ? [{ type: 'text', text: 'ยังไม่มีใบจอง 2 สัปดาห์ที่ผ่านมา', size: 'xs', color: '#aaaaaa', align: 'center', margin: 'sm' }]
+      : [
+          ...thisWeekRows,
+          ...(lastWeekRows.length > 0 ? [{ type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
+          ...lastWeekRows,
         ]
 
     // ── 3 ปุ่มแถวเดียว ───────────────────────────────────────────────────────
