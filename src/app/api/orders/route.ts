@@ -33,19 +33,14 @@ async function notifyNewBooking(
     const baseUrl = BASE_URL ? `https://${BASE_URL}` : 'https://cf-production-6234.up.railway.app'
     const ordersUrl = `${baseUrl}/orders?role=manager`
 
-    // ข้อความสำหรับกลุ่ม "ออกใบจอง" — มีลิงค์ประวัติใบจอง
     const centralMsg: object = {
       type: 'text',
-      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}\n\n📋 ดูประวัติใบจอง:\n${ordersUrl}`,
+      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}`,
     }
 
-    // ข้อความสำหรับกลุ่มสาขา — มีลิงค์ดูและแก้ไขใบจองของสาขาตัวเอง
-    const branchOrdersUrl = branch_id && branch_name
-      ? `${baseUrl}/orders?branch_id=${branch_id}&branch_name=${encodeURIComponent(branch_name)}`
-      : `${baseUrl}/orders`
     const branchMsg: object = {
       type: 'text',
-      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}\n\n📋 ดูและแก้ไขใบจอง:\n${branchOrdersUrl}`,
+      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}`,
     }
 
     // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
