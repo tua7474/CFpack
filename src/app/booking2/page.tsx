@@ -1358,8 +1358,8 @@ function Booking2Inner() {
       <main>
         <div className="py-3 px-2 flex justify-center">
 
-          {/* ── ยังไม่ได้ระบุสาขา → lock screen ── */}
-          {branchReady === false ? (
+          {/* ── ยังไม่ได้ระบุสาขา → lock screen (ยกเว้น edit mode — ผ่าน orders page มาแล้ว) ── */}
+          {branchReady === false && !editOrderNo ? (
             <div className="flex flex-col items-center justify-center min-h-[70vh] gap-5 text-center px-6 w-screen">
               <div className="text-6xl select-none">🔒</div>
               <div>
@@ -1371,7 +1371,7 @@ function Booking2Inner() {
                 เพื่อระบุตัวตนก่อนใช้งาน
               </div>
             </div>
-          ) : branchReady === null ? (
+          ) : branchReady === null && !editOrderNo ? (
             <div className="flex items-center justify-center h-40 text-gray-400 w-screen">กำลังตรวจสอบ...</div>
           ) : loading ? (
             <div className="flex items-center justify-center h-40 text-gray-400 w-screen">กำลังโหลดข้อมูล...</div>
