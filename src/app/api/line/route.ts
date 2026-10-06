@@ -1820,7 +1820,6 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         .reduce((s, o) => s + o.total_amount, 0)
       const allPaid = pendingAmt === 0
       return [
-        { type: 'text', text: label, size: 'xxs', color: '#9ca3af', weight: 'bold', margin: 'sm' },
         ...(allPaid
           ? [{ type: 'text', text: `${label}ไม่มียอดค้าง`, size: 'xxs', color: '#16a34a', weight: 'bold', margin: 'none' }]
           : [
