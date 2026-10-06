@@ -119,6 +119,7 @@ export default function OrdersPage() {
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [printOrder, setPrintOrder] = useState<BookingOrder | null>(null)
   const [printType, setPrintType]   = useState<'booking' | null>(null)
+  const [previewOrder, setPreviewOrder] = useState<BookingOrder | null>(null) // preview mode: show form on screen
 
   // Withdrawal types for display
   const [withdrawalTypes, setWithdrawalTypes] = useState<{ id: number; name: string }[]>([])
@@ -583,6 +584,32 @@ export default function OrdersPage() {
       <div className="print-only">
         {printType === 'booking' && printOrder && <BookingPrint order={printOrder} />}
       </div>
+
+      {/* Preview modal — branch users */}
+      {previewOrder && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white no-print">
+          <div className="flex items-center justify-between px-4 py-2 bg-[#3d3530] text-white shrink-0">
+            <span className="font-semibold text-sm">ใบจอง #{previewOrder.order_no}</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { const o = previewOrder; setPreviewOrder(null); setTimeout(() => handlePrint(o), 50) }}
+                className="px-3 py-1 text-xs rounded bg-green-500 hover:bg-green-600 text-white font-semibold"
+              >
+                🖨️ พิมพ์
+              </button>
+              <button
+                onClick={() => setPreviewOrder(null)}
+                className="px-3 py-1 text-xs rounded bg-white/20 hover:bg-white/30 text-white"
+              >
+                ✕ ปิด
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <BookingPrint order={previewOrder} />
+          </div>
+        </div>
+      )}
 
       {/* ── Payment Modal */}
       {showPayModal && (() => {
@@ -1059,13 +1086,13 @@ export default function OrdersPage() {
                               </button>
                             )
                           ) : (
-                            /* ── สาขา/ตัวแทน: แสดงสถานะ + พิมพ์ ── */
+                            /* ── สาขา/ตัวแทน: แสดงสถานะ + ดูใบจอง ── */
                             <div className="flex flex-col items-center gap-1.5">
                               <span className="text-gray-400 text-xs">รอดำเนินการ</span>
                               <div className="flex gap-1">
-                                <button onClick={() => handlePrint(order)}
+                                <button onClick={() => setPreviewOrder(order)}
                                   className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
-                                  🖨️ ใบจอง
+                                  📄 ดูใบจอง
                                 </button>
                               </div>
                             </div>
