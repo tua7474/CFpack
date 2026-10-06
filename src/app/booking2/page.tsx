@@ -1044,13 +1044,15 @@ function Booking2Inner() {
   const isBoxOnlyLow    = !hasNonBoxItems && boxTotal > 0 && boxTotal < 20000
   const isAutoForced    = autoForceFactory || autoForceWarehouse || autoForceBubble
 
-  // กรองตัวเลือกตามเงื่อนไข
-  const allowedWithdrawalTypes = isBubbleOnlyLow
-    ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
-    : isBoxOnlyLow
-      ? withdrawalTypes.filter(w => !w.name.includes('BB'))
-      : withdrawalTypes
-  const allowedDeliveryMethods = (isBubbleOnlyLow || isBoxOnlyLow)
+  // กรองตัวเลือกตามเงื่อนไข (รับเอง = ยกเว้นทุก filter)
+  const allowedWithdrawalTypes = isPickup
+    ? withdrawalTypes
+    : isBubbleOnlyLow
+      ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
+      : isBoxOnlyLow
+        ? withdrawalTypes.filter(w => !w.name.includes('BB'))
+        : withdrawalTypes
+  const allowedDeliveryMethods = (!isPickup && (isBubbleOnlyLow || isBoxOnlyLow))
     ? deliveryMethods.filter(d => !d.name.includes('BBส่งตรง') && !d.name.includes('กล่องส่งตรง'))
     : deliveryMethods
 
