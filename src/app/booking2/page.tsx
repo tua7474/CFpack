@@ -733,8 +733,9 @@ function Booking2Inner() {
         localStorage.removeItem('cf_foy_result')
         localStorage.removeItem('cf_foy_items')
         localStorage.removeItem('cf_foy_priorities')
-        setSaveMsg(`อัพเดทใบจอง ${editOrderNo} สำเร็จ`)
         clearAllPriorities()
+        setSaveMsg(`อัพเดทใบจอง ${editOrderNo} สำเร็จ`)
+        setTimeout(() => { window.location.href = '/orders' }, 1000)
       } else {
         // ── Create new order ──────────────────────────────────────────────────
         let branchId: number | null = null
