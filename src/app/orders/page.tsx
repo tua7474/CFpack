@@ -912,7 +912,12 @@ export default function OrdersPage() {
                               </span>
                             ) : (
                               <button
-                                onClick={() => router.push(`/booking2?edit=${order.order_no}`)}
+                                onClick={() => {
+                                  const branchParams = (!isAdmin && !isManager && branchName)
+                                    ? `&branch_name=${encodeURIComponent(branchName)}${branchId ? `&branch_id=${branchId}` : ''}`
+                                    : ''
+                                  router.push(`/booking2?edit=${order.order_no}${branchParams}`)
+                                }}
                                 className="px-2 py-1 text-xs rounded bg-yellow-50 hover:bg-yellow-100 text-yellow-800 border border-yellow-300 transition-colors w-fit"
                               >
                                 ✎ แก้ไข
