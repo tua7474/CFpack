@@ -363,7 +363,8 @@ export default function OrdersPage() {
     type BookedItem = { product: CatalogProduct; qty: number; total: number }
 
     // Switchable subgroup names → NV form; all others → V form
-    const SWITCHABLE_SG = new Set(['ซองPPกันกระแทก', 'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก'])
+    // หมายเหตุ: ซองPPกันกระแทก = แถบสีเทา บังคับแวต → ต้องอยู่ฟอร์ม V
+    const SWITCHABLE_SG = new Set(['ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก'])
 
     const productMap = new Map(products.map(p => [p.id, p]))
 
