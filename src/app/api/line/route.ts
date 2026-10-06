@@ -1821,7 +1821,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       const allPaid = pendingAmt === 0
       return [
         ...(allPaid
-          ? [{ type: 'text', text: `${label}ไม่มียอดค้าง`, size: 'xxs', color: '#16a34a', weight: 'bold', margin: 'none' }]
+          ? [{ type: 'text', text: `${label}ไม่มียอดค้าง`, size: 'xxs', color: '#16a34a', margin: 'none' }]
           : [
               ...orders.map(o => {
                 const paid    = o.payment_status === 'paid'
