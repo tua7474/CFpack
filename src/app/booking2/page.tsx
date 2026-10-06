@@ -1056,7 +1056,7 @@ function Booking2Inner() {
 
   let bubbleWarning: string | null = null
   let bubbleBlocking = false
-  if (hasBubbleItems) {
+  if (hasBubbleItems && !isPickup) {
     if (hasNonBubbleInOrder) {
       if (totalBubbleUnits > 20) {
         const over = totalBubbleUnits - 20
