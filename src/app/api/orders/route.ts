@@ -39,10 +39,13 @@ async function notifyNewBooking(
       text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}\n\n📋 ดูประวัติใบจอง:\n${ordersUrl}`,
     }
 
-    // ข้อความสำหรับกลุ่มสาขา — ข้อความเดิม ไม่มีลิงค์
+    // ข้อความสำหรับกลุ่มสาขา — มีลิงค์ดูและแก้ไขใบจองของสาขาตัวเอง
+    const branchOrdersUrl = branch_id && branch_name
+      ? `${baseUrl}/orders?branch_id=${branch_id}&branch_name=${encodeURIComponent(branch_name)}`
+      : `${baseUrl}/orders`
     const branchMsg: object = {
       type: 'text',
-      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}`,
+      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}\n\n📋 ดูและแก้ไขใบจอง:\n${branchOrdersUrl}`,
     }
 
     // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
