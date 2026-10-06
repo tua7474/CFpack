@@ -436,7 +436,7 @@ async function getCurrentWeekOrders(branchId: number) {
     WHERE branch_id = $1
       AND created_at AT TIME ZONE 'Asia/Bangkok'
           >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
-    ORDER BY created_at DESC
+    ORDER BY created_at ASC
     LIMIT 10
   `, [branchId])
   return rows
@@ -451,7 +451,7 @@ async function getLastWeekOrders(branchId: number) {
           >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - interval '7 days'
       AND created_at AT TIME ZONE 'Asia/Bangkok'
           < date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
-    ORDER BY created_at DESC
+    ORDER BY created_at ASC
     LIMIT 10
   `, [branchId])
   return rows
@@ -1818,44 +1818,50 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       const pendingAmt = orders
         .filter(o => o.payment_status !== 'paid' && o.status !== 'cancelled')
         .reduce((s, o) => s + o.total_amount, 0)
+      const allPaid = pendingAmt === 0
       return [
         { type: 'text', text: label, size: 'xxs', color: '#9ca3af', weight: 'bold', margin: 'sm' },
-        ...orders.map(o => {
-          const paid    = o.payment_status === 'paid'
-          const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
-            day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
-          })
-          return {
-            type: 'box', layout: 'horizontal',
-            paddingTop: '2px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
-            contents: [
-              { type: 'text', text: o.order_no, size: 'xxs', color: '#333333', weight: 'bold', flex: 4 },
-              { type: 'text', text: dateStr, size: 'xxs', color: '#aaaaaa', flex: 3, align: 'center' },
-              { type: 'text', text: fmtAmt(o.total_amount), size: 'xxs',
-                color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
-            ],
-          }
-        }),
-        ...(pendingAmt > 0 ? [{
-          type: 'box', layout: 'horizontal',
-          paddingTop: '4px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
-          contents: [
-            { type: 'text', text: `ยอดคงค้าง${label}`, size: 'xxs', color: '#dc2626', weight: 'bold', flex: 7 },
-            { type: 'text', text: fmtAmt(pendingAmt), size: 'xxs', color: '#dc2626', weight: 'bold', flex: 3, align: 'end' },
-          ],
-        }] : []),
+        ...(allPaid
+          ? [{ type: 'text', text: `${label}ไม่มียอดค้าง`, size: 'xxs', color: '#16a34a', weight: 'bold', margin: 'none' }]
+          : [
+              ...orders.map(o => {
+                const paid    = o.payment_status === 'paid'
+                const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
+                  day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
+                })
+                return {
+                  type: 'box', layout: 'horizontal',
+                  paddingTop: '2px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
+                  contents: [
+                    { type: 'text', text: o.order_no, size: 'xxs', color: '#333333', weight: 'bold', flex: 4 },
+                    { type: 'text', text: dateStr, size: 'xxs', color: '#aaaaaa', flex: 3, align: 'center' },
+                    { type: 'text', text: fmtAmt(o.total_amount), size: 'xxs',
+                      color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+                  ],
+                }
+              }),
+              {
+                type: 'box', layout: 'horizontal',
+                paddingTop: '4px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
+                contents: [
+                  { type: 'text', text: `ยอดคงค้าง${label}`, size: 'xxs', color: '#dc2626', weight: 'bold', flex: 7 },
+                  { type: 'text', text: fmtAmt(pendingAmt), size: 'xxs', color: '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+                ],
+              },
+            ]
+        ),
       ]
     }
 
-    const thisWeekRows  = buildOrderRows(weekOrders, 'สัปดาห์นี้')
     const lastWeekRows  = buildOrderRows(lastWeekOrders, 'สัปดาห์ที่แล้ว')
+    const thisWeekRows  = buildOrderRows(weekOrders, 'สัปดาห์นี้')
 
     const orderRows: object[] = (thisWeekRows.length === 0 && lastWeekRows.length === 0)
       ? [{ type: 'text', text: 'ยังไม่มีใบจอง 2 สัปดาห์ที่ผ่านมา', size: 'xs', color: '#aaaaaa', align: 'center', margin: 'sm' }]
       : [
-          ...thisWeekRows,
-          ...(lastWeekRows.length > 0 ? [{ type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
           ...lastWeekRows,
+          ...(lastWeekRows.length > 0 && thisWeekRows.length > 0 ? [{ type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
+          ...thisWeekRows,
         ]
 
     // ── 3 ปุ่มแถวเดียว ───────────────────────────────────────────────────────
