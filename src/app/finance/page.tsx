@@ -206,7 +206,7 @@ function WeeklyPendingCell({ orderEntries, paidEntries }: {
       {weeks.map(({ label, oTotal, pTotal }) => {
         const pending = Math.max(0, oTotal - pTotal)
         return (
-          <div key={label} className={`text-[11px] font-mono font-semibold leading-tight ${pending > 0 ? 'text-red-600' : 'text-green-600'}`}>
+          <div key={label} className={`text-[11px] font-mono font-semibold leading-tight ${pending > 0 ? 'text-red-600' : 'text-gray-300'}`}>
             {pending > 0 ? fmt(pending) : '-'}
           </div>
         )
