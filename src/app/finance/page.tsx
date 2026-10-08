@@ -48,7 +48,7 @@ const GROUP_LABEL: Record<ColorGroup, string> = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface SlipEntry { date: string; amount: number }
+interface SlipEntry { date: string; amount: number; order_no?: string }
 interface BranchFinance {
   id: number; name: string; color_group: string | null
   pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[]
@@ -473,7 +473,10 @@ export default function FinancePage() {
             <div className="overflow-y-auto flex-1 px-4 py-2">
               {modal.entries.map((e, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
-                  <span className="text-xs text-gray-500">{fmtDateShort(e.date)}</span>
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-xs text-gray-500">{fmtDateShort(e.date)}</span>
+                    {e.order_no && <span className="text-[10px] text-gray-400 font-mono">#{e.order_no}</span>}
+                  </div>
                   <span className="text-xs font-mono font-semibold text-gray-800">{fmtAmt(e.amount)}</span>
                 </div>
               ))}
