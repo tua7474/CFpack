@@ -160,9 +160,10 @@ function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: strin
 
 interface ModalInfo { title: string; entries: SlipEntry[] }
 
-function GroupedSlipCell({ entries, amtColor, title, onDetail }: {
+function GroupedSlipCell({ entries, amtColor, title, onDetail, compact }: {
   entries: SlipEntry[]; amtColor: string; title: string
   onDetail: (info: ModalInfo) => void
+  compact?: boolean
 }) {
   if (entries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   const { thisMondayStr, lastMondayStr } = getWeekBounds()
@@ -171,6 +172,23 @@ function GroupedSlipCell({ entries, amtColor, title, onDetail }: {
     { label: 'สัปดาห์ที่แล้ว',  items: entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr) },
     { label: 'สัปดาห์นี้',       items: entries.filter(e => e.date >= thisMondayStr) },
   ]
+  const fmt = (n: number) => n === 0 ? '0' : n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+  if (compact) {
+    const active = groups.filter(g => g.items.length > 0)
+    if (active.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+    return (
+      <div className="flex flex-col gap-0.5">
+        {active.map(({ label, items }) => (
+          <button key={label}
+            onClick={() => onDetail({ title: `${title} (${label})`, entries: items })}
+            className={`text-left text-[11px] font-mono font-semibold ${amtColor} hover:underline leading-tight`}
+          >
+            {items.length}/{fmt(items.reduce((s, e) => s + e.amount, 0))}
+          </button>
+        ))}
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col gap-1 min-w-[88px]">
       {groups.map(({ label, items }) => {
@@ -333,7 +351,7 @@ export default function FinancePage() {
                             <GroupedSlipCell entries={b.pay}   amtColor="text-green-700" title={`${b.name} — ยอดตรงใบจอง`}   onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <GroupedSlipCell entries={b.store} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} />
+                            <GroupedSlipCell entries={b.store} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} compact />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <MonthlySlipCell entries={b.vat} amtColor="text-blue-700"   title={`${b.name} — แวต`} onDetail={setModal} />
