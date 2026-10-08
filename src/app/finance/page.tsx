@@ -52,6 +52,7 @@ interface SlipEntry { date: string; amount: number }
 interface BranchFinance {
   id: number; name: string; color_group: string | null
   pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[]
+  order_entries: SlipEntry[]
   order_total: number; order_paid: number; order_pending: number
 }
 
@@ -82,8 +83,9 @@ function getWeekBounds() {
   const toMon    = dow === 0 ? 6 : dow - 1
   const thisMon  = new Date(bkk); thisMon.setDate(bkk.getDate() - toMon); thisMon.setHours(0,0,0,0)
   const lastMon  = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7)
+  const twoMon   = new Date(thisMon); twoMon.setDate(thisMon.getDate() - 14)
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
-  return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon) }
+  return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon), twoMondaysStr: fmt(twoMon) }
 }
 
 // ── MonthlySlipCell — vat/fee: 3 month groups ────────────────────────────────
@@ -156,9 +158,64 @@ function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: strin
   )
 }
 
-// ── GroupedSlipCell — pay/store: 3 time-period groups ─────────────────────────
+// ── WeeklyCompactCell — order/paid: last 3 weeks breakdown ───────────────────
 
 interface ModalInfo { title: string; entries: SlipEntry[] }
+
+function WeeklyCompactCell({ entries, amtColor, title, onDetail }: {
+  entries: SlipEntry[]; amtColor: string; title: string
+  onDetail: (info: ModalInfo) => void
+}) {
+  const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
+  const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+  const groups = [
+    { label: '2 สัปดาห์ก่อน', items: entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr) },
+    { label: 'สัปดาห์ที่แล้ว',  items: entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr) },
+    { label: 'สัปดาห์นี้',       items: entries.filter(e => e.date >= thisMondayStr) },
+  ].filter(g => g.items.length > 0)
+  if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  return (
+    <div className="flex flex-col gap-0.5">
+      {groups.map(({ label, items }) => (
+        <button key={label}
+          onClick={() => onDetail({ title: `${title} (${label})`, entries: items })}
+          className={`text-left text-[11px] font-mono font-semibold ${amtColor} hover:underline leading-tight`}
+        >
+          {items.length}/{fmt(items.reduce((s, e) => s + e.amount, 0))}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function WeeklyPendingCell({ orderEntries, paidEntries }: {
+  orderEntries: SlipEntry[]; paidEntries: SlipEntry[]
+}) {
+  const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
+  const sumRange = (arr: SlipEntry[], s: string, e?: string) =>
+    arr.filter(x => x.date >= s && (!e || x.date < e)).reduce((acc, x) => acc + x.amount, 0)
+  const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+  const weeks = [
+    { label: '2 สัปดาห์ก่อน', oTotal: sumRange(orderEntries, twoMondaysStr, lastMondayStr), pTotal: sumRange(paidEntries, twoMondaysStr, lastMondayStr) },
+    { label: 'สัปดาห์ที่แล้ว',  oTotal: sumRange(orderEntries, lastMondayStr, thisMondayStr), pTotal: sumRange(paidEntries, lastMondayStr, thisMondayStr) },
+    { label: 'สัปดาห์นี้',       oTotal: sumRange(orderEntries, thisMondayStr),                pTotal: sumRange(paidEntries, thisMondayStr) },
+  ].filter(w => w.oTotal > 0)
+  if (weeks.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  return (
+    <div className="flex flex-col gap-0.5">
+      {weeks.map(({ label, oTotal, pTotal }) => {
+        const pending = Math.max(0, oTotal - pTotal)
+        return (
+          <div key={label} className={`text-[11px] font-mono font-semibold leading-tight ${pending > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {pending > 0 ? fmt(pending) : '✓'}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── GroupedSlipCell — pay/store: 3 time-period groups ─────────────────────────
 
 function GroupedSlipCell({ entries, amtColor, title, onDetail, compact }: {
   entries: SlipEntry[]; amtColor: string; title: string
@@ -359,14 +416,14 @@ export default function FinancePage() {
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
-                          <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_total > 0 ? 'text-gray-700 font-semibold' : 'text-gray-300'}`}>
-                            {fmtTotal(b.order_total)}
+                          <td className="px-3 py-2 border-r border-gray-200 text-right">
+                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} />
                           </td>
-                          <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${bPaid > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}`}>
-                            {fmtTotal(bPaid)}
+                          <td className="px-3 py-2 border-r border-gray-200 text-right">
+                            <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
                           </td>
-                          <td className={`px-3 py-2 text-right font-mono ${bPending > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}`}>
-                            {fmtTotal(bPending)}
+                          <td className="px-3 py-2 text-right">
+                            <WeeklyPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} />
                           </td>
                         </tr>
                         )

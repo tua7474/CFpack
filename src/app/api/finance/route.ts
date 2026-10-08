@@ -40,6 +40,7 @@ export interface BranchFinanceRow {
   store: SlipEntry[]
   vat:   SlipEntry[]
   fee:   SlipEntry[]
+  order_entries: SlipEntry[]
   order_total: number; order_paid: number; order_pending: number
 }
 
@@ -81,6 +82,21 @@ export async function GET(req: NextRequest) {
     ORDER BY s.branch_id, s.slip_date ASC, s.created_at ASC
   `)
 
+  // Individual order entries per branch (for weekly breakdown — all non-cancelled, no date filter)
+  const { rows: orderEntryRows } = await pool.query(`
+    SELECT o.branch_id,
+           (o.created_at AT TIME ZONE 'Asia/Bangkok')::date::text AS date,
+           o.total_amount::float AS amount
+    FROM booking_orders o
+    WHERE o.branch_id IS NOT NULL AND o.status != 'cancelled'
+    ORDER BY o.branch_id, o.created_at ASC
+  `)
+  const orderEntryMap: Record<number, SlipEntry[]> = {}
+  for (const r of orderEntryRows) {
+    if (!orderEntryMap[r.branch_id]) orderEntryMap[r.branch_id] = []
+    orderEntryMap[r.branch_id].push({ date: r.date, amount: r.amount })
+  }
+
   // Order totals per branch
   const { rows: orderRows } = await pool.query(`
     SELECT
@@ -120,6 +136,7 @@ export async function GET(req: NextRequest) {
     store:         slipMap[b.id]?.store ?? [],
     vat:           slipMap[b.id]?.vat   ?? [],
     fee:           slipMap[b.id]?.fee   ?? [],
+    order_entries: orderEntryMap[b.id]  ?? [],
     order_total:   orderMap[b.id]?.order_total   ?? 0,
     order_paid:    orderMap[b.id]?.order_paid     ?? 0,
     order_pending: orderMap[b.id]?.order_pending  ?? 0,
