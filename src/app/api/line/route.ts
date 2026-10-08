@@ -1004,6 +1004,17 @@ async function monthDetailView(branchId: number, branchName: string, month: numb
   }
 }
 
+// ── Helper: set branch_id on slip if still NULL (postback context) ────────────
+
+async function ensureSlipBranch(slipId: number, source?: Record<string, string>): Promise<number | null> {
+  if (!source?.groupId) return null
+  const { rows: d } = await pool.query('SELECT id FROM branches WHERE line_group_id=$1 LIMIT 1', [source.groupId])
+  if (!d[0]) return null
+  await pool.query('UPDATE slips SET branch_id=$1 WHERE id=$2 AND branch_id IS NULL', [d[0].id, slipId])
+  saveGroupId(d[0].id, source.groupId)
+  return d[0].id
+}
+
 // ── Postback handler ──────────────────────────────────────────────────────────
 
 async function handlePostback(data: string, userId: string, replyToken: string, source?: Record<string, string>) {
@@ -1389,7 +1400,8 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       `UPDATE slips SET status='confirmed', applied=false WHERE id=$1 RETURNING branch_id, amount`,
       [slipId]
     )
-    const slipBranchId: number | null = slip?.branch_id ?? null
+    let slipBranchId: number | null = slip?.branch_id ?? null
+    if (!slipBranchId) slipBranchId = await ensureSlipBranch(slipId, source)
     const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
     const { rows: br } = slipBranchId !== null
       ? await pool.query('SELECT name FROM branches WHERE id=$1', [slipBranchId])
@@ -1439,14 +1451,15 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       `UPDATE slips SET status='confirmed', category='fee', applied=false WHERE id=$1 RETURNING amount, branch_id`,
       [slipId]
     )
+    const branchIdForFee = slip?.branch_id ?? await ensureSlipBranch(slipId, source)
     const fmtAmt = Number(slip?.amount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })
     // บันทึก fee ลงในตาราง branch_finance_fee
-    if (slip?.branch_id) {
+    if (branchIdForFee) {
       await pool.query(`
         INSERT INTO branch_finance_fee (branch_id, fee, updated_at)
         VALUES ($1, $2, NOW())
         ON CONFLICT (branch_id) DO UPDATE SET fee = branch_finance_fee.fee + $2, updated_at = NOW()
-      `, [slip.branch_id, Number(slip?.amount ?? 0)]).catch(() => {})
+      `, [branchIdForFee, Number(slip?.amount ?? 0)]).catch(() => {})
     }
     return reply(replyToken, [{ type: 'text', text: `✅ บันทึก Fee ฿${fmtAmt} เรียบร้อยแล้วครับ` }])
   }
@@ -1462,9 +1475,10 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
     }
     const { rows: [slip] } = await pool.query(
-      `UPDATE slips SET status='confirmed', category='vat', applied=false WHERE id=$1 RETURNING amount`,
+      `UPDATE slips SET status='confirmed', category='vat', applied=false WHERE id=$1 RETURNING amount, branch_id`,
       [slipId]
     )
+    if (!slip?.branch_id) await ensureSlipBranch(slipId, source)
     const fmtAmt = Number(slip?.amount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })
     return reply(replyToken, [{ type: 'text', text: `✅ บันทึกค่าแวต ฿${fmtAmt} เรียบร้อยแล้วครับ` }])
   }
@@ -2213,7 +2227,7 @@ const SLIP_LABEL: Record<string, string> = {
   'pack': 'สลิปPACK', 'bb': 'สลิปBB', 'กล่อง': 'สลิปกล่อง',
 }
 
-async function handleImage(messageId: string, userId: string, replyToken: string, source?: Record<string, string>) {
+async function handleImage(messageId: string, userId: string, replyToken: string, source?: Record<string, string>, eventTimestamp?: number) {
   try {
   await ensureTable()  // ensure paid_amount column exists before querying
   // Download image from LINE Content API
@@ -2304,8 +2318,9 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     if (ub) branchId = ub.branch_id
   }
 
-  // Save slip as pending_confirm — ใช้วันที่สแกน (วันนี้) เสมอ ไม่ใช้วันที่ในสลิป
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  // Save slip as pending_confirm — ใช้วันที่ส่งสลิปใน LINE (event timestamp) เสมอ ไม่ใช้วันที่ในสลิป
+  const ts = eventTimestamp ?? Date.now()
+  const today = new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 
   const { rows: [slip] } = await pool.query(`
     INSERT INTO slips (branch_id, category, amount, account_name, slip_date, status, line_image_id)
@@ -2373,7 +2388,7 @@ export async function POST(req: NextRequest) {
       } else if (ev.type === 'message') {
         const msg = ev.message as Record<string, unknown>
         if (msg?.type === 'text')  await handleText(msg.text as string, userId, replyToken, source)
-        if (msg?.type === 'image') await handleImage(msg.id as string, userId, replyToken, source)
+        if (msg?.type === 'image') await handleImage(msg.id as string, userId, replyToken, source, ev.timestamp as number)
       }
     } catch (e) {
       console.error('[webhook] unhandled error for event', ev.type, e)
