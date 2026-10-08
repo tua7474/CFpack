@@ -188,27 +188,37 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail }: {
   )
 }
 
-function WeeklyPendingCell({ orderEntries, paidEntries }: {
+function WeeklyPendingCell({ orderEntries, paidEntries, title, onDetail }: {
   orderEntries: SlipEntry[]; paidEntries: SlipEntry[]
+  title: string; onDetail: (info: ModalInfo) => void
 }) {
   const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
+  const filterRange = (arr: SlipEntry[], s: string, e?: string) =>
+    arr.filter(x => x.date >= s && (!e || x.date < e))
   const sumRange = (arr: SlipEntry[], s: string, e?: string) =>
-    arr.filter(x => x.date >= s && (!e || x.date < e)).reduce((acc, x) => acc + x.amount, 0)
+    filterRange(arr, s, e).reduce((acc, x) => acc + x.amount, 0)
   const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
   const weeks = [
-    { label: '2 สัปดาห์ก่อน', oTotal: sumRange(orderEntries, twoMondaysStr, lastMondayStr), pTotal: sumRange(paidEntries, twoMondaysStr, lastMondayStr) },
-    { label: 'สัปดาห์ที่แล้ว',  oTotal: sumRange(orderEntries, lastMondayStr, thisMondayStr), pTotal: sumRange(paidEntries, lastMondayStr, thisMondayStr) },
-    { label: 'สัปดาห์นี้',       oTotal: sumRange(orderEntries, thisMondayStr),                pTotal: sumRange(paidEntries, thisMondayStr) },
-  ].filter(w => w.oTotal > 0)
+    { label: '2 สัปดาห์ก่อน', orders: filterRange(orderEntries, twoMondaysStr, lastMondayStr), pTotal: sumRange(paidEntries, twoMondaysStr, lastMondayStr) },
+    { label: 'สัปดาห์ที่แล้ว',  orders: filterRange(orderEntries, lastMondayStr, thisMondayStr), pTotal: sumRange(paidEntries, lastMondayStr, thisMondayStr) },
+    { label: 'สัปดาห์นี้',       orders: filterRange(orderEntries, thisMondayStr),                pTotal: sumRange(paidEntries, thisMondayStr) },
+  ].filter(w => w.orders.length > 0)
   if (weeks.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   return (
     <div className="flex flex-col gap-0.5">
-      {weeks.map(({ label, oTotal, pTotal }) => {
+      {weeks.map(({ label, orders, pTotal }) => {
+        const oTotal  = orders.reduce((s, x) => s + x.amount, 0)
         const pending = Math.max(0, oTotal - pTotal)
+        if (pending === 0) return (
+          <div key={label} className="text-[11px] font-mono font-semibold leading-tight text-gray-300">-</div>
+        )
         return (
-          <div key={label} className={`text-[11px] font-mono font-semibold leading-tight ${pending > 0 ? 'text-red-600' : 'text-gray-300'}`}>
-            {pending > 0 ? fmt(pending) : '-'}
-          </div>
+          <button key={label}
+            onClick={() => onDetail({ title: `${title} — ค้างชำระ (${label})`, entries: orders })}
+            className="text-left text-[11px] font-mono font-semibold leading-tight text-red-600 hover:underline"
+          >
+            {fmt(pending)}
+          </button>
         )
       })}
     </div>
@@ -423,7 +433,7 @@ export default function FinancePage() {
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <WeeklyPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} />
+                            <WeeklyPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} title={b.name} onDetail={setModal} />
                           </td>
                         </tr>
                         )
