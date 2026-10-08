@@ -74,7 +74,19 @@ function fmtTotal(n: number): string {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// ── SlipCell — stacked dated entries ─────────────────────────────────────────
+// ── Week boundaries (Bangkok time) ───────────────────────────────────────────
+
+function getWeekBounds() {
+  const bkk      = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const dow      = bkk.getDay()
+  const toMon    = dow === 0 ? 6 : dow - 1
+  const thisMon  = new Date(bkk); thisMon.setDate(bkk.getDate() - toMon); thisMon.setHours(0,0,0,0)
+  const lastMon  = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7)
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon) }
+}
+
+// ── SlipCell — vat/fee: stacked entries ───────────────────────────────────────
 
 function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: string }) {
   if (entries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
@@ -96,12 +108,52 @@ function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: strin
   )
 }
 
+// ── GroupedSlipCell — pay/store: 3 time-period groups ─────────────────────────
+
+interface ModalInfo { title: string; entries: SlipEntry[] }
+
+function GroupedSlipCell({ entries, amtColor, title, onDetail }: {
+  entries: SlipEntry[]; amtColor: string; title: string
+  onDetail: (info: ModalInfo) => void
+}) {
+  if (entries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  const { thisMondayStr, lastMondayStr } = getWeekBounds()
+  const groups = [
+    { label: 'เกิน 2 สัปดาห์', items: entries.filter(e => e.date < lastMondayStr) },
+    { label: 'สัปดาห์ที่แล้ว',  items: entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr) },
+    { label: 'สัปดาห์นี้',       items: entries.filter(e => e.date >= thisMondayStr) },
+  ]
+  return (
+    <div className="flex flex-col gap-1 min-w-[88px]">
+      {groups.map(({ label, items }) => {
+        if (items.length === 0) return null
+        const total = items.reduce((s, e) => s + e.amount, 0)
+        return (
+          <div key={label} className="border border-gray-200 rounded px-1.5 py-0.5 bg-white/60">
+            <div className="text-[8px] text-gray-400 leading-tight">{label}</div>
+            <button
+              onClick={() => onDetail({ title: `${title} (${label})`, entries: items })}
+              className={`text-[11px] font-bold font-mono ${amtColor} hover:underline leading-tight`}
+            >
+              {items.length} รายการ
+            </button>
+            <div className={`text-[10px] font-semibold font-mono ${amtColor} leading-tight`}>
+              {fmtAmt(total)}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function FinancePage() {
   const [data, setData]       = useState<BranchFinance[]>([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod]   = useState<Period>('month')
+  const [modal, setModal]     = useState<ModalInfo | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -218,10 +270,10 @@ export default function FinancePage() {
                         <tr key={b.id} className={`border-b border-gray-100 hover:brightness-95 transition-all align-top ${ROW_BG[color]}`}>
                           <td className="px-3 py-2 border-r border-gray-200 font-medium whitespace-nowrap">{b.name}</td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <SlipCell entries={b.pay}   amtColor="text-green-700" />
+                            <GroupedSlipCell entries={b.pay}   amtColor="text-green-700" title={`${b.name} — ยอดตรงใบจอง`}   onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <SlipCell entries={b.store} amtColor="text-amber-700" />
+                            <GroupedSlipCell entries={b.store} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <SlipCell entries={b.vat}   amtColor="text-blue-700" />
@@ -271,6 +323,34 @@ export default function FinancePage() {
           </div>
         )}
       </main>
+
+      {/* Detail modal */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs mx-4 max-h-[80vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-200">
+              <span className="font-bold text-sm text-gray-800 leading-tight">{modal.title}</span>
+              <button onClick={() => setModal(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-4 py-2">
+              {modal.entries.map((e, i) => (
+                <div key={i} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
+                  <span className="text-xs text-gray-500">{fmtDateShort(e.date)}</span>
+                  <span className="text-xs font-mono font-semibold text-gray-800">{fmtAmt(e.amount)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-200 flex justify-between items-center bg-gray-50 rounded-b-xl">
+              <span className="text-xs text-gray-500">{modal.entries.length} รายการ</span>
+              <span className="text-sm font-bold font-mono text-gray-800">
+                {fmtAmt(modal.entries.reduce((s, e) => s + e.amount, 0))}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

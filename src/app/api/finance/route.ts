@@ -72,14 +72,14 @@ export async function GET(req: NextRequest) {
     `SELECT id, name, color_group FROM branches ORDER BY name`
   )
 
-  // Individual confirmed slips per branch
+  // Individual confirmed slips per branch — always return all (frontend groups by week)
   const { rows: slipRows } = await pool.query(`
     SELECT s.branch_id, s.category, s.applied,
            s.amount::float, s.slip_date::text
     FROM slips s
-    WHERE s.status = 'confirmed' AND s.branch_id IS NOT NULL ${dateFilter}
+    WHERE s.status = 'confirmed' AND s.branch_id IS NOT NULL
     ORDER BY s.branch_id, s.slip_date ASC, s.created_at ASC
-  `, slipVals)
+  `)
 
   // Order totals per branch
   const { rows: orderRows } = await pool.query(`
