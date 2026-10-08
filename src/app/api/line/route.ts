@@ -2039,13 +2039,7 @@ type SlipAutoSuggest = {
 
 function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
   const fmtAmount = Number(slip.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const slipDateIso = typeof slip.slip_date === 'string'
-    ? slip.slip_date.slice(0, 10) : (slip.slip_date as Date).toISOString().slice(0, 10)
 
-  // "30 ก.ย. 69" — สั้น ไม่มีไอคอน
-  const transferDateShort = new Date(slipDateIso + 'T12:00:00').toLocaleDateString('th-TH', {
-    day: 'numeric', month: 'short', year: '2-digit'
-  })
   // เวลาส่ง เช่น "30 ก.ย. 14:32"
   const sentShort = new Date(slip.created_at).toLocaleString('th-TH', {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -2091,21 +2085,11 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
       body: {
         type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '10px', backgroundColor: '#F5EED8',
         contents: [
-          // Row 1: วันที่สั้น | ยอดเงิน (กดแก้ไขได้)
+          // ยอดเงิน (กดแก้ไขได้)
           {
-            type: 'box', layout: 'horizontal', alignItems: 'center',
-            contents: [
-              {
-                type: 'text', text: transferDateShort, size: 'xs', flex: 1,
-                weight: 'bold', color: '#333333', wrap: false,
-                action: { type: 'postback', label: 'แก้วันที่', data: `SLIP_EDIT:${slip.id}:date` },
-              },
-              {
-                type: 'text', text: `฿${fmtAmount}`, size: 'sm', flex: 0,
-                weight: 'bold', color: '#9b5e00', align: 'end',
-                action: { type: 'postback', label: 'แก้ยอด', data: `SLIP_EDIT:${slip.id}:amount` },
-              },
-            ],
+            type: 'text', text: `฿${fmtAmount}`, size: 'md',
+            weight: 'bold', color: '#9b5e00', align: 'center',
+            action: { type: 'postback', label: 'แก้ยอด', data: `SLIP_EDIT:${slip.id}:amount` },
           },
           // Row 2: ผู้รับ
           {
@@ -2320,18 +2304,8 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     if (ub) branchId = ub.branch_id
   }
 
-  // Save slip as pending_confirm — wait for user to confirm
+  // Save slip as pending_confirm — ใช้วันที่สแกน (วันนี้) เสมอ ไม่ใช้วันที่ในสลิป
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-
-  // Convert Thai Buddhist Era (พ.ศ.) date to Gregorian: ถ้าปีอยู่ระหว่าง 2500-2600 ให้ลบ 543
-  let slipDate = scanResult.date ?? today
-  if (slipDate) {
-    const yr = parseInt(slipDate.slice(0, 4))
-    if (yr >= 2500 && yr <= 2600) slipDate = String(yr - 543) + slipDate.slice(4)
-    // ถ้าปีผิดปกติมาก (ไม่ใช่ 2010-2035) ให้ใช้วันนี้แทน
-    const yr2 = parseInt(slipDate.slice(0, 4))
-    if (yr2 < 2010 || yr2 > 2035) slipDate = today
-  }
 
   const { rows: [slip] } = await pool.query(`
     INSERT INTO slips (branch_id, category, amount, account_name, slip_date, status, line_image_id)
@@ -2342,7 +2316,7 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     category ?? 'other',
     scanResult.amount,
     scanResult.account_name ?? null,
-    slipDate,
+    today,
     messageId,
   ])
 
