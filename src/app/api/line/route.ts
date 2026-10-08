@@ -1793,14 +1793,23 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     let branchId: number | null = null
 
     if (source?.type === 'group' && source.groupId) {
-      const groupName = await getGroupName(source.groupId)
-      if (groupName) {
-        const branch = await findBranchByGroupName(groupName)
-        if (branch) {
-          bookingUrl  = `${BASE_URL}/booking2?branch_id=${branch.id}&branch_name=${encodeURIComponent(branch.name)}`
-          branchLabel = `สาขา: ${branch.name}`
-          branchId    = branch.id
-          saveGroupId(branch.id, source.groupId)  // บันทึก group ID ไว้สำหรับส่งแจ้งเตือน
+      const { rows: directB } = await pool.query(
+        'SELECT id, name FROM branches WHERE line_group_id=$1 LIMIT 1', [source.groupId]
+      )
+      if (directB[0]) {
+        bookingUrl  = `${BASE_URL}/booking2?branch_id=${directB[0].id}&branch_name=${encodeURIComponent(directB[0].name)}`
+        branchLabel = `สาขา: ${directB[0].name}`
+        branchId    = directB[0].id
+      } else {
+        const groupName = await getGroupName(source.groupId)
+        if (groupName) {
+          const branch = await findBranchByGroupName(groupName)
+          if (branch) {
+            bookingUrl  = `${BASE_URL}/booking2?branch_id=${branch.id}&branch_name=${encodeURIComponent(branch.name)}`
+            branchLabel = `สาขา: ${branch.name}`
+            branchId    = branch.id
+            saveGroupId(branch.id, source.groupId)
+          }
         }
       }
     } else {
@@ -2286,15 +2295,23 @@ async function handleImage(messageId: string, userId: string, replyToken: string
   // Determine category
   const category = scanResult.account_name ? categorizeByAccount(scanResult.account_name) : null
 
-  // Find branch from group name; DM only → fallback to stored line user
+  // Find branch: ค้นจาก line_group_id ที่บันทึกไว้ก่อน (ไม่พึ่ง group API),
+  // fallback ไป getGroupName ถ้ายังไม่เคยบันทึก
   let branchId: number | null = null
   if (source?.type === 'group' && source.groupId) {
-    const groupName = await getGroupName(source.groupId)
-    if (groupName) {
-      const branch = await findBranchByGroupName(groupName)
-      if (branch) {
-        branchId = branch.id
-        saveGroupId(branch.id, source.groupId)  // บันทึก group ID ไว้สำหรับส่งแจ้งเตือน
+    const { rows: direct } = await pool.query(
+      'SELECT id FROM branches WHERE line_group_id=$1 LIMIT 1', [source.groupId]
+    )
+    if (direct[0]) {
+      branchId = direct[0].id
+    } else {
+      const groupName = await getGroupName(source.groupId)
+      if (groupName) {
+        const branch = await findBranchByGroupName(groupName)
+        if (branch) {
+          branchId = branch.id
+          saveGroupId(branch.id, source.groupId)
+        }
       }
     }
   } else {
