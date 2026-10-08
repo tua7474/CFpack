@@ -348,7 +348,7 @@ export default function FinancePage() {
                         <tr key={b.id} className={`border-b border-gray-100 hover:brightness-95 transition-all align-top ${ROW_BG[color]}`}>
                           <td className="px-3 py-2 border-r border-gray-200 font-medium whitespace-nowrap">{b.name}</td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <GroupedSlipCell entries={b.pay}   amtColor="text-green-700" title={`${b.name} — ยอดตรงใบจอง`}   onDetail={setModal} />
+                            <GroupedSlipCell entries={b.pay}   amtColor="text-green-700" title={`${b.name} — ยอดตรงใบจอง`}   onDetail={setModal} compact />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <GroupedSlipCell entries={b.store} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} compact />
