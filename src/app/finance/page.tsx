@@ -181,7 +181,7 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail }: {
           onClick={() => onDetail({ title: `${title} (${label})`, entries: items })}
           className={`text-left text-[11px] font-mono font-semibold ${amtColor} hover:underline leading-tight`}
         >
-          {items.length}/{fmt(items.reduce((s, e) => s + e.amount, 0))}
+          {fmt(items.reduce((s, e) => s + e.amount, 0))}
         </button>
       ))}
     </div>
