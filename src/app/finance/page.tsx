@@ -299,7 +299,10 @@ export default function FinancePage() {
                     <th className={`${thBase} bg-blue-700`}>แวต</th>
                     <th className={`${thBase} bg-purple-700 border-r-2 border-white/40`}>Fee</th>
                     <th className={`${thBase}`}>ยอดรวมใบจอง</th>
-                    <th className={`${thBase} bg-green-600`}>ชำระแล้ว</th>
+                    <th className={`${thBase} bg-green-600`}>
+                      ชำระแล้ว
+                      <div className="text-[8px] font-normal opacity-75 leading-tight">ไม่รวมยอดแวต กับ Fee</div>
+                    </th>
                     <th className="px-3 py-2 whitespace-nowrap text-right bg-red-700">ค้างชำระ</th>
                   </tr>
                 </thead>
