@@ -1489,14 +1489,23 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     if (purpose === 'PAY') {
       const slipAmt = parseFloat(existing[0]?.amount ?? '0')
       const { rows: [slip] } = await pool.query('SELECT branch_id FROM slips WHERE id=$1', [slipId])
+      let pendingRows: { id: number; order_no: string; total_amount: number; paid_amount: number }[] = []
       if (slip?.branch_id) {
-        const { rows: pending } = await pool.query(`
+        const res = await pool.query(`
           SELECT id, order_no, total_amount::float, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
           WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
         `, [slip.branch_id])
-        const match = pending.find(o => Math.abs((parseFloat(o.total_amount) - parseFloat(o.paid_amount)) - slipAmt) < 0.01)
-        if (match) { matched_order_id = match.id; matched_order_no = match.order_no }
+        pendingRows = res.rows
+      } else {
+        // ไม่รู้สาขา (สลิปจากกลุ่มกลาง) → ค้นหาทั่วระบบโดยยอดเงิน
+        const res = await pool.query(`
+          SELECT id, order_no, total_amount::float, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
+          WHERE branch_id IS NOT NULL AND payment_status != 'paid' AND status != 'cancelled'
+        `)
+        pendingRows = res.rows
       }
+      const match = pendingRows.find(o => Math.abs((o.total_amount - o.paid_amount) - slipAmt) < 0.01)
+      if (match) { matched_order_id = match.id; matched_order_no = match.order_no }
     }
     await setInputState(userId, { type: 'slip_purpose', slip_id: slipId, purpose, matched_order_id, matched_order_no })
 
@@ -1534,9 +1543,20 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     )
     await setInputState(userId, null)
 
-    const slipBranchId: number | null = slip?.branch_id ?? null
+    let slipBranchId: number | null = slip?.branch_id ?? null
     const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
     const msgs: object[] = []
+
+    // ถ้าสลิปไม่มีสาขา แต่มีใบจองที่ match → ดึงสาขาจากใบจอง แล้วอัพเดทสลิป
+    if (!slipBranchId && matched_order_id) {
+      const { rows: orderBranch } = await pool.query(
+        'SELECT branch_id FROM booking_orders WHERE id=$1', [matched_order_id]
+      )
+      if (orderBranch[0]?.branch_id) {
+        slipBranchId = orderBranch[0].branch_id
+        await pool.query('UPDATE slips SET branch_id=$1 WHERE id=$2', [slipBranchId, slipId])
+      }
+    }
 
     if (purpose === 'PAY' && slipBranchId !== null) {
       if (matched_order_id) {
