@@ -2322,6 +2322,17 @@ async function handleImage(messageId: string, userId: string, replyToken: string
 
   // Save slip as pending_confirm — wait for user to confirm
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+
+  // Convert Thai Buddhist Era (พ.ศ.) date to Gregorian: ถ้าปีอยู่ระหว่าง 2500-2600 ให้ลบ 543
+  let slipDate = scanResult.date ?? today
+  if (slipDate) {
+    const yr = parseInt(slipDate.slice(0, 4))
+    if (yr >= 2500 && yr <= 2600) slipDate = String(yr - 543) + slipDate.slice(4)
+    // ถ้าปีผิดปกติมาก (ไม่ใช่ 2010-2035) ให้ใช้วันนี้แทน
+    const yr2 = parseInt(slipDate.slice(0, 4))
+    if (yr2 < 2010 || yr2 > 2035) slipDate = today
+  }
+
   const { rows: [slip] } = await pool.query(`
     INSERT INTO slips (branch_id, category, amount, account_name, slip_date, status, line_image_id)
     VALUES ($1, $2, $3, $4, $5, 'pending_confirm', $6)
@@ -2331,7 +2342,7 @@ async function handleImage(messageId: string, userId: string, replyToken: string
     category ?? 'other',
     scanResult.amount,
     scanResult.account_name ?? null,
-    scanResult.date ?? today,
+    slipDate,
     messageId,
   ])
 
