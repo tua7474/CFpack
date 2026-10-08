@@ -100,13 +100,9 @@ async function genPoNo(): Promise<string> {
   const yy   = String(thai.getUTCFullYear()).slice(-2)
   const mo   = String(thai.getUTCMonth() + 1).padStart(2, '0')
   const dd   = String(thai.getUTCDate()).padStart(2, '0')
-  const prefix = `PO${yy}${mo}${dd}`
-  const { rows } = await pool.query(
-    `SELECT COUNT(*) FROM po_orders WHERE po_no LIKE $1`,
-    [`${prefix}%`]
-  )
-  const seq = (parseInt(rows[0].count) + 1).toString().padStart(3, '0')
-  return `${prefix}-${seq}`
+  const hh   = String(thai.getUTCHours()).padStart(2, '0')
+  const mn   = String(thai.getUTCMinutes()).padStart(2, '0')
+  return `PO${yy}${mo}${dd}${hh}${mn}`
 }
 
 export async function GET(request: Request) {
