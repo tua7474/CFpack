@@ -188,40 +188,23 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail }: {
   )
 }
 
-function WeeklyPendingCell({ orderEntries, paidEntries, title, onDetail }: {
+function OverallPendingCell({ orderEntries, paidEntries, title, onDetail }: {
   orderEntries: SlipEntry[]; paidEntries: SlipEntry[]
   title: string; onDetail: (info: ModalInfo) => void
 }) {
-  const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
-  const filterRange = (arr: SlipEntry[], s: string, e?: string) =>
-    arr.filter(x => x.date >= s && (!e || x.date < e))
-  const sumRange = (arr: SlipEntry[], s: string, e?: string) =>
-    filterRange(arr, s, e).reduce((acc, x) => acc + x.amount, 0)
+  const orderTotal = orderEntries.reduce((s, x) => s + x.amount, 0)
+  const paidTotal  = paidEntries.reduce((s, x) => s + x.amount, 0)
+  const pending    = Math.max(0, orderTotal - paidTotal)
   const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
-  const weeks = [
-    { label: '2 สัปดาห์ก่อน', orders: filterRange(orderEntries, twoMondaysStr, lastMondayStr), pTotal: sumRange(paidEntries, twoMondaysStr, lastMondayStr) },
-    { label: 'สัปดาห์ที่แล้ว',  orders: filterRange(orderEntries, lastMondayStr, thisMondayStr), pTotal: sumRange(paidEntries, lastMondayStr, thisMondayStr) },
-    { label: 'สัปดาห์นี้',       orders: filterRange(orderEntries, thisMondayStr),                pTotal: sumRange(paidEntries, thisMondayStr) },
-  ].filter(w => w.orders.length > 0)
-  if (weeks.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  if (orderEntries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  if (pending === 0) return <span className="text-gray-300 text-[11px] font-mono font-semibold">-</span>
   return (
-    <div className="flex flex-col gap-0.5">
-      {weeks.map(({ label, orders, pTotal }) => {
-        const oTotal  = orders.reduce((s, x) => s + x.amount, 0)
-        const pending = Math.max(0, oTotal - pTotal)
-        if (pending === 0) return (
-          <div key={label} className="text-[11px] font-mono font-semibold leading-tight text-gray-300">-</div>
-        )
-        return (
-          <button key={label}
-            onClick={() => onDetail({ title: `${title} — ค้างชำระ (${label})`, entries: orders })}
-            className="text-left text-[11px] font-mono font-semibold leading-tight text-red-600 hover:underline"
-          >
-            {fmt(pending)}
-          </button>
-        )
-      })}
-    </div>
+    <button
+      onClick={() => onDetail({ title: `${title} — ค้างชำระ`, entries: orderEntries })}
+      className="text-left text-[11px] font-mono font-semibold text-red-600 hover:underline leading-tight"
+    >
+      {fmt(pending)}
+    </button>
   )
 }
 
@@ -316,8 +299,9 @@ export default function FinancePage() {
     total:   (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_total, 0),
     paid:    (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0), 0),
     pending: (rows: BranchFinance[]) => rows.reduce((s, b) => {
-      const slipPaid = b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0)
-      return s + Math.max(0, b.order_total - slipPaid)
+      const orderTotal = b.order_entries.reduce((ss, e) => ss + e.amount, 0)
+      const slipPaid   = b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0)
+      return s + Math.max(0, orderTotal - slipPaid)
     }, 0),
   }
 
@@ -400,8 +384,9 @@ export default function FinancePage() {
                     const gTotal   = items.reduce((s, b) => s + b.order_total, 0)
                     const gPaid    = items.reduce((s, b) => s + b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0), 0)
                     const gPending = items.reduce((s, b) => {
-                      const slipPaid = b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0)
-                      return s + Math.max(0, b.order_total - slipPaid)
+                      const orderTotal = b.order_entries.reduce((ss, e) => ss + e.amount, 0)
+                      const slipPaid   = b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0)
+                      return s + Math.max(0, orderTotal - slipPaid)
                     }, 0)
                     return [
                       <tr key={`g-${color}`} className={GROUP_HEADER_BG[color]}>
@@ -433,7 +418,7 @@ export default function FinancePage() {
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <WeeklyPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} title={b.name} onDetail={setModal} />
+                            <OverallPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} title={b.name} onDetail={setModal} />
                           </td>
                         </tr>
                         )
