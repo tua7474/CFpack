@@ -228,9 +228,12 @@ export default function FinancePage() {
     store:   (rows: BranchFinance[]) => sumEntries(rows, 'store'),
     vat:     (rows: BranchFinance[]) => sumEntries(rows, 'vat'),
     fee:     (rows: BranchFinance[]) => sumEntries(rows, 'fee'),
-    total:   (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_total,   0),
-    paid:    (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_paid,    0),
-    pending: (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_pending, 0),
+    total:   (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.order_total, 0),
+    paid:    (rows: BranchFinance[]) => rows.reduce((s, b) => s + b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0), 0),
+    pending: (rows: BranchFinance[]) => rows.reduce((s, b) => {
+      const slipPaid = b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0)
+      return s + Math.max(0, b.order_total - slipPaid)
+    }, 0),
   }
 
   const periodLabel: Record<Period, string> = { week: 'สัปดาห์นี้', month: 'เดือนนี้', all: 'ทั้งหมด' }
@@ -306,15 +309,21 @@ export default function FinancePage() {
                     const gStore   = sumEntries(items, 'store')
                     const gVat     = sumEntries(items, 'vat')
                     const gFee     = sumEntries(items, 'fee')
-                    const gTotal   = items.reduce((s, b) => s + b.order_total,   0)
-                    const gPaid    = items.reduce((s, b) => s + b.order_paid,    0)
-                    const gPending = items.reduce((s, b) => s + b.order_pending, 0)
+                    const gTotal   = items.reduce((s, b) => s + b.order_total, 0)
+                    const gPaid    = items.reduce((s, b) => s + b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0), 0)
+                    const gPending = items.reduce((s, b) => {
+                      const slipPaid = b.pay.reduce((ss, e) => ss + e.amount, 0) + b.store.reduce((ss, e) => ss + e.amount, 0)
+                      return s + Math.max(0, b.order_total - slipPaid)
+                    }, 0)
                     return [
                       <tr key={`g-${color}`} className={GROUP_HEADER_BG[color]}>
                         <td colSpan={8} className="px-3 py-1.5 font-bold text-sm">{GROUP_LABEL[color]}</td>
                       </tr>,
 
-                      ...items.map(b => (
+                      ...items.map(b => {
+                        const bPaid    = b.pay.reduce((s, e) => s + e.amount, 0) + b.store.reduce((s, e) => s + e.amount, 0)
+                        const bPending = Math.max(0, b.order_total - bPaid)
+                        return (
                         <tr key={b.id} className={`border-b border-gray-100 hover:brightness-95 transition-all align-top ${ROW_BG[color]}`}>
                           <td className="px-3 py-2 border-r border-gray-200 font-medium whitespace-nowrap">{b.name}</td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
@@ -332,14 +341,15 @@ export default function FinancePage() {
                           <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_total > 0 ? 'text-gray-700 font-semibold' : 'text-gray-300'}`}>
                             {fmtTotal(b.order_total)}
                           </td>
-                          <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_paid > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}`}>
-                            {fmtTotal(b.order_paid)}
+                          <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${bPaid > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}`}>
+                            {fmtTotal(bPaid)}
                           </td>
-                          <td className={`px-3 py-2 text-right font-mono ${b.order_pending > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}`}>
-                            {fmtTotal(b.order_pending)}
+                          <td className={`px-3 py-2 text-right font-mono ${bPending > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}`}>
+                            {fmtTotal(bPending)}
                           </td>
                         </tr>
-                      )),
+                        )
+                      }),
 
                       <tr key={`gt-${color}`} className={`border-b-2 border-gray-300 text-[10px] font-semibold ${GROUP_HEADER_BG[color]} opacity-80`}>
                         <td className="px-3 py-1 text-right border-r border-gray-300 whitespace-nowrap">รวมกลุ่ม</td>
