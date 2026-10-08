@@ -207,7 +207,7 @@ function WeeklyPendingCell({ orderEntries, paidEntries }: {
         const pending = Math.max(0, oTotal - pTotal)
         return (
           <div key={label} className={`text-[11px] font-mono font-semibold leading-tight ${pending > 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {pending > 0 ? fmt(pending) : '✓'}
+            {pending > 0 ? fmt(pending) : '-'}
           </div>
         )
       })}
