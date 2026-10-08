@@ -86,7 +86,55 @@ function getWeekBounds() {
   return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon) }
 }
 
-// ── SlipCell — vat/fee: stacked entries ───────────────────────────────────────
+// ── MonthlySlipCell — vat/fee: 3 month groups ────────────────────────────────
+
+function getMonthBounds() {
+  const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const y = bkk.getFullYear(), m = bkk.getMonth() + 1
+  const thisKey = `${y}-${String(m).padStart(2, '0')}`
+  const lm = m === 1 ? 12 : m - 1
+  const ly = m === 1 ? y - 1 : y
+  const lastKey = `${ly}-${String(lm).padStart(2, '0')}`
+  return { thisKey, lastKey, thisNum: m, lastNum: lm }
+}
+
+function MonthlySlipCell({ entries, amtColor, title, onDetail }: {
+  entries: SlipEntry[]; amtColor: string; title: string
+  onDetail: (info: ModalInfo) => void
+}) {
+  if (entries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  const { thisKey, lastKey, thisNum, lastNum } = getMonthBounds()
+
+  const thisMonth = entries.filter(e => e.date.slice(0, 7) === thisKey)
+  const lastMonth = entries.filter(e => e.date.slice(0, 7) === lastKey)
+  const older     = entries.filter(e => e.date.slice(0, 7) < lastKey)
+
+  const sum = (arr: SlipEntry[]) => arr.reduce((s, e) => s + e.amount, 0)
+  const fmt = (n: number) => n === 0 ? '0' : n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+
+  const groups = [
+    { key: 'older', label: `ก่อนๆ`, num: null,     items: older },
+    { key: 'last',  label: `${lastNum}`,  num: lastNum, items: lastMonth },
+    { key: 'this',  label: `${thisNum}`,  num: thisNum, items: thisMonth },
+  ].filter(g => g.items.length > 0)
+
+  if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      {groups.map(g => (
+        <button key={g.key}
+          onClick={() => onDetail({ title: `${title} (${g.label})`, entries: g.items })}
+          className={`text-left text-[11px] font-mono font-semibold ${amtColor} hover:underline leading-tight`}
+        >
+          {g.label}/{fmt(sum(g.items))}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── SlipCell — (unused, kept for reference) ───────────────────────────────────
 
 function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: string }) {
   if (entries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
@@ -276,10 +324,10 @@ export default function FinancePage() {
                             <GroupedSlipCell entries={b.store} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <SlipCell entries={b.vat}   amtColor="text-blue-700" />
+                            <MonthlySlipCell entries={b.vat} amtColor="text-blue-700"   title={`${b.name} — แวต`} onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <SlipCell entries={b.fee}   amtColor="text-purple-700" />
+                            <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
                           <td className={`px-3 py-2 border-r border-gray-200 text-right font-mono ${b.order_total > 0 ? 'text-gray-700 font-semibold' : 'text-gray-300'}`}>
                             {fmtTotal(b.order_total)}
