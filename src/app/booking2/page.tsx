@@ -303,7 +303,18 @@ function Booking2Inner() {
   // Load draft / branch session on mount
   // URL params (from LINE group auto-detect) take priority over localStorage
   useEffect(() => {
-    if (!editOrderNo) setPending(loadDraft())
+    if (!editOrderNo) {
+      if (branchIdParam) {
+        // เปิดจาก LINE → ล้าง draft เก่าทิ้ง เริ่มใหม่เสมอ
+        localStorage.removeItem(DRAFT_KEY)
+        localStorage.removeItem('cf_foy_result')
+        localStorage.removeItem('cf_foy_items')
+        localStorage.removeItem('cf_foy_priorities')
+        setPending({})
+      } else {
+        setPending(loadDraft())
+      }
+    }
     if (branchNameParam) {
       // มาจาก LINE group → ระบุสาขาได้, non-admin
       setBranchInfo({ name: branchNameParam, phone: '' })
