@@ -1792,6 +1792,19 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
   }
 
+  // คำสั่งลงทะเบียนกลุ่มออกใบจอง (admin เท่านั้น, พิมพ์ในกลุ่มที่ต้องการตั้งเป็นกลุ่มแจ้งจอง)
+  if (t === 'ลงทะเบียนออกใบจอง') {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้น' }])
+    }
+    if (source?.type !== 'group' || !source.groupId) {
+      return reply(replyToken, [{ type: 'text', text: '❌ ต้องพิมพ์ในห้องกลุ่มเท่านั้น' }])
+    }
+    await ensureTable()
+    await setSetting('order_notify_group_id', source.groupId)
+    return reply(replyToken, [{ type: 'text', text: `✅ ลงทะเบียนกลุ่มนี้เป็น "ออกใบจอง" เรียบร้อยแล้วครับ\nจะได้รับแจ้งเตือนเมื่อมีใบจองใหม่` }])
+  }
+
   if (['ไอดีฉัน', 'id ฉัน', 'myid', 'my id', 'lineid'].includes(t)) {
     const isAdmin = await isLineAdmin(userId, source)
     return reply(replyToken, [{

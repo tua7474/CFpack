@@ -7,11 +7,16 @@ const LINE_TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN!
 const BASE_URL    = process.env.RAILWAY_PUBLIC_DOMAIN
 
 async function pushLineMsg(to: string, messages: object[]) {
-  return fetch('https://api.line.me/v2/bot/message/push', {
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
     body: JSON.stringify({ to, messages }),
   })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error('[pushLineMsg] failed', res.status, body, 'to:', to)
+  }
+  return res
 }
 
 async function notifyNewBooking(
@@ -48,8 +53,9 @@ async function notifyNewBooking(
     if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralMsg]))
     if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchMsg]))
     console.log('[notifyNewBooking] targets centralGroupId:', centralGroupId, 'branchGroupId:', branchGroupId, '| order:', order_no)
+    if (!centralGroupId) console.warn('[notifyNewBooking] order_notify_group_id not set in system_settings!')
     await Promise.all(pushTasks)
-  } catch { /* non-critical — don't fail the order */ }
+  } catch (e) { console.error('[notifyNewBooking] error:', e) }
 }
 
 // ── Table ─────────────────────────────────────────────────────────────────────
