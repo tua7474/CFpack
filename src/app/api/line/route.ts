@@ -1786,7 +1786,36 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
     await ensureTable()
     await setSetting('order_notify_group_id', source.groupId)
-    return reply(replyToken, [{ type: 'text', text: `✅ ลงทะเบียนกลุ่มนี้เป็น "ออกใบจอง" เรียบร้อยแล้วครับ\nID: ${source.groupId}\nจะได้รับแจ้งเตือนเมื่อมีใบจองใหม่` }])
+    // ส่งข้อความทดสอบไปยังกลุ่มนี้ทันที
+    const LINE_TOKEN_LOCAL = process.env.LINE_CHANNEL_ACCESS_TOKEN
+    if (LINE_TOKEN_LOCAL) {
+      await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN_LOCAL}` },
+        body: JSON.stringify({ to: source.groupId, messages: [{ type: 'text', text: `✅ ลงทะเบียนสำเร็จ!\nกลุ่มนี้จะได้รับแจ้งเตือนเมื่อมีใบจองใหม่\nGroup ID: ${source.groupId}` }] }),
+      }).catch(e => console.error('[test-push] error:', e))
+    }
+    return reply(replyToken, [{ type: 'text', text: `✅ บันทึก Group ID แล้ว\n${source.groupId}\n\nถ้าเห็นข้อความนี้ แสดงว่าการแจ้งเตือนจะทำงานได้ปกติครับ` }])
+  }
+
+  // ทดสอบแจ้งเตือนใบจอง
+  if (t === 'ทดสอบแจ้งเตือน') {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้น' }])
+    }
+    const storedId = await getSetting('order_notify_group_id')
+    const LINE_TOKEN_LOCAL = process.env.LINE_CHANNEL_ACCESS_TOKEN
+    const info = `Group ID ที่บันทึกไว้:\n${storedId ?? '(ไม่มี)'}\n\nGroup นี้: ${source?.groupId ?? '(DM)'}\nToken: ${LINE_TOKEN_LOCAL ? '✅ มี' : '❌ ไม่มี'}`
+    if (storedId && LINE_TOKEN_LOCAL) {
+      const pushRes = await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN_LOCAL}` },
+        body: JSON.stringify({ to: storedId, messages: [{ type: 'text', text: '🔔 ทดสอบแจ้งเตือน — ระบบทำงานปกติ' }] }),
+      })
+      const pushBody = await pushRes.text().catch(() => '')
+      return reply(replyToken, [{ type: 'text', text: `${info}\n\nPush result: ${pushRes.status}\n${pushBody}` }])
+    }
+    return reply(replyToken, [{ type: 'text', text: info }])
   }
 
   if (t.startsWith('ลงทะเบียน')) {
