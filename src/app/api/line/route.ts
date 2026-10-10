@@ -1241,7 +1241,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       text: `✅ บันทึกชำระเงินสำเร็จ!\n${branchName}\nอัปเดต ${rowCount} ใบจองแล้วครับ`
     }]
     if (!stillBlocked) {
-      msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${branchId}&branch_name=${encodeURIComponent(branchName)}`))
+      msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${branchId}&branch_name=${encodeURIComponent(branchName)}&t=${Date.now()}`))
     }
     return reply(replyToken, msgs)
   }
@@ -1381,7 +1381,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     }]
     if (slipBranchId !== null) {
       const stillBlocked = await checkBlockedFromDB(slipBranchId)
-      if (!stillBlocked) msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}`))
+      if (!stillBlocked) msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}&t=${Date.now()}`))
     }
     return reply(replyToken, msgs)
   }
@@ -1802,7 +1802,8 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
   if (['ใบจอง', 'จอง', 'สั่งสินค้า', 'order', 'booking', 'เมนู', 'menu'].includes(t)) {
     // ── หาสาขา ───────────────────────────────────────────────────────────────
-    let bookingUrl  = `${BASE_URL}/booking2`
+    const ts = Date.now()  // cache-bust: บังคับ LINE browser โหลดหน้าใหม่ทุกครั้ง
+    let bookingUrl  = `${BASE_URL}/booking2?t=${ts}`
     let branchLabel = 'ข้อมูลสินค้าและราคาล่าสุดจากระบบ'
     let branchId: number | null = null
 
@@ -1811,7 +1812,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         'SELECT id, name FROM branches WHERE line_group_id=$1 LIMIT 1', [source.groupId]
       )
       if (directB[0]) {
-        bookingUrl  = `${BASE_URL}/booking2?branch_id=${directB[0].id}&branch_name=${encodeURIComponent(directB[0].name)}`
+        bookingUrl  = `${BASE_URL}/booking2?branch_id=${directB[0].id}&branch_name=${encodeURIComponent(directB[0].name)}&t=${ts}`
         branchLabel = `สาขา: ${directB[0].name}`
         branchId    = directB[0].id
       } else {
@@ -1819,7 +1820,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         if (groupName) {
           const branch = await findBranchByGroupName(groupName)
           if (branch) {
-            bookingUrl  = `${BASE_URL}/booking2?branch_id=${branch.id}&branch_name=${encodeURIComponent(branch.name)}`
+            bookingUrl  = `${BASE_URL}/booking2?branch_id=${branch.id}&branch_name=${encodeURIComponent(branch.name)}&t=${ts}`
             branchLabel = `สาขา: ${branch.name}`
             branchId    = branch.id
             saveGroupId(branch.id, source.groupId)
@@ -1832,7 +1833,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       if (ub) {
         branchId    = ub.branch_id
         branchLabel = `สาขา: ${ub.branch_name}`
-        bookingUrl  = `${BASE_URL}/booking2?branch_id=${ub.branch_id}&branch_name=${encodeURIComponent(ub.branch_name)}`
+        bookingUrl  = `${BASE_URL}/booking2?branch_id=${ub.branch_id}&branch_name=${encodeURIComponent(ub.branch_name)}&t=${ts}`
       }
     }
 
