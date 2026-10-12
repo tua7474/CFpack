@@ -6,7 +6,7 @@ async function ensureTable() {
     CREATE TABLE IF NOT EXISTS delivery_schedule (
       id          SERIAL PRIMARY KEY,
       week_start  DATE        NOT NULL,
-      day_of_week SMALLINT    NOT NULL CHECK (day_of_week BETWEEN 1 AND 6),
+      day_of_week SMALLINT    NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
       round       VARCHAR(10) NOT NULL CHECK (round IN ('เช้า', 'บ่าย')),
       branch_id   INT         NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
       sort_order  INT         NOT NULL DEFAULT 0,
@@ -14,6 +14,9 @@ async function ensureTable() {
       UNIQUE (week_start, day_of_week, round, branch_id)
     )
   `)
+  // Widen existing constraint to include Sunday (day 7)
+  await pool.query(`ALTER TABLE delivery_schedule DROP CONSTRAINT IF EXISTS delivery_schedule_day_of_week_check`).catch(() => {})
+  await pool.query(`ALTER TABLE delivery_schedule ADD CONSTRAINT delivery_schedule_day_of_week_check CHECK (day_of_week BETWEEN 1 AND 7)`).catch(() => {})
 }
 
 // GET /api/delivery/schedule?week=YYYY-MM-DD

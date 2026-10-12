@@ -9,7 +9,7 @@ interface Branch { id: number; name: string }
 interface ScheduleEntry { id: number; week_start: string; day_of_week: number; round: string; branch_id: number; branch_name: string }
 interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
 
-const DAYS_TH = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+const DAYS_TH = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์']
 const ROUNDS = ['เช้า', 'บ่าย'] as const
 
 // Returns ISO date string (YYYY-MM-DD) of the Monday of the current week + offset weeks
@@ -26,7 +26,7 @@ function getWeekStart(offsetWeeks = 0): string {
 function fmtWeekRange(weekStart: string): string {
   const start = new Date(weekStart + 'T00:00:00')
   const end = new Date(start)
-  end.setDate(start.getDate() + 5) // Saturday
+  end.setDate(start.getDate() + 6) // Sunday
   const fmt = (d: Date) => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
   return `${fmt(start)} – ${fmt(end)}`
 }
