@@ -255,6 +255,7 @@ function Booking2Inner() {
   const [loading, setLoading]       = useState(true)
   const [saving, setSaving]         = useState(false)
   const [saveMsg, setSaveMsg]       = useState<string | null>(null)
+  const [savedOrderNo, setSavedOrderNo] = useState<string | null>(null)
   const [resetKey, setResetKey]     = useState(0)
   const [qtyPopup, setQtyPopup]     = useState<{ id: number; name: string; subgroupName: string; stockQty: number; accent: string } | null>(null)
   const [popupVal, setPopupVal]     = useState('')
@@ -767,6 +768,7 @@ function Booking2Inner() {
           }),
         })
         if (!res.ok) throw new Error()
+        const data = await res.json()
         setPending({})
         setFoyPending({})
         setFoyItemPending({})
@@ -775,15 +777,14 @@ function Booking2Inner() {
         localStorage.removeItem('cf_foy_result')
         localStorage.removeItem('cf_foy_items')
         localStorage.removeItem('cf_foy_priorities')
-        const totalItems = pendingCount + Object.keys(foyPending).length
-        setSaveMsg(`บันทึกสำเร็จ ${totalItems} รายการ`)
         clearAllPriorities()
+        setSavedOrderNo(data.order_no)
       }
     } catch {
       setSaveMsg('เกิดข้อผิดพลาด กรุณาลองใหม่')
+      setTimeout(() => setSaveMsg(null), 3000)
     } finally {
       setSaving(false)
-      setTimeout(() => setSaveMsg(null), 3000)
     }
   }
 
@@ -1229,6 +1230,37 @@ function Booking2Inner() {
           .foy-print-frame td { background-color: white !important; }
         }
       `}</style>
+
+      {/* ── Success overlay after new booking ───────────────────────────────── */}
+      {savedOrderNo && (
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center">
+            <div className="text-5xl mb-3">✅</div>
+            <div className="text-lg font-bold text-gray-600 mb-1">บันทึกใบจองสำเร็จ</div>
+            <div className="text-3xl font-extrabold text-green-600 mb-6">#{savedOrderNo}</div>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => router.push(`/booking2?edit=${savedOrderNo}`)}
+                className="w-full py-3 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-bold text-base transition-colors"
+              >
+                ✏️ แก้ไขใบจอง
+              </button>
+              <button
+                onClick={() => router.push('/orders')}
+                className="w-full py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-base transition-colors"
+              >
+                📦 ขึ้นของ / สั่งพิมพ์
+              </button>
+              <button
+                onClick={() => setSavedOrderNo(null)}
+                className="w-full py-2 text-gray-400 hover:text-gray-600 text-sm transition-colors"
+              >
+                ✕ ปิด / จองใหม่
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header className="no-print bg-[#9b9484] text-white px-4 py-2 shadow flex flex-col gap-2">

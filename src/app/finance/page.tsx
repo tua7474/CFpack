@@ -466,7 +466,7 @@ export default function FinancePage() {
               <button onClick={() => setModal(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
             </div>
             <div className="overflow-y-auto flex-1 px-4 py-2">
-              {modal.entries.map((e, i) => (
+              {[...modal.entries].sort((a, b) => a.date.localeCompare(b.date)).map((e, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
                   <div className="flex flex-col leading-tight">
                     <span className="text-xs text-gray-500">{fmtDateShort(e.date)}</span>

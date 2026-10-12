@@ -36,22 +36,48 @@ async function notifyNewBooking(
     const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
     const label = branch_name ?? (branch_id ? `สาขา #${branch_id}` : 'ไม่ระบุสาขา')
     const baseUrl = BASE_URL ? `https://${BASE_URL}` : 'https://cf-production-6234.up.railway.app'
-    const ordersUrl = `${baseUrl}/orders?role=manager`
+    const editUrl   = `${baseUrl}/booking2?edit=${order_no}`
+    const ordersUrl = `${baseUrl}/orders`
 
-    const centralMsg: object = {
-      type: 'text',
-      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}`,
-    }
-
-    const branchMsg: object = {
-      type: 'text',
-      text: `✅ บันทึกใบจองสำเร็จ\nสาขา: ${label}\nเลขที่: #${order_no}\nยอด: ฿${fmt(total_amount)}`,
-    }
+    const makeFlexMsg = (): object => ({
+      type: 'flex',
+      altText: `✅ ใบจอง #${order_no} — ${label} — ฿${fmt(total_amount)}`,
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box', layout: 'vertical',
+          backgroundColor: '#27AE60', paddingAll: '12px',
+          contents: [{ type: 'text', text: '✅ บันทึกใบจองสำเร็จ', weight: 'bold', color: '#FFFFFF', size: 'md' }],
+        },
+        body: {
+          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px',
+          contents: [
+            { type: 'text', text: `สาขา: ${label}`, size: 'sm', color: '#555555', wrap: true },
+            { type: 'text', text: `เลขที่: #${order_no}`, weight: 'bold', size: 'xl', color: '#111111' },
+            { type: 'text', text: `ยอด: ฿${fmt(total_amount)}`, size: 'md', color: '#27AE60', weight: 'bold' },
+          ],
+        },
+        footer: {
+          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
+          contents: [
+            {
+              type: 'button', style: 'primary', color: '#E67E22', height: 'sm',
+              action: { type: 'uri', label: '✏️ แก้ไขใบจอง', uri: editUrl },
+            },
+            {
+              type: 'button', style: 'primary', color: '#27AE60', height: 'sm',
+              action: { type: 'uri', label: '📦 ขึ้นของ / สั่งพิมพ์', uri: ordersUrl },
+            },
+          ],
+        },
+      },
+    })
 
     // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
+    const flexMsg = makeFlexMsg()
     const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchMsg]))
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [flexMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [flexMsg]))
     console.log('[notifyNewBooking] targets centralGroupId:', centralGroupId, 'branchGroupId:', branchGroupId, '| order:', order_no)
     if (!centralGroupId) console.warn('[notifyNewBooking] order_notify_group_id not set in system_settings!')
     await Promise.all(pushTasks)
