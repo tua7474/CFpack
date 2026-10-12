@@ -1,16 +1,20 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 interface DeliveryMethod { id: number; name: string }
 interface Branch { id: number; name: string }
-interface ScheduleEntry { id: number; week_start: string; day_of_week: number; round: string; branch_id: number; branch_name: string }
+interface ScheduleEntry { id: number; week_start: string; day_of_week: number; truck_no: number; round: string; branch_id: number; branch_name: string }
 interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
 
 const DAYS_TH = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์']
 const ROUNDS = ['เช้า', 'บ่าย'] as const
+const TRUCKS = [
+  { no: 1, name: 'อ๊อบ 4 ฒญ' },
+  { no: 2, name: 'ต้น 3 ฒท' },
+]
 
 // Returns ISO date string (YYYY-MM-DD) of the Monday of the current week + offset weeks
 function getWeekStart(offsetWeeks = 0): string {
@@ -102,7 +106,7 @@ function WeekTable({
   weekStart: string
   schedule: ScheduleEntry[]
   branches: Branch[]
-  onAdd: (weekStart: string, dayOfWeek: number, round: string, branchId: number) => void
+  onAdd: (weekStart: string, dayOfWeek: number, truckNo: number, round: string, branchId: number) => void
   onRemove: (id: number) => void
   busy: boolean
 }) {
@@ -117,36 +121,54 @@ function WeekTable({
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-3 py-2 text-left text-gray-500 font-semibold w-24">วัน</th>
+              <th className="px-3 py-2 text-left text-gray-500 font-semibold w-28">คนขับ</th>
               <th className="px-3 py-2 text-left text-gray-500 font-semibold">รอบเช้า</th>
               <th className="px-3 py-2 text-left text-gray-500 font-semibold">รอบบ่าย</th>
             </tr>
           </thead>
           <tbody>
             {DAYS_TH.map((dayName, i) => {
-              const dow = i + 1 // 1=Mon...6=Sat
-              const morning = schedule.filter(e => e.day_of_week === dow && e.round === 'เช้า')
-              const afternoon = schedule.filter(e => e.day_of_week === dow && e.round === 'บ่าย')
+              const dow = i + 1
+              const isLastDay = i === DAYS_TH.length - 1
               return (
-                <tr key={dow} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50">
-                  <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">
-                    <div>{dayName}</div>
-                    <div className="text-[10px] text-gray-400 font-normal">{getDayDate(weekStart, i)}</div>
-                  </td>
-                  <td className="px-3 py-2 border-l border-gray-100">
-                    <ScheduleCell
-                      entries={morning} branches={branches} busy={busy}
-                      onAdd={branchId => onAdd(weekStart, dow, 'เช้า', branchId)}
-                      onRemove={onRemove}
-                    />
-                  </td>
-                  <td className="px-3 py-2 border-l border-gray-100">
-                    <ScheduleCell
-                      entries={afternoon} branches={branches} busy={busy}
-                      onAdd={branchId => onAdd(weekStart, dow, 'บ่าย', branchId)}
-                      onRemove={onRemove}
-                    />
-                  </td>
-                </tr>
+                <Fragment key={dow}>
+                  {TRUCKS.map((truck, ti) => {
+                    const morning   = schedule.filter(e => e.day_of_week === dow && e.truck_no === truck.no && e.round === 'เช้า')
+                    const afternoon = schedule.filter(e => e.day_of_week === dow && e.truck_no === truck.no && e.round === 'บ่าย')
+                    const isLastRow = isLastDay && ti === TRUCKS.length - 1
+                    return (
+                      <tr key={truck.no}
+                        className={`hover:bg-gray-50/50 ${isLastRow ? '' : ti === TRUCKS.length - 1 ? 'border-b border-gray-200' : 'border-b border-gray-100'}`}>
+                        {ti === 0 && (
+                          <td rowSpan={TRUCKS.length}
+                            className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap border-r border-gray-200 align-middle">
+                            <div>{dayName}</div>
+                            <div className="text-[10px] text-gray-400 font-normal">{getDayDate(weekStart, i)}</div>
+                          </td>
+                        )}
+                        <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold leading-none ${truck.no === 1 ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                            {truck.name}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5 border-r border-gray-100">
+                          <ScheduleCell
+                            entries={morning} branches={branches} busy={busy}
+                            onAdd={branchId => onAdd(weekStart, dow, truck.no, 'เช้า', branchId)}
+                            onRemove={onRemove}
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <ScheduleCell
+                            entries={afternoon} branches={branches} busy={busy}
+                            onAdd={branchId => onAdd(weekStart, dow, truck.no, 'บ่าย', branchId)}
+                            onRemove={onRemove}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </Fragment>
               )
             })}
           </tbody>
@@ -226,12 +248,12 @@ export default function DeliveryPage() {
   useEffect(() => { loadSchedule() }, [loadSchedule])
 
   // ── schedule actions ──────────────────────────────────────────────────────
-  const handleAddSlot = async (weekStart: string, dayOfWeek: number, round: string, branchId: number) => {
+  const handleAddSlot = async (weekStart: string, dayOfWeek: number, truckNo: number, round: string, branchId: number) => {
     setBusySched(true)
     const res = await fetch('/api/delivery/schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ week_start: weekStart, day_of_week: dayOfWeek, round, branch_id: branchId }),
+      body: JSON.stringify({ week_start: weekStart, day_of_week: dayOfWeek, truck_no: truckNo, round, branch_id: branchId }),
     })
     if (res.ok) {
       const entry: ScheduleEntry = await res.json()

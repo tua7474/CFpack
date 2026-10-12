@@ -6,17 +6,22 @@ async function ensureTable() {
     CREATE TABLE IF NOT EXISTS delivery_schedule (
       id          SERIAL PRIMARY KEY,
       week_start  DATE        NOT NULL,
-      day_of_week SMALLINT    NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
+      day_of_week SMALLINT    NOT NULL,
+      truck_no    SMALLINT    NOT NULL DEFAULT 1,
       round       VARCHAR(10) NOT NULL CHECK (round IN ('เช้า', 'บ่าย')),
       branch_id   INT         NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
       sort_order  INT         NOT NULL DEFAULT 0,
-      created_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
-      UNIQUE (week_start, day_of_week, round, branch_id)
+      created_at  TIMESTAMP   NOT NULL DEFAULT NOW()
     )
   `)
-  // Widen existing constraint to include Sunday (day 7)
+  // Migrations: add truck_no if missing, widen day constraint, rebuild unique key
+  await pool.query(`ALTER TABLE delivery_schedule ADD COLUMN IF NOT EXISTS truck_no SMALLINT NOT NULL DEFAULT 1`).catch(() => {})
   await pool.query(`ALTER TABLE delivery_schedule DROP CONSTRAINT IF EXISTS delivery_schedule_day_of_week_check`).catch(() => {})
   await pool.query(`ALTER TABLE delivery_schedule ADD CONSTRAINT delivery_schedule_day_of_week_check CHECK (day_of_week BETWEEN 1 AND 7)`).catch(() => {})
+  // Drop old unique (without truck_no) and add new one
+  await pool.query(`ALTER TABLE delivery_schedule DROP CONSTRAINT IF EXISTS delivery_schedule_week_start_day_of_week_round_branch_id_key`).catch(() => {})
+  await pool.query(`ALTER TABLE delivery_schedule DROP CONSTRAINT IF EXISTS delivery_schedule_unique_slot`).catch(() => {})
+  await pool.query(`ALTER TABLE delivery_schedule ADD CONSTRAINT delivery_schedule_unique_slot UNIQUE (week_start, day_of_week, truck_no, round, branch_id)`).catch(() => {})
 }
 
 // GET /api/delivery/schedule?week=YYYY-MM-DD
@@ -25,11 +30,11 @@ export async function GET(req: NextRequest) {
   if (!week) return NextResponse.json({ error: 'week required' }, { status: 400 })
   await ensureTable()
   const { rows } = await pool.query(`
-    SELECT ds.id, ds.week_start::text, ds.day_of_week, ds.round, ds.branch_id, b.name AS branch_name
+    SELECT ds.id, ds.week_start::text, ds.day_of_week, ds.truck_no, ds.round, ds.branch_id, b.name AS branch_name
     FROM delivery_schedule ds
     JOIN branches b ON b.id = ds.branch_id
     WHERE ds.week_start = $1
-    ORDER BY ds.day_of_week, ds.round, ds.sort_order, ds.id
+    ORDER BY ds.day_of_week, ds.truck_no, ds.round, ds.sort_order, ds.id
   `, [week])
   return NextResponse.json(rows)
 }
@@ -38,17 +43,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await ensureTable()
-    const { week_start, day_of_week, round, branch_id } = await req.json()
+    const { week_start, day_of_week, truck_no, round, branch_id } = await req.json()
     const { rows } = await pool.query(`
-      INSERT INTO delivery_schedule (week_start, day_of_week, round, branch_id)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT DO NOTHING
+      INSERT INTO delivery_schedule (week_start, day_of_week, truck_no, round, branch_id)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT ON CONSTRAINT delivery_schedule_unique_slot DO NOTHING
       RETURNING id
-    `, [week_start, day_of_week, round, branch_id])
+    `, [week_start, day_of_week, truck_no ?? 1, round, branch_id])
     if (rows.length === 0) return NextResponse.json({ error: 'already exists' }, { status: 409 })
-    // Return with branch_name
     const { rows: full } = await pool.query(`
-      SELECT ds.id, ds.week_start::text, ds.day_of_week, ds.round, ds.branch_id, b.name AS branch_name
+      SELECT ds.id, ds.week_start::text, ds.day_of_week, ds.truck_no, ds.round, ds.branch_id, b.name AS branch_name
       FROM delivery_schedule ds JOIN branches b ON b.id = ds.branch_id
       WHERE ds.id = $1
     `, [rows[0].id])
