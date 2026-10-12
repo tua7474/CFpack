@@ -11,9 +11,21 @@ interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
 
 const DAYS_TH = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์']
 const ROUNDS = ['เช้า', 'บ่าย'] as const
+
+// สีประจำวัน (ตามธรรมเนียมไทย)
+const DAY_COLORS = [
+  { dayCell: 'bg-yellow-400  text-white', truck1: 'bg-yellow-50',  truck2: 'bg-yellow-100' }, // จันทร์
+  { dayCell: 'bg-pink-400    text-white', truck1: 'bg-pink-50',    truck2: 'bg-pink-100'   }, // อังคาร
+  { dayCell: 'bg-green-500   text-white', truck1: 'bg-green-50',   truck2: 'bg-green-100'  }, // พุธ
+  { dayCell: 'bg-orange-400  text-white', truck1: 'bg-orange-50',  truck2: 'bg-orange-100' }, // พฤหัสบดี
+  { dayCell: 'bg-sky-400     text-white', truck1: 'bg-sky-50',     truck2: 'bg-sky-100'    }, // ศุกร์
+  { dayCell: 'bg-purple-500  text-white', truck1: 'bg-purple-50',  truck2: 'bg-purple-100' }, // เสาร์
+  { dayCell: 'bg-red-500     text-white', truck1: 'bg-red-50',     truck2: 'bg-red-100'    }, // อาทิตย์
+]
+
 const TRUCKS = [
-  { no: 1, name: 'อ๊อบ 4 ฒญ' },
-  { no: 2, name: 'ต้น 3 ฒท' },
+  { no: 1, name: 'อ๊อบ 4 ฒญ', badge: 'bg-blue-600  text-white' },
+  { no: 2, name: 'ต้น 3 ฒท',  badge: 'bg-violet-600 text-white' },
 ]
 
 // Returns ISO date string (YYYY-MM-DD) of the Monday of the current week + offset weeks
@@ -128,7 +140,8 @@ function WeekTable({
           </thead>
           <tbody>
             {DAYS_TH.map((dayName, i) => {
-              const dow = i + 1
+              const dow      = i + 1
+              const dc       = DAY_COLORS[i]
               const isLastDay = i === DAYS_TH.length - 1
               return (
                 <Fragment key={dow}>
@@ -136,22 +149,23 @@ function WeekTable({
                     const morning   = schedule.filter(e => e.day_of_week === dow && e.truck_no === truck.no && e.round === 'เช้า')
                     const afternoon = schedule.filter(e => e.day_of_week === dow && e.truck_no === truck.no && e.round === 'บ่าย')
                     const isLastRow = isLastDay && ti === TRUCKS.length - 1
+                    const rowBg     = ti === 0 ? dc.truck1 : dc.truck2
                     return (
                       <tr key={truck.no}
-                        className={`hover:bg-gray-50/50 ${isLastRow ? '' : ti === TRUCKS.length - 1 ? 'border-b border-gray-200' : 'border-b border-gray-100'}`}>
+                        className={`${rowBg} ${isLastRow ? '' : ti === TRUCKS.length - 1 ? 'border-b border-gray-300' : 'border-b border-white/60'}`}>
                         {ti === 0 && (
                           <td rowSpan={TRUCKS.length}
-                            className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap border-r border-gray-200 align-middle">
-                            <div>{dayName}</div>
-                            <div className="text-[10px] text-gray-400 font-normal">{getDayDate(weekStart, i)}</div>
+                            className={`px-3 py-2 font-bold whitespace-nowrap border-r border-white/40 align-middle ${dc.dayCell}`}>
+                            <div className="text-sm">{dayName}</div>
+                            <div className="text-[10px] opacity-80 font-normal">{getDayDate(weekStart, i)}</div>
                           </td>
                         )}
-                        <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold leading-none ${truck.no === 1 ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                        <td className="px-2 py-1.5 border-r border-white/40 whitespace-nowrap">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold leading-none shadow-sm ${truck.badge}`}>
                             {truck.name}
                           </span>
                         </td>
-                        <td className="px-3 py-1.5 border-r border-gray-100">
+                        <td className="px-3 py-1.5 border-r border-white/40">
                           <ScheduleCell
                             entries={morning} branches={branches} busy={busy}
                             onAdd={branchId => onAdd(weekStart, dow, truck.no, 'เช้า', branchId)}
