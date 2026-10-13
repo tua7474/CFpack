@@ -8,19 +8,29 @@ interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
 interface BSProduct { id: number; group_name: string; product_name: string; sort_order: number }
 interface BSBranch  { id: number; name: string; color_group: string | null }
 
-const BRANCH_COL_ORDER = ['orange', 'yellow', 'red', 'green', 'black', 'editor']
-const BRANCH_COL_HEADER: Record<string, string> = {
+// ── Color group logic (เหมือนหน้าสาขาและตัวแทนทุกประการ) ──────────────────────
+const GREEN_BRANCHES  = ['โกดัง', 'โกดังCF']
+const YELLOW_BRANCHES = ['ท่าฉลอม', 'หนองแขม', 'ไทรม้า', 'อ้อมน้อย', 'นครชัยศรี', 'ศรีนครินทร์']
+const RED_BRANCHES    = ['สนามบินน้ำ', 'ตลาดรังสิต']
+
+type ColorGroup = 'orange' | 'yellow' | 'red' | 'green' | 'black' | 'editor'
+
+function getBranchColor(name: string, colorGroup: string | null): ColorGroup {
+  if (colorGroup === 'black' || colorGroup === 'editor' || colorGroup === 'yellow' || colorGroup === 'red' || colorGroup === 'orange') return colorGroup
+  if (GREEN_BRANCHES.some(n => name.includes(n)))  return 'green'
+  if (YELLOW_BRANCHES.some(n => name.includes(n))) return 'yellow'
+  if (RED_BRANCHES.some(n => name.includes(n)))    return 'red'
+  return 'orange'
+}
+
+const COL_ORDER: ColorGroup[] = ['orange', 'yellow', 'red', 'green', 'black', 'editor']
+const COL_HEADER: Record<ColorGroup, string> = {
   orange: 'bg-orange-200 text-orange-900',
   yellow: 'bg-yellow-200 text-yellow-900',
   red:    'bg-red-200    text-red-900',
   green:  'bg-green-200  text-green-900',
   black:  'bg-gray-700   text-white',
   editor: 'bg-blue-200   text-blue-900',
-}
-
-function branchColOrder(cg: string | null): number {
-  const i = BRANCH_COL_ORDER.indexOf(cg ?? '')
-  return i === -1 ? 99 : i
 }
 
 // ── BranchStockCell ───────────────────────────────────────────────────────────
@@ -104,8 +114,9 @@ export default function BranchStockPage() {
 
   const sortedBranches = useMemo(
     () => [...branches].sort((a, b) => {
-      const diff = branchColOrder(a.color_group) - branchColOrder(b.color_group)
-      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'th')
+      const ca = COL_ORDER.indexOf(getBranchColor(a.name, a.color_group))
+      const cb = COL_ORDER.indexOf(getBranchColor(b.name, b.color_group))
+      return ca !== cb ? ca - cb : a.name.localeCompare(b.name, 'th')
     }),
     [branches]
   )
@@ -208,7 +219,7 @@ export default function BranchStockPage() {
                     </th>
                     {sortedBranches.map(b => (
                       <th key={b.id}
-                        className={`px-2 py-2 text-center font-semibold whitespace-nowrap border-l border-white/30 ${BRANCH_COL_HEADER[b.color_group ?? ''] ?? 'bg-gray-200 text-gray-700'}`}>
+                        className={`px-2 py-2 text-center font-semibold whitespace-nowrap border-l border-white/30 ${COL_HEADER[getBranchColor(b.name, b.color_group)]}`}>
                         {b.name}
                       </th>
                     ))}
