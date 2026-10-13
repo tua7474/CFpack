@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -9,162 +9,6 @@ interface Branch { id: number; name: string }
 interface ScheduleEntry { id: number; week_start: string; day_of_week: number; truck_no: number; round: string; branch_id: number; branch_name: string }
 interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
 
-// ── Branch Stock types ────────────────────────────────────────────────────────
-interface BSProduct { id: number; group_name: string; product_name: string; sort_order: number }
-interface BSBranch  { id: number; name: string; color_group: string | null }
-
-const BRANCH_COL_ORDER = ['orange', 'yellow', 'red', 'green', 'black', 'editor']
-const BRANCH_COL_HEADER: Record<string, string> = {
-  orange: 'bg-orange-200 text-orange-900',
-  yellow: 'bg-yellow-200 text-yellow-900',
-  red:    'bg-red-200    text-red-900',
-  green:  'bg-green-200  text-green-900',
-  black:  'bg-gray-700   text-white',
-  editor: 'bg-blue-200   text-blue-900',
-}
-
-function branchColOrder(cg: string | null): number {
-  const i = BRANCH_COL_ORDER.indexOf(cg ?? '')
-  return i === -1 ? 99 : i
-}
-
-// ── BranchStockCell ───────────────────────────────────────────────────────────
-function BranchStockCell({ branchId, productId, currentQty, onSave }: {
-  branchId: number; productId: number; currentQty: number
-  onSave: (branchId: number, productId: number, qty: number) => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  const startEdit = () => { setVal(currentQty > 0 ? String(currentQty) : ''); setEditing(true) }
-
-  useEffect(() => { if (editing) inputRef.current?.select() }, [editing])
-
-  const commit = () => {
-    setEditing(false)
-    const num = parseFloat(val) || 0
-    if (num !== currentQty) onSave(branchId, productId, num)
-  }
-
-  if (editing) {
-    return (
-      <input ref={inputRef} type="number" value={val}
-        onChange={e => setVal(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
-        className="w-full min-w-[48px] text-center text-xs border border-blue-400 rounded px-1 py-0.5 focus:outline-none bg-white"
-      />
-    )
-  }
-  return (
-    <div onClick={startEdit}
-      className={`text-center cursor-pointer rounded px-1 py-0.5 hover:bg-blue-50 min-w-[48px] text-xs select-none ${currentQty > 0 ? 'font-semibold text-gray-800' : 'text-gray-300'}`}>
-      {currentQty > 0 ? currentQty.toLocaleString('th-TH', { maximumFractionDigits: 2 }) : '—'}
-    </div>
-  )
-}
-
-// ── BranchStockSection ────────────────────────────────────────────────────────
-function BranchStockSection() {
-  const [products, setProducts] = useState<BSProduct[]>([])
-  const [branches, setBranches] = useState<BSBranch[]>([])
-  const [stockMap, setStockMap] = useState<Record<string, number>>({})
-  const [loading, setLoading]   = useState(true)
-
-  useEffect(() => {
-    fetch('/api/branch-stock').then(async r => {
-      if (!r.ok) return
-      const data = await r.json()
-      setProducts(data.products)
-      setBranches(data.branches)
-      const map: Record<string, number> = {}
-      for (const s of data.stock) map[`${s.branch_id}_${s.product_id}`] = Number(s.quantity)
-      setStockMap(map)
-      setLoading(false)
-    })
-  }, [])
-
-  const sortedBranches = useMemo(
-    () => [...branches].sort((a, b) => {
-      const diff = branchColOrder(a.color_group) - branchColOrder(b.color_group)
-      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'th')
-    }),
-    [branches]
-  )
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, BSProduct[]>()
-    for (const p of products) {
-      if (!map.has(p.group_name)) map.set(p.group_name, [])
-      map.get(p.group_name)!.push(p)
-    }
-    return Array.from(map.entries()).map(([group, prods]) => ({ group, prods }))
-  }, [products])
-
-  const handleSave = useCallback(async (branchId: number, productId: number, qty: number) => {
-    setStockMap(prev => ({ ...prev, [`${branchId}_${productId}`]: qty }))
-    await fetch('/api/branch-stock', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ branch_id: branchId, product_id: productId, quantity: qty }),
-    })
-  }, [])
-
-  if (loading) {
-    return <div className="flex items-center justify-center h-24 text-gray-400 text-sm">กำลังโหลด...</div>
-  }
-
-  return (
-    <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden bg-white">
-      <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
-        <table className="text-xs border-collapse" style={{ minWidth: `${160 + sortedBranches.length * 80}px` }}>
-          <thead className="sticky top-0 z-20">
-            <tr>
-              <th className="sticky left-0 z-30 bg-[#9b9484] text-white text-left px-3 py-2 font-bold min-w-[160px] border-r border-white/30">
-                สินค้า
-              </th>
-              {sortedBranches.map(b => (
-                <th key={b.id}
-                  className={`px-2 py-2 text-center font-semibold whitespace-nowrap border-l border-white/30 ${BRANCH_COL_HEADER[b.color_group ?? ''] ?? 'bg-gray-200 text-gray-700'}`}>
-                  {b.name}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grouped.map(({ group, prods }) => (
-              <Fragment key={group}>
-                <tr>
-                  <td colSpan={sortedBranches.length + 1}
-                    className="sticky left-0 bg-[#9b9484] text-white text-[11px] font-bold px-3 py-1">
-                    {group}
-                  </td>
-                </tr>
-                {prods.map(p => (
-                  <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                    <td className="sticky left-0 bg-white z-10 px-3 py-1 text-gray-700 border-r border-gray-200 min-w-[160px]">
-                      {p.product_name}
-                    </td>
-                    {sortedBranches.map(b => (
-                      <td key={b.id} className="px-1 py-0.5 border-l border-gray-100 text-center">
-                        <BranchStockCell
-                          branchId={b.id} productId={p.id}
-                          currentQty={stockMap[`${b.id}_${p.id}`] ?? 0}
-                          onSave={handleSave}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
 
 const DAYS_TH = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์']
 const ROUNDS = ['เช้า', 'บ่าย'] as const
@@ -541,17 +385,16 @@ export default function DeliveryPage() {
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           💰 การเงิน
         </Link>
+        <Link href="/branch-stock"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          🏬 สต็อคทุกสาขา
+        </Link>
       </div>
 
       {/* Main */}
       <main className="p-4 flex flex-col gap-6">
 
         {/* ── ตารางคิวรถจัดส่ง ── */}
-        <div>
-          <h2 className="text-sm font-bold text-gray-600 mb-3">📦 สต็อคทุกสาขา</h2>
-          <BranchStockSection />
-        </div>
-
         <div>
           <h2 className="text-sm font-bold text-gray-600 mb-3">📅 ตารางคิวรถจัดส่ง</h2>
           {loadingSched ? (
