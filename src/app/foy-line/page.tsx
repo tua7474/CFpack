@@ -277,6 +277,7 @@ export default function FoyLinePage() {
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">🌀 ไลน์ผลิตกระดาษฝอย</span>
         <Link href="/finance" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">💰 การเงิน</Link>
         <Link href="/branch-stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏬 สต็อคทุกสาขา</Link>
+        <Link href="/branch-foy-stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคกระดาษฝอยทุกสาขา</Link>
       </div>
 
       {/* Table */}

@@ -234,6 +234,10 @@ export default function RestockPage() {
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🏬 สต็อคทุกสาขา
         </Link>
+        <Link href="/branch-foy-stock"
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
+          🌿 สต็อคกระดาษฝอยทุกสาขา
+        </Link>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-4">
