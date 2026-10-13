@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -17,7 +17,7 @@ export type PageKey = typeof PAGE_LIST[number]['key']
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface BranchPhone { id: number; phone: string; is_admin: boolean; is_manager: boolean; allowed_pages: string[]; line_user_id: string | null }
-interface Branch { id: number; name: string; color_group: string | null; phones: BranchPhone[]; pending_count: number }
+interface Branch { id: number; name: string; color_group: string | null; map_url: string | null; phones: BranchPhone[]; pending_count: number }
 
 // ── Color groups ──────────────────────────────────────────────────────────────
 
@@ -268,12 +268,59 @@ type SlipTotals = Record<string, { month: number; week: number; applied_month: n
 
 type SlipPeriods = Record<string, 'month' | 'week'>
 
-type VatItem = { amount: number; slip_date: string }
+// ── MapCell ───────────────────────────────────────────────────────────────────
+function MapCell({ branchId, currentUrl, onSave }: {
+  branchId: number; currentUrl: string | null
+  onSave: (branchId: number, url: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const startEdit = () => { setVal(currentUrl ?? ''); setEditing(true) }
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  const commit = () => {
+    setEditing(false)
+    const trimmed = val.trim()
+    if (trimmed !== (currentUrl ?? '')) onSave(branchId, trimmed)
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1 min-w-[180px]">
+        <input ref={inputRef} type="text" value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+          placeholder="วางลิงก์ Google Maps..."
+          className="w-full text-[11px] border border-blue-400 rounded px-1.5 py-1 focus:outline-none bg-white"
+        />
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1.5 min-w-[80px]">
+      {currentUrl ? (
+        <a href={currentUrl} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 text-[11px] whitespace-nowrap">
+          🗺️ แผนที่
+        </a>
+      ) : (
+        <span className="text-gray-300 text-xs">—</span>
+      )}
+      <button onClick={startEdit}
+        className="text-gray-300 hover:text-blue-400 text-[11px] transition-colors">
+        ✏️
+      </button>
+    </div>
+  )
+}
 
 function BranchRow({
   branch, session, onManage, colorGroup, slipTotals, slipPeriods,
-  withdrawalTypes, unpaidOrders, vatItems, activePeriod, periodOrders,
-  periodSlipTotals, periodUnpaidOrders,
+  withdrawalTypes, unpaidOrders, activePeriod, periodOrders,
+  periodSlipTotals, periodUnpaidOrders, onMapSave,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -283,11 +330,11 @@ function BranchRow({
   slipPeriods: SlipPeriods
   withdrawalTypes: WithdrawalType[]
   unpaidOrders: Record<number, UnpaidOrder[]>
-  vatItems: VatItem[]
   activePeriod: { start: string; end: string; label: string } | null
   periodOrders: BranchOrder[]
   periodSlipTotals: Record<string, number>
   periodUnpaidOrders: Record<number, UnpaidOrder[]>
+  onMapSave: (branchId: number, url: string) => void
 }) {
   const [weekOrders,     setWeekOrders]     = useState<BranchOrder[]>([])
   const [selectedWeek,   setSelectedWeek]   = useState<number | null>(null)
@@ -515,40 +562,10 @@ function BranchRow({
           )}
         </td>
 
-      {/* ค่าแวต */}
-      {(() => {
-        const displayVat = activePeriod
-          ? vatItems.filter(v => v.slip_date >= activePeriod.start && v.slip_date <= activePeriod.end)
-          : vatItems
-        return (
-          <td className="px-3 py-2 border-r border-gray-200 align-top min-w-[110px]">
-            {displayVat.length === 0 ? (
-              <span className="text-xs text-gray-300">-</span>
-            ) : (
-              <div className="flex flex-col gap-0.5">
-                {displayVat.map((v, i) => (
-                  <div key={i} className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                      {new Date(v.slip_date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                    </span>
-                    <span className="text-xs font-medium text-[#7c3aed] whitespace-nowrap">
-                      ฿{Math.round(v.amount).toLocaleString('th-TH')}
-                    </span>
-                  </div>
-                ))}
-                {displayVat.length > 1 && (
-                  <div className="flex items-center justify-between gap-1 border-t border-gray-200 pt-0.5 mt-0.5">
-                    <span className="text-[10px] text-gray-500 font-semibold">รวม</span>
-                    <span className="text-xs font-bold text-[#7c3aed] whitespace-nowrap">
-                      ฿{Math.round(displayVat.reduce((s, v) => s + v.amount, 0)).toLocaleString('th-TH')}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-          </td>
-        )
-      })()}
+      {/* MAP */}
+      <td className="px-3 py-2 border-r border-gray-200 align-top">
+        <MapCell branchId={branch.id} currentUrl={branch.map_url} onSave={onMapSave} />
+      </td>
 
       {/* ใบจองค้างชำระ — 1 คอลัมน์ต่อ 1 ประเภทเบิกของ */}
       {withdrawalTypes.map(wt => {
@@ -841,7 +858,6 @@ export default function BranchesPage() {
   // Slip state
   const [slipPeriods,  setSlipPeriods]  = useState<SlipPeriods>({ วรวุฒิ: 'month', print: 'month', pack: 'month', bb: 'month', กล่อง: 'month' })
   const [slipData,     setSlipData]     = useState<Record<number, SlipTotals>>({})
-  const [vatItemsMap,  setVatItemsMap]  = useState<Record<number, VatItem[]>>({})
   const [pendingSlips, setPendingSlips] = useState<Slip[]>([])
   const [confirmSlip,  setConfirmSlip]  = useState<Slip | null>(null)
 
@@ -881,28 +897,18 @@ export default function BranchesPage() {
   }, [])
 
   const loadSlipData = useCallback(async () => {
-    const [byBranchRes, pendingRes, vatRes] = await Promise.all([
+    const [byBranchRes, pendingRes] = await Promise.all([
       fetch('/api/slips?by_branch=true'),
       fetch('/api/slips?pending=true'),
-      fetch('/api/slips?vat_items=true'),
     ])
     const rows: { branch_id: number; category: string; month_total: number; week_total: number; applied_month_total: number; applied_week_total: number }[] = await byBranchRes.json()
     const pending: Slip[] = await pendingRes.json()
-    const vatRows: { branch_id: number; amount: number; slip_date: string }[] = await vatRes.json()
-    // Build map: branch_id → category → { month, week, applied_month, applied_week }
     const map: Record<number, SlipTotals> = {}
     for (const r of rows) {
       if (!map[r.branch_id]) map[r.branch_id] = {}
       map[r.branch_id][r.category] = { month: r.month_total, week: r.week_total, applied_month: r.applied_month_total ?? 0, applied_week: r.applied_week_total ?? 0 }
     }
-    // Build map: branch_id → VatItem[]
-    const vatMap: Record<number, VatItem[]> = {}
-    for (const v of vatRows) {
-      if (!vatMap[v.branch_id]) vatMap[v.branch_id] = []
-      vatMap[v.branch_id].push({ amount: v.amount, slip_date: v.slip_date })
-    }
     setSlipData(map)
-    setVatItemsMap(vatMap)
     setPendingSlips(pending)
   }, [])
 
@@ -1011,6 +1017,15 @@ export default function BranchesPage() {
     setSession(null)
     setLoginCode('')
   }
+
+  const handleMapSave = useCallback(async (branchId: number, url: string) => {
+    setBranches(prev => prev.map(b => b.id === branchId ? { ...b, map_url: url || null } : b))
+    await fetch('/api/branches', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_map_url', id: branchId, map_url: url || null }),
+    })
+  }, [])
 
   const handleAddBranch = async () => {
     if (!newBranchName.trim()) return
@@ -1247,7 +1262,7 @@ export default function BranchesPage() {
                       )}
                     </div>
                   </th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[100px] bg-purple-700">ค่าแวต</th>
+                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[100px]">MAP</th>
                   {withdrawalTypes.map(wt => (
                     <th key={wt.id} className="px-2 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[120px]">
                       <div className="text-[11px] font-semibold">{wt.name}</div>
@@ -1269,7 +1284,7 @@ export default function BranchesPage() {
                 {sortAndGroup(visibleBranches).map(({ color, items }) => (
                   <>
                     <tr key={`header-${color}`} className={GROUP_HEADER_BG[color]}>
-                      <td colSpan={8 + withdrawalTypes.length + SLIP_CATS.length} className="px-3 py-1 text-xs font-bold tracking-wide">
+                      <td colSpan={7 + withdrawalTypes.length + SLIP_CATS.length} className="px-3 py-1 text-xs font-bold tracking-wide">
                         {GROUP_LABEL[color]}
                       </td>
                     </tr>
@@ -1280,8 +1295,8 @@ export default function BranchesPage() {
                         slipPeriods={slipPeriods}
                         withdrawalTypes={withdrawalTypes}
                         unpaidOrders={unpaidByBranch[b.id] ?? {}}
-                        vatItems={vatItemsMap[b.id] ?? []}
                         activePeriod={activePeriod}
+                        onMapSave={handleMapSave}
                         periodOrders={periodOrdersByBranch[b.id] ?? []}
                         periodSlipTotals={periodSlipData[b.id] ?? {}}
                         periodUnpaidOrders={periodUnpaidByBranch[b.id] ?? {}} />
@@ -1307,19 +1322,8 @@ export default function BranchesPage() {
                       )
                     })() : <span className="text-gray-300 font-normal text-[10px]">เลือกช่วงเวลาเพื่อดูยอดรวม</span>}
                   </td>
-                  {/* ค่าแวต total */}
-                  <td className="px-3 py-2 border-r border-gray-300 text-center">
-                    {(() => {
-                      const allVat = Object.values(vatItemsMap).flat()
-                      const filtered = activePeriod
-                        ? allVat.filter(v => v.slip_date >= activePeriod.start && v.slip_date <= activePeriod.end)
-                        : allVat
-                      const total = filtered.reduce((s, v) => s + v.amount, 0)
-                      return total > 0
-                        ? <span className="text-[#7c3aed]">฿{Math.round(total).toLocaleString('th-TH')}</span>
-                        : <span className="text-gray-300 font-normal">-</span>
-                    })()}
-                  </td>
+                  {/* MAP total — no aggregation needed */}
+                  <td className="px-3 py-2 border-r border-gray-300"></td>
                   {/* Withdrawal type totals */}
                   {withdrawalTypes.map(wt => {
                     const src = activePeriod ? periodUnpaidByBranch : unpaidByBranch
