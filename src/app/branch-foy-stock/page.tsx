@@ -24,6 +24,27 @@ function getBranchColor(name: string, colorGroup: string | null): ColorGroup {
 }
 
 const COL_ORDER: ColorGroup[] = ['orange', 'yellow', 'red', 'green', 'black', 'editor']
+
+// ── Category order + colors (เหมือนหน้าสต็อคกระดาษฝอย) ──────────────────────
+const CAT_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
+const CAT_HEADER_BG: Record<string, string> = {
+  '2 มิล':   'bg-[#F7DC6F] text-gray-800',
+  '4 มิล':   'bg-[#F0B27A] text-gray-800',
+  '1.5 มิล': 'bg-[#F1948A] text-gray-800',
+  'ฝอยหยัก': 'bg-[#C39BD3] text-gray-800',
+}
+const CAT_ROW_BG: Record<string, string> = {
+  '2 มิล':   'bg-[#F7DC6F] text-gray-800',
+  '4 มิล':   'bg-[#F0B27A] text-gray-800',
+  '1.5 มิล': 'bg-[#F1948A] text-gray-800',
+  'ฝอยหยัก': 'bg-[#C39BD3] text-gray-800',
+}
+const CAT_DATA_BG: Record<string, string> = {
+  '2 มิล':   'bg-[#FCF3CF]',
+  '4 มิล':   'bg-[#FAE5D3]',
+  '1.5 มิล': 'bg-[#FADBD8]',
+  'ฝอยหยัก': 'bg-[#FBDEF0]',
+}
 const COL_HEADER: Record<ColorGroup, string> = {
   orange: 'bg-orange-200 text-orange-900',
   yellow: 'bg-yellow-200 text-yellow-900',
@@ -120,18 +141,22 @@ export default function BranchFoyStockPage() {
     [branches]
   )
 
-  // จัดกลุ่ม: category → model_name → items[]
+  // จัดกลุ่ม: category → model_name → items[] เรียงตาม CAT_ORDER
   const grouped = useMemo(() => {
     const catMap = new Map<string, Map<string, FoyItem[]>>()
     for (const item of items) {
-      if (!catMap.has(item.category)) catMap.set(item.category, new Map())
-      const modelMap = catMap.get(item.category)!
+      const cat = item.category || '2 มิล'
+      if (!catMap.has(cat)) catMap.set(cat, new Map())
+      const modelMap = catMap.get(cat)!
       if (!modelMap.has(item.model_name)) modelMap.set(item.model_name, [])
       modelMap.get(item.model_name)!.push(item)
     }
-    return Array.from(catMap.entries()).map(([cat, modelMap]) => ({
+    // เรียงตาม CAT_ORDER ก่อน แล้วค่อยตามด้วยหมวดที่ไม่รู้จัก
+    const knownCats  = CAT_ORDER.filter(c => catMap.has(c))
+    const unknownCats = Array.from(catMap.keys()).filter(c => !CAT_ORDER.includes(c))
+    return [...knownCats, ...unknownCats].map(cat => ({
       cat,
-      models: Array.from(modelMap.entries()).map(([model, rows]) => ({ model, rows })),
+      models: Array.from(catMap.get(cat)!.entries()).map(([model, rows]) => ({ model, rows })),
     }))
   }, [items])
 
@@ -235,12 +260,16 @@ export default function BranchFoyStockPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {grouped.map(({ cat, models }) => (
+                  {grouped.map(({ cat, models }) => {
+                    const catHeaderCls = CAT_HEADER_BG[cat] ?? 'bg-gray-400 text-white'
+                    const modelRowCls  = CAT_ROW_BG[cat]    ?? 'bg-gray-200 text-gray-800'
+                    const dataRowCls   = CAT_DATA_BG[cat]   ?? 'bg-white'
+                    return (
                     <Fragment key={cat}>
                       {/* Category header */}
                       <tr>
                         <td colSpan={sortedBranches.length + 1}
-                          className="sticky left-0 bg-[#6b7280] text-white text-[11px] font-bold px-3 py-1">
+                          className={`sticky left-0 text-[12px] font-bold px-3 py-1.5 ${catHeaderCls}`}>
                           {cat}
                         </td>
                       </tr>
@@ -249,14 +278,14 @@ export default function BranchFoyStockPage() {
                           {/* Model header */}
                           <tr>
                             <td colSpan={sortedBranches.length + 1}
-                              className="sticky left-0 bg-[#9b9484] text-white text-[11px] font-bold px-3 py-1 pl-5">
+                              className={`sticky left-0 text-[11px] font-semibold px-3 py-1 pl-5 ${modelRowCls}`}>
                               {model}
                             </td>
                           </tr>
                           {/* Color rows */}
                           {rows.map(item => (
-                            <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                              <td className="sticky left-0 bg-white z-10 px-3 py-1 pl-7 text-gray-700 border-r border-gray-200 min-w-[200px]">
+                            <tr key={item.id} className={`border-b border-white/60 ${dataRowCls}`}>
+                              <td className={`sticky left-0 z-10 px-3 py-1 pl-7 text-gray-700 border-r border-gray-200 min-w-[200px] ${dataRowCls}`}>
                                 {item.color_name || '—'}
                               </td>
                               {sortedBranches.map(b => (
@@ -273,7 +302,8 @@ export default function BranchFoyStockPage() {
                         </Fragment>
                       ))}
                     </Fragment>
-                  ))}
+                  )
+                  })}
                 </tbody>
               </table>
             </div>
