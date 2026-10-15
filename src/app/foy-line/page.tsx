@@ -231,6 +231,16 @@ export default function FoyLinePage() {
 
   // ── Computed ─────────────────────────────────────────────────────────────────
 
+  // เรียงใหม่สุด (raw_date มากที่สุด) อยู่บน, ไม่มีวันที่อยู่ล่างสุด
+  const sortedRows = rows
+    .map((row, idx) => ({ row, idx }))
+    .sort((a, b) => {
+      if (!a.row.raw_date && !b.row.raw_date) return 0
+      if (!a.row.raw_date) return 1
+      if (!b.row.raw_date) return -1
+      return b.row.raw_date.localeCompare(a.row.raw_date)
+    })
+
   const maxSessions = Math.max(1, ...rows.map(r => r.sessions.length))
 
   const totalKg = (row: ProductionRow) =>
@@ -333,13 +343,13 @@ export default function FoyLinePage() {
             </thead>
 
             <tbody>
-              {rows.map((row, rowIdx) => {
+              {sortedRows.map(({ row, idx: rowIdx }, displayIdx) => {
                 const total     = totalKg(row)
                 const remaining = row.raw_kg != null ? row.raw_kg - total : null
                 const colors    = colorOptions(row.model_name ?? '')
 
                 return (
-                  <tr key={rowIdx} className={`border-b border-gray-100 hover:bg-yellow-50/30 align-top ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-200'}`}>
+                  <tr key={rowIdx} className={`border-b border-gray-100 hover:bg-yellow-50/30 align-top ${displayIdx % 2 === 0 ? 'bg-white' : 'bg-gray-200'}`}>
 
                     {/* ── Col 1: วัตถุดิบ ── */}
                     <td className="px-2 py-1.5 border-r border-gray-200 align-top">
