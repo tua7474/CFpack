@@ -248,7 +248,7 @@ export default function FoyLinePage() {
 
   // ── Styles ───────────────────────────────────────────────────────────────────
 
-  const numCls = 'w-full px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white'
+  const numCls = 'w-full px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none'
 
   const dateLbl = (d?: string) => (
     <div className="text-[9px] text-blue-400 text-center leading-none h-3 mb-0.5 truncate">
@@ -390,7 +390,7 @@ export default function FoyLinePage() {
                           type="number" inputMode="decimal" step="0.1"
                           value={row.raw_kg ?? ''}
                           onChange={e => updateRawKg(rowIdx, e.target.value)}
-                          className="flex-1 min-w-0 px-1 py-0.5 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white"
+                          className="flex-1 min-w-0 px-1 py-0.5 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-center text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           placeholder="กก."
                         />
                       </div>
