@@ -288,8 +288,16 @@ export default function FoyLinePage() {
             <thead>
               {/* Row 1 */}
               <tr className="bg-[#9b9484] text-white">
-                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left align-top" style={{ minWidth: 210 }}>
-                  <div className="font-semibold">รุ่น / สี · วันที่ / กก.</div>
+                <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left" style={{ minWidth: 210 }}>
+                  <div className="flex flex-col justify-between h-full">
+                    <div className="font-semibold">รุ่น / สี · วันที่ / กก.</div>
+                    <button
+                      onClick={addRow}
+                      className="mt-2 px-3 py-1 text-xs rounded bg-white/20 hover:bg-white/30 text-white font-medium transition-colors self-start"
+                    >
+                      + เพิ่มแถว
+                    </button>
+                  </div>
                 </th>
                 <th colSpan={maxSessions * 2} className="px-3 py-1.5 border border-white/20 text-center font-semibold">
                   บันทึกการตัด
@@ -468,12 +476,6 @@ export default function FoyLinePage() {
           </table>
         </div>
 
-        <button
-          onClick={addRow}
-          className="mt-3 px-5 py-2 text-sm rounded bg-[#9b9484] hover:bg-[#7a7568] text-white font-medium transition-colors"
-        >
-          + เพิ่มแถว
-        </button>
       </main>
     </div>
   )
