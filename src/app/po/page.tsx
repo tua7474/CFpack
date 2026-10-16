@@ -1398,7 +1398,7 @@ function POInner() {
                                     value={couponAmount}
                                     onChange={e => { setCouponAmount(e.target.value); setManualTotal('') }}
                                     placeholder="0"
-                                    className="w-full text-xl font-extrabold text-green-700 text-right bg-transparent focus:outline-none border-b-2 border-green-300 focus:border-green-500 placeholder-green-300 leading-none"
+                                    className="w-full text-xl font-extrabold text-green-700 text-right bg-transparent focus:outline-none border-b-2 border-green-300 focus:border-green-500 placeholder-green-300 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                   />
                                 </div>
                               </td>,
@@ -1428,7 +1428,7 @@ function POInner() {
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {noVatColTotal > 0 ? fmt2(noVatColTotal - couponVal) : ''}
+                                      {vatMode === 'no-vat' && (noVatColTotal > 0 || vatColTotal > 0) ? fmt2(effectiveTotal) : ''}
                                     </div>
                                   </div>
                                 </td>,
@@ -1444,7 +1444,7 @@ function POInner() {
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {vatColTotal > 0 ? fmt2(vatMode === 'vat' ? vatColTotal - couponVal : vatColTotal) : ''}
+                                      {vatColTotal > 0 ? fmt2(vatMode === 'vat' ? effectiveTotal : vatColTotal) : ''}
                                     </div>
                                   </div>
                                 </td>,
