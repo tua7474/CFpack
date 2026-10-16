@@ -2120,10 +2120,16 @@ function Booking2Inner() {
                 )
               }
 
+              // ถ้า form ที่ตรงกับ column ว่างเปล่า ให้ fallback coupon ไปอยู่ใน form ที่มี items
+              const hasNv = nvItems.length > 0
+              const hasV  = vItems.length > 0
+              const nvCoupon = appliedCouponVal > 0 && hasNv && (appliedCouponCol === 'no-vat' || !hasV) ? appliedCouponVal : 0
+              const vCoupon  = appliedCouponVal > 0 && hasV  && (appliedCouponCol === 'vat'    || !hasNv) ? appliedCouponVal : 0
+
               return (
                 <>
-                  {renderSplitForm('NV', nvItems, nvTotal, false, appliedCouponCol === 'no-vat' ? appliedCouponVal : 0)}
-                  {renderSplitForm('V', vItems, vTotal, true, appliedCouponCol === 'vat' ? appliedCouponVal : 0)}
+                  {renderSplitForm('NV', nvItems, nvTotal, false, nvCoupon)}
+                  {renderSplitForm('V', vItems, vTotal, true, vCoupon)}
                 </>
               )
             })()}
