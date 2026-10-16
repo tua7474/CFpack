@@ -1505,7 +1505,7 @@ function Booking2Inner() {
                                         className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'no-vat' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                                         โนแวต
                                       </button>
-                                      {couponVal > 0 && (
+                                      {couponVal > 0 && noVatColTotal > 0 && (
                                         <button
                                           onClick={() => setAppliedCouponCol(prev => prev === 'no-vat' ? null : 'no-vat')}
                                           className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${appliedCouponCol === 'no-vat' ? 'bg-red-500 text-white' : 'text-red-500 border border-red-300 hover:bg-red-50'}`}>
@@ -1515,8 +1515,8 @@ function Booking2Inner() {
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>
-                                      {vatMode === 'no-vat' && (noVatColTotal > 0 || vatColTotal > 0)
-                                        ? fmt2(appliedCouponCol === 'no-vat' ? effectiveTotal : noVatColTotal + vatColTotal)
+                                      {noVatColTotal > 0
+                                        ? fmt2(noVatColTotal - (appliedCouponCol === 'no-vat' ? appliedCouponVal : 0))
                                         : ''}
                                     </div>
                                   </div>
@@ -1530,7 +1530,7 @@ function Booking2Inner() {
                                         className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'vat' ? 'bg-[#9b9484] text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                                         รวมแวต
                                       </button>
-                                      {couponVal > 0 && (
+                                      {couponVal > 0 && vatColTotal > 0 && (
                                         <button
                                           onClick={() => setAppliedCouponCol(prev => prev === 'vat' ? null : 'vat')}
                                           className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${appliedCouponCol === 'vat' ? 'bg-red-500 text-white' : 'text-red-500 border border-red-300 hover:bg-red-50'}`}>
@@ -1541,7 +1541,7 @@ function Booking2Inner() {
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
                                       {vatColTotal > 0
-                                        ? fmt2(vatMode === 'vat' && appliedCouponCol === 'vat' ? effectiveTotal : vatColTotal)
+                                        ? fmt2(vatColTotal - (appliedCouponCol === 'vat' ? appliedCouponVal : 0))
                                         : ''}
                                     </div>
                                   </div>
