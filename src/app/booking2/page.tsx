@@ -2120,16 +2120,44 @@ function Booking2Inner() {
                 )
               }
 
-              // ถ้า form ที่ตรงกับ column ว่างเปล่า ให้ fallback coupon ไปอยู่ใน form ที่มี items
-              const hasNv = nvItems.length > 0
-              const hasV  = vItems.length > 0
-              const nvCoupon = appliedCouponVal > 0 && hasNv && (appliedCouponCol === 'no-vat' || !hasV) ? appliedCouponVal : 0
-              const vCoupon  = appliedCouponVal > 0 && hasV  && (appliedCouponCol === 'vat'    || !hasNv) ? appliedCouponVal : 0
+              const grandTotal = nvTotal + vTotal
 
               return (
                 <>
-                  {renderSplitForm('NV', nvItems, nvTotal, false, nvCoupon)}
-                  {renderSplitForm('V', vItems, vTotal, true, vCoupon)}
+                  {renderSplitForm('NV', nvItems, nvTotal, false, 0)}
+                  {renderSplitForm('V', vItems, vTotal, true, 0)}
+                  {appliedCouponVal > 0 && grandTotal > 0 && (
+                    <div className="vat-split-print-frame">
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 8 }}>
+                        <tbody>
+                          <tr>
+                            <td colSpan={3} style={{ textAlign: 'right', padding: '4px 5px', border: '1px solid #bbb', fontWeight: 'bold' }}>
+                              ยอดรวมสินค้า
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '4px 5px', border: '1px solid #bbb', fontWeight: 'bold', width: 120 }}>
+                              {fmt2(grandTotal)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td colSpan={3} style={{ textAlign: 'right', padding: '4px 5px', border: '1px solid #bbb', color: '#dc2626', fontWeight: 'bold' }}>
+                              คูปองส่วนลด
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '4px 5px', border: '1px solid #bbb', color: '#dc2626', fontWeight: 'bold' }}>
+                              -{fmt2(appliedCouponVal)}
+                            </td>
+                          </tr>
+                          <tr style={{ backgroundColor: '#f0fdf4' }}>
+                            <td colSpan={3} style={{ textAlign: 'right', padding: '6px 5px', border: '2px solid #9b9484', fontWeight: 'bold', fontSize: 14 }}>
+                              ยอดสุดท้ายที่ต้องโอน
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '6px 5px', border: '2px solid #9b9484', fontWeight: 'bold', fontSize: 16, color: '#16a34a' }}>
+                              {fmt2(grandTotal - appliedCouponVal)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </>
               )
             })()}
