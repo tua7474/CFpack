@@ -1428,7 +1428,7 @@ function POInner() {
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {noVatColTotal > 0 ? fmt2(noVatColTotal) : ''}
+                                      {noVatColTotal > 0 ? fmt2(noVatColTotal - couponVal) : ''}
                                     </div>
                                   </div>
                                 </td>,
@@ -1444,7 +1444,7 @@ function POInner() {
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {vatColTotal > 0 ? fmt2(vatColTotal) : ''}
+                                      {vatColTotal > 0 ? fmt2(vatMode === 'vat' ? vatColTotal - couponVal : vatColTotal) : ''}
                                     </div>
                                   </div>
                                 </td>,
