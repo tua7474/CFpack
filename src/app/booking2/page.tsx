@@ -271,8 +271,9 @@ function Booking2Inner() {
   const [sourceType, setSourceType]   = useState<'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล' | ''>('')
   const [vehicleType, setVehicleType] = useState<string>('')
   const [deliveryMethods, setDeliveryMethods] = useState<{ id: number; name: string }[]>([])
-  const [manualTotal, setManualTotal]   = useState<string>('')
-  const [couponAmount, setCouponAmount] = useState<string>('')
+  const [manualTotal, setManualTotal]         = useState<string>('')
+  const [couponAmount, setCouponAmount]       = useState<string>('')
+  const [appliedCouponCol, setAppliedCouponCol] = useState<'no-vat' | 'vat' | null>(null)
   const [branchInfo, setBranchInfo] = useState<{ name: string; phone: string } | null>(null)
   const [isAdmin, setIsAdmin]       = useState(true)   // false = non-admin branch (LINE group)
   const [branchReady, setBranchReady] = useState<boolean | null>(null) // null=loading, false=ไม่มีสาขา, true=เข้าได้
@@ -1001,7 +1002,8 @@ function Booking2Inner() {
   const switchableExclVatTotal = switchableProductTotal + foyTotal
   // fixed = ส่วนที่ไม่สลับได้ (gray + non-switchable orange)
   const fixedTotal = grayTotal + orangeTotal - switchableProductTotal - switchableBubbleTotal
-  const couponVal  = parseFloat(couponAmount) || 0
+  const couponVal        = parseFloat(couponAmount) || 0
+  const appliedCouponVal = appliedCouponCol !== null ? couponVal : 0
   // ซ้าย (โนแวต): excl-VAT as-is + incl-VAT ÷1.07 (ถอดแวต)
   const noVatColTotal = vatMode === 'no-vat'
     ? switchableExclVatTotal + Math.round(switchableBubbleTotal / 1.07 * 100) / 100
@@ -1010,7 +1012,7 @@ function Booking2Inner() {
   const vatColTotal = fixedTotal + (vatMode === 'vat'
     ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal
     : 0)
-  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - couponVal)
+  const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - appliedCouponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000 && !vehicleType.includes('รับเอง')
 
   const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
@@ -1474,7 +1476,7 @@ function Booking2Inner() {
                                     step="0.01"
                                     min="0"
                                     value={couponAmount}
-                                    onChange={e => { setCouponAmount(e.target.value); setManualTotal('') }}
+                                    onChange={e => { setCouponAmount(e.target.value); setManualTotal(''); setAppliedCouponCol(null) }}
                                     placeholder="0"
                                     className="w-full text-xl font-extrabold text-red-600 text-right bg-transparent focus:outline-none border-b-2 border-red-300 focus:border-red-500 placeholder-red-300 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                   />
@@ -1497,32 +1499,50 @@ function Booking2Inner() {
                                 // left: no-VAT
                                 <td key={`${si}-ip4a`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'no-vat' ? 'bg-orange-50' : 'bg-gray-50'} align-middle`}>
                                   <div className="flex flex-col items-center justify-center h-full gap-0.5">
-                                    <div className="no-print self-start">
+                                    <div className="no-print self-start flex items-center gap-1">
                                       <button
                                         onClick={() => setVatMode('no-vat')}
                                         className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'no-vat' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                                         โนแวต
                                       </button>
+                                      {couponVal > 0 && (
+                                        <button
+                                          onClick={() => setAppliedCouponCol(prev => prev === 'no-vat' ? null : 'no-vat')}
+                                          className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${appliedCouponCol === 'no-vat' ? 'bg-red-500 text-white' : 'text-red-500 border border-red-300 hover:bg-red-50'}`}>
+                                          {appliedCouponCol === 'no-vat' ? '✓ ใช้คูปอง' : 'ใช้คูปอง'}
+                                        </button>
+                                      )}
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>
-                                      {vatMode === 'no-vat' && (noVatColTotal > 0 || vatColTotal > 0) ? fmt2(effectiveTotal) : ''}
+                                      {vatMode === 'no-vat' && (noVatColTotal > 0 || vatColTotal > 0)
+                                        ? fmt2(appliedCouponCol === 'no-vat' ? effectiveTotal : noVatColTotal + vatColTotal)
+                                        : ''}
                                     </div>
                                   </div>
                                 </td>,
                                 // right: VAT
                                 <td key={`${si}-ip4b`} colSpan={2} rowSpan={2} className={`${base} p-1 ${vatMode === 'vat' ? 'bg-green-50' : 'bg-gray-50'} align-middle`}>
                                   <div className="flex flex-col items-center justify-center h-full gap-0.5">
-                                    <div className="no-print self-start">
+                                    <div className="no-print self-start flex items-center gap-1">
                                       <button
                                         onClick={() => setVatMode('vat')}
                                         className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'vat' ? 'bg-[#9b9484] text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                                         รวมแวต
                                       </button>
+                                      {couponVal > 0 && (
+                                        <button
+                                          onClick={() => setAppliedCouponCol(prev => prev === 'vat' ? null : 'vat')}
+                                          className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${appliedCouponCol === 'vat' ? 'bg-red-500 text-white' : 'text-red-500 border border-red-300 hover:bg-red-50'}`}>
+                                          {appliedCouponCol === 'vat' ? '✓ ใช้คูปอง' : 'ใช้คูปอง'}
+                                        </button>
+                                      )}
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
                                     <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {vatColTotal > 0 ? fmt2(vatMode === 'vat' ? effectiveTotal : vatColTotal) : ''}
+                                      {vatColTotal > 0
+                                        ? fmt2(vatMode === 'vat' && appliedCouponCol === 'vat' ? effectiveTotal : vatColTotal)
+                                        : ''}
                                     </div>
                                   </div>
                                 </td>,
@@ -2004,7 +2024,7 @@ function Booking2Inner() {
               const vTotal  = vItems.reduce((s, it) => s + it.total, 0)
               const orderNo = editOrderNo ?? ''
 
-              const renderSplitForm = (prefix: string, items: PrintItem[], total: number, isVat: boolean) => {
+              const renderSplitForm = (prefix: string, items: PrintItem[], total: number, isVat: boolean, couponDiscount = 0) => {
                 if (items.length === 0) return null
                 const groups = new Map<string, PrintItem[]>()
                 for (const it of items) {
@@ -2062,12 +2082,32 @@ function Booking2Inner() {
                       <tfoot>
                         <tr>
                           <td colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold', padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #9b9484' }}>
-                            {isVat ? 'ยอดรวม (รวม VAT 7%)' : 'ยอดรวม (ไม่รวม VAT)'}
+                            {isVat ? 'ยอดเงินรวม (รวม VAT 7%)' : 'ยอดเงินรวม (ไม่รวม VAT)'}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: 14, padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #9b9484' }}>
                             {fmt2(total)}
                           </td>
                         </tr>
+                        {couponDiscount > 0 && (
+                          <>
+                            <tr>
+                              <td colSpan={3} style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: '#dc2626' }}>
+                                คูปองส่วนลด
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '3px 5px', border: '1px solid #bbb', color: '#dc2626', fontWeight: 'bold' }}>
+                                -{fmt2(couponDiscount)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold', padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #9b9484' }}>
+                                ยอดเงินรวม
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: 15, padding: '4px 5px', border: '1px solid #bbb', borderTop: '2px solid #9b9484', color: '#16a34a' }}>
+                                {fmt2(total - couponDiscount)}
+                              </td>
+                            </tr>
+                          </>
+                        )}
                       </tfoot>
                     </table>
 
@@ -2082,8 +2122,8 @@ function Booking2Inner() {
 
               return (
                 <>
-                  {renderSplitForm('NV', nvItems, nvTotal, false)}
-                  {renderSplitForm('V', vItems, vTotal, true)}
+                  {renderSplitForm('NV', nvItems, nvTotal, false, appliedCouponCol === 'no-vat' ? appliedCouponVal : 0)}
+                  {renderSplitForm('V', vItems, vTotal, true, appliedCouponCol === 'vat' ? appliedCouponVal : 0)}
                 </>
               )
             })()}
