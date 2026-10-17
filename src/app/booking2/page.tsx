@@ -368,6 +368,8 @@ function Booking2Inner() {
         foy_item_quantities?: Record<string, number>;
         withdrawal_type_id?: number | null;
         priorities?: Record<string, string>;
+        coupon_amount?: number;
+        coupon_col?: string | null;
       } | null) => {
         if (!order) return
         const qty: Record<number, number> = {}
@@ -403,6 +405,12 @@ function Booking2Inner() {
             if (v === 'critical' || v === 'important') prio[Number(k)] = v
           }
           setProductPriorities(prio)
+        }
+        if (order.coupon_amount && order.coupon_amount > 0) {
+          setCouponAmount(String(order.coupon_amount))
+          if (order.coupon_col === 'no-vat' || order.coupon_col === 'vat') {
+            setAppliedCouponCol(order.coupon_col)
+          }
         }
       })
       .catch(() => {})
@@ -735,6 +743,8 @@ function Booking2Inner() {
             withdrawal_type_id: withdrawalTypeId, priorities: productPriorities,
             nv_total: noVatColTotal > 0 ? noVatColTotal : null,
             v_total:  vatColTotal  > 0 ? vatColTotal  : null,
+            coupon_amount: appliedCouponVal > 0 ? appliedCouponVal : 0,
+            coupon_col: appliedCouponCol ?? null,
           }),
         })
         if (!res.ok) throw new Error()
@@ -765,6 +775,8 @@ function Booking2Inner() {
             withdrawal_type_id: withdrawalTypeId, priorities: productPriorities,
             nv_total: noVatColTotal > 0 ? noVatColTotal : null,
             v_total:  vatColTotal  > 0 ? vatColTotal  : null,
+            coupon_amount: appliedCouponVal > 0 ? appliedCouponVal : 0,
+            coupon_col: appliedCouponCol ?? null,
           }),
         })
         if (!res.ok) throw new Error()

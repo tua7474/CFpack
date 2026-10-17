@@ -128,6 +128,8 @@ export async function GET(request: Request) {
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS nv_total           DECIMAL(12,2)`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS v_total            DECIMAL(12,2)`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount        DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS coupon_amount      DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS coupon_col         VARCHAR(10)`).catch(() => {})
   const { searchParams } = new URL(request.url)
   const no = searchParams.get('no')
 
@@ -168,7 +170,7 @@ async function deductStock(quantities: Record<string, number>) {
 // ── POST — create new order ───────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  const { total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total } = await request.json()
+  const { total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col } = await request.json()
   await pool.query(CREATE_TABLE)
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS branch_id INT`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS withdrawal_type_id INT`).catch(() => {})
@@ -177,11 +179,11 @@ export async function POST(request: Request) {
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [order_no, total_amount, JSON.stringify(quantities), branch_id ?? null, source_type ?? null, vehicle_type ?? null, branch_name ?? null,
        JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {}),
-       nv_total ?? null, v_total ?? null]
+       nv_total ?? null, v_total ?? null, coupon_amount ?? 0, coupon_col ?? null]
     )
     await deductStock(quantities ?? {})
     notifyNewBooking(branch_id ?? null, rows[0].order_no, total_amount ?? 0, branch_name ?? null)
@@ -190,11 +192,11 @@ export async function POST(request: Request) {
     if ((e as { code?: string }).code === '23505') {
       order_no = order_no + String(new Date().getUTCSeconds()).padStart(2, '0')
       const { rows } = await pool.query(
-        `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+        `INSERT INTO booking_orders (order_no, total_amount, quantities, branch_id, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
         [order_no, total_amount, JSON.stringify(quantities), branch_id ?? null, source_type ?? null, vehicle_type ?? null, branch_name ?? null,
          JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {}),
-         nv_total ?? null, v_total ?? null]
+         nv_total ?? null, v_total ?? null, coupon_amount ?? 0, coupon_col ?? null]
       )
       await deductStock(quantities ?? {})
       notifyNewBooking(branch_id ?? null, rows[0].order_no, total_amount ?? 0, branch_name ?? null)
@@ -237,7 +239,7 @@ async function adjustStockDelta(
 // ── PATCH — update order (status / payment / quantities) ─────────────────────
 
 export async function PATCH(request: Request) {
-  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total } = await request.json()
+  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col } = await request.json()
 
   // If quantities are being updated, load old quantities first to compute delta
   let oldQuantities: Record<string, number> = {}
@@ -268,6 +270,8 @@ export async function PATCH(request: Request) {
   if (priorities          !== undefined) { sets.push(`priorities = $${i++}`);           vals.push(JSON.stringify(priorities)) }
   if (nv_total            !== undefined) { sets.push(`nv_total = $${i++}`);             vals.push(nv_total) }
   if (v_total             !== undefined) { sets.push(`v_total = $${i++}`);              vals.push(v_total) }
+  if (coupon_amount       !== undefined) { sets.push(`coupon_amount = $${i++}`);        vals.push(coupon_amount) }
+  if (coupon_col          !== undefined) { sets.push(`coupon_col = $${i++}`);           vals.push(coupon_col) }
 
   vals.push(order_no)
   const { rows } = await pool.query(
