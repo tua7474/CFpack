@@ -43,6 +43,8 @@ interface BookingOrder {
   withdrawal_type_id: number | null
   nv_total: string | null
   v_total: string | null
+  coupon_amount: string | null
+  coupon_col: string | null
   created_at: string
   updated_at: string
 }
@@ -266,7 +268,7 @@ export default function OrdersPage() {
           ? fetch(`/api/slips?branch_name=${encodeURIComponent(activeBranch)}`).then(r => r.json()).catch(() => [])
           : Promise.resolve([]),
       ])
-      const allOrders: { order_no: string; total_amount: string; nv_total: string | null; v_total: string | null; branch_name: string | null; payment_status: string; status: string }[] =
+      const allOrders: { order_no: string; total_amount: string; nv_total: string | null; v_total: string | null; coupon_amount: string | null; coupon_col: string | null; branch_name: string | null; payment_status: string; status: string }[] =
         Array.isArray(ordersRes) ? ordersRes : []
       const unpaid = allOrders.filter(o =>
         o.payment_status !== 'paid' &&
@@ -278,15 +280,20 @@ export default function OrdersPage() {
       for (const o of unpaid) {
         const nvT = parseFloat(o.nv_total ?? '0') || 0
         const vT  = parseFloat(o.v_total  ?? '0') || 0
+        const couponAmt = parseFloat(o.coupon_amount ?? '0') || 0
+        const couponCol = o.coupon_col ?? null
+        const nvNet = nvT - (couponCol === 'no-vat' ? couponAmt : 0)
+        const vNet  = vT  - (couponCol === 'vat'    ? couponAmt : 0)
         if (nvT > 0 && vT > 0) {
-          payEntries.push({ display_no: `NV${o.order_no}`, order_no: o.order_no, total_amount: String(nvT), branch_name: o.branch_name, vat_tag: 'NV' })
-          payEntries.push({ display_no: `V${o.order_no}`,  order_no: o.order_no, total_amount: String(vT),  branch_name: o.branch_name, vat_tag: 'V'  })
+          payEntries.push({ display_no: `NV${o.order_no}`, order_no: o.order_no, total_amount: String(nvNet), branch_name: o.branch_name, vat_tag: 'NV' })
+          payEntries.push({ display_no: `V${o.order_no}`,  order_no: o.order_no, total_amount: String(vNet),  branch_name: o.branch_name, vat_tag: 'V'  })
         } else if (nvT > 0) {
-          payEntries.push({ display_no: `NV${o.order_no}`, order_no: o.order_no, total_amount: String(nvT), branch_name: o.branch_name, vat_tag: 'NV' })
+          payEntries.push({ display_no: `NV${o.order_no}`, order_no: o.order_no, total_amount: String(nvNet), branch_name: o.branch_name, vat_tag: 'NV' })
         } else if (vT > 0) {
-          payEntries.push({ display_no: `V${o.order_no}`,  order_no: o.order_no, total_amount: String(vT),  branch_name: o.branch_name, vat_tag: 'V'  })
+          payEntries.push({ display_no: `V${o.order_no}`,  order_no: o.order_no, total_amount: String(vNet),  branch_name: o.branch_name, vat_tag: 'V'  })
         } else {
-          payEntries.push({ display_no: o.order_no, order_no: o.order_no, total_amount: o.total_amount, branch_name: o.branch_name, vat_tag: null })
+          const legacyNet = parseFloat(o.total_amount) - (couponCol === null ? couponAmt : 0)
+          payEntries.push({ display_no: o.order_no, order_no: o.order_no, total_amount: String(legacyNet), branch_name: o.branch_name, vat_tag: null })
         }
       }
       setPayModalOrders(payEntries)
@@ -395,6 +402,9 @@ export default function OrdersPage() {
     const nvTotal = parseFloat(order.nv_total ?? '0') || 0
     const vTotal  = parseFloat(order.v_total  ?? '0') || 0
     const orderDate = fmtOrderDate(order.updated_at)
+
+    const couponAmt = parseFloat(order.coupon_amount ?? '0') || 0
+    const couponCol = order.coupon_col ?? null
 
     const renderSingleForm = (
       displayOrderNo: string,
@@ -525,11 +535,37 @@ export default function OrdersPage() {
               sum + items.reduce((s, it) => s + it.total, 0), 0)
             const foyCalcTotal = Array.from(foyModelMap.values()).flat().reduce((s, fi) => s + fi.total, 0)
             const displayTotal = itemsTotal + foyCalcTotal
+            // Show coupon on matching form
+            const showCouponHere = couponAmt > 0 && (
+              vatLabel === null ||
+              (vatLabel === 'NV' && couponCol === 'no-vat') ||
+              (vatLabel === 'V'  && couponCol === 'vat')
+            )
+            const netTotal = showCouponHere ? displayTotal - couponAmt : displayTotal
             return (
           <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm', marginTop: '3mm', borderTop: '2px solid #888', paddingTop: '2mm' }}>
-              <span style={{ fontSize: '11pt', fontWeight: 'bold', color: '#111' }}>ยอดเงินรวม</span>
-              <span style={{ fontSize: '12pt', fontWeight: 'bold', color: '#111' }}>{fmtMoney(displayTotal)} บาท</span>
+            <div style={{ marginTop: '3mm', borderTop: '2px solid #888', paddingTop: '2mm' }}>
+              {showCouponHere ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1mm' }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm' }}>
+                    <span style={{ fontSize: '9pt', color: '#888' }}>ยอดสินค้า</span>
+                    <span style={{ fontSize: '9pt', color: '#888' }}>{fmtMoney(displayTotal)} บาท</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm' }}>
+                    <span style={{ fontSize: '9pt', color: '#c00', fontWeight: 'bold' }}>คูปองส่วนลด</span>
+                    <span style={{ fontSize: '9pt', color: '#c00', fontWeight: 'bold' }}>-{fmtMoney(couponAmt)} บาท</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm', borderTop: '1px solid #bbb', paddingTop: '1mm', marginTop: '1mm' }}>
+                    <span style={{ fontSize: '11pt', fontWeight: 'bold', color: '#111' }}>ยอดสุทธิ (หักส่วนลดแล้ว)</span>
+                    <span style={{ fontSize: '13pt', fontWeight: 'bold', color: '#c05000' }}>{fmtMoney(netTotal)} บาท</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4mm' }}>
+                  <span style={{ fontSize: '11pt', fontWeight: 'bold', color: '#111' }}>ยอดเงินรวม</span>
+                  <span style={{ fontSize: '12pt', fontWeight: 'bold', color: '#111' }}>{fmtMoney(displayTotal)} บาท</span>
+                </div>
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm', marginTop: '4mm' }}>
               {[{ label: 'ผู้ส่งสินค้า' }, { label: 'ผู้รับสินค้า' }].map(({ label }) => (
@@ -837,7 +873,10 @@ export default function OrdersPage() {
                 ((isAdmin || isManager) ? true : o.branch_name === branchName)
               )
               const unpaidCount = unpaidOrders.length
-              const unpaidTotal = unpaidOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
+              const unpaidTotal = unpaidOrders.reduce((s, o) => {
+                const coupon = parseFloat(o.coupon_amount ?? '0') || 0
+                return s + parseFloat(o.total_amount) - coupon
+              }, 0)
               return unpaidCount > 0 ? (
                 <button
                   onClick={() => openPayModal()}
@@ -909,10 +948,30 @@ export default function OrdersPage() {
                         </td>
 
                         {/* 2. ยอดเงินรวม */}
-                        <td className="px-4 py-3 border-r border-gray-200 text-right font-semibold">
-                          {fmtMoney(displayAmount)}
-                          {vatTag && <div className="text-[10px] text-gray-400 font-normal">{vatTag === 'NV' ? 'ไม่รวมแวต' : 'รวมแวต'}</div>}
-                        </td>
+                        {(() => {
+                          const couponAmt = parseFloat(order.coupon_amount ?? '0') || 0
+                          const couponCol = order.coupon_col ?? null
+                          // Show coupon on the matching column row
+                          const showCoupon = couponAmt > 0 && (
+                            vatTag === null ||
+                            (vatTag === 'NV' && couponCol === 'no-vat') ||
+                            (vatTag === 'V'  && couponCol === 'vat')
+                          )
+                          return (
+                            <td className="px-4 py-3 border-r border-gray-200 text-right font-semibold">
+                              {showCoupon ? (
+                                <div className="flex flex-col items-end gap-0">
+                                  <span className="text-xs text-gray-400 line-through font-normal">{fmtMoney(displayAmount)}</span>
+                                  <span className="text-[10px] text-red-500 font-bold">-{fmtMoney(couponAmt)} คูปอง</span>
+                                  <span className="text-sm font-bold text-orange-600">{fmtMoney(displayAmount - couponAmt)}</span>
+                                </div>
+                              ) : (
+                                fmtMoney(displayAmount)
+                              )}
+                              {vatTag && <div className="text-[10px] text-gray-400 font-normal">{vatTag === 'NV' ? 'ไม่รวมแวต' : 'รวมแวต'}</div>}
+                            </td>
+                          )
+                        })()}
 
                         {/* 3. วันเวลาอัพเดท */}
                         <td className="px-4 py-3 border-r border-gray-200 text-gray-500 whitespace-nowrap text-xs">
