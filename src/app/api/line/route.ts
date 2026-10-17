@@ -1911,8 +1911,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       if (orders.length === 0) {
         return [
           header,
-          { type: 'text', text: 'ยังไม่มีใบจอง', size: 'xxs', color: '#aaaaaa',
-            paddingStart: '4px', paddingBottom: '2px' },
+          { type: 'text', text: 'ยังไม่มีใบจอง', size: 'xxs', color: '#aaaaaa', margin: 'none' },
         ]
       }
 
@@ -1948,7 +1947,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
             ],
           }
         : { type: 'text', text: `${orders.length} รายการ  ✅ ชำระครบ`,
-            size: 'xxs', color: '#16a34a', paddingStart: '2px', paddingBottom: '1px' }
+            size: 'xxs', color: '#16a34a', margin: 'none' }
 
       return [header, ...orderLines, summaryRow]
     }
