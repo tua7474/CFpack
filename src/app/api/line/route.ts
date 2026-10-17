@@ -1898,55 +1898,69 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     // ── helper: สร้างแถวรายการ ──────────────────────────────────────────────
     const fmtAmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
 
-    const buildOrderRows = (orders: OrderRow[], label: string): object[] => {
-      if (orders.length === 0) return []
+    const buildOrderRows = (orders: OrderRow[], weekHeaderLabel: string): object[] => {
+      // header แสดงเสมอ
+      const header: object = {
+        type: 'box', layout: 'horizontal',
+        paddingTop: '3px', paddingBottom: '2px',
+        contents: [
+          { type: 'text', text: weekHeaderLabel, size: 'xxs', color: '#9b9484', weight: 'bold' },
+        ],
+      }
+
+      if (orders.length === 0) {
+        return [
+          header,
+          { type: 'text', text: 'ยังไม่มีใบจอง', size: 'xxs', color: '#aaaaaa',
+            paddingStart: '4px', paddingBottom: '2px' },
+        ]
+      }
+
       const pendingAmt = orders
         .filter(o => o.payment_status !== 'paid')
         .reduce((s, o) => s + Number(o.total_amount), 0)
-      const allPaid = pendingAmt === 0
-      return [
-        ...(allPaid
-          ? [{ type: 'text', text: `${label}ไม่มียอดค้าง`, size: 'xxs', color: '#16a34a', margin: 'none' }]
-          : [
-              ...orders.map(o => {
-                const paid    = o.payment_status === 'paid'
-                const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
-                  day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
-                })
-                return {
-                  type: 'box', layout: 'horizontal',
-                  paddingTop: '2px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
-                  contents: [
-                    { type: 'text', text: o.order_no, size: 'xxs', color: '#333333', weight: 'bold', flex: 4 },
-                    { type: 'text', text: dateStr, size: 'xxs', color: '#aaaaaa', flex: 3, align: 'center' },
-                    { type: 'text', text: fmtAmt(o.total_amount), size: 'xxs',
-                      color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
-                  ],
-                }
-              }),
-              {
-                type: 'box', layout: 'horizontal',
-                paddingTop: '4px', paddingBottom: '2px', paddingStart: '2px', paddingEnd: '2px',
-                contents: [
-                  { type: 'text', text: `ยอดคงค้าง${label}`, size: 'xxs', color: '#dc2626', weight: 'bold', flex: 7 },
-                  { type: 'text', text: fmtAmt(pendingAmt), size: 'xxs', color: '#dc2626', weight: 'bold', flex: 3, align: 'end' },
-                ],
-              },
-            ]
-        ),
-      ]
+
+      const orderLines = orders.map(o => {
+        const paid    = o.payment_status === 'paid'
+        const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
+          day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
+        })
+        return {
+          type: 'box', layout: 'horizontal',
+          paddingTop: '1px', paddingBottom: '1px', paddingStart: '2px', paddingEnd: '2px',
+          contents: [
+            { type: 'text', text: paid ? '✅' : '⏳', size: 'xxs', flex: 1 },
+            { type: 'text', text: o.order_no, size: 'xxs', color: '#333333', weight: 'bold', flex: 4 },
+            { type: 'text', text: dateStr, size: 'xxs', color: '#888888', flex: 3, align: 'center' },
+            { type: 'text', text: fmtAmt(Number(o.total_amount)), size: 'xxs',
+              color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+          ],
+        }
+      })
+
+      const summaryRow: object = pendingAmt > 0
+        ? {
+            type: 'box', layout: 'horizontal',
+            paddingTop: '2px', paddingBottom: '1px', paddingStart: '2px', paddingEnd: '2px',
+            contents: [
+              { type: 'text', text: `${orders.length} รายการ  ค้าง:`, size: 'xxs', color: '#dc2626', flex: 5 },
+              { type: 'text', text: fmtAmt(pendingAmt), size: 'xxs', color: '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+            ],
+          }
+        : { type: 'text', text: `${orders.length} รายการ  ✅ ชำระครบ`,
+            size: 'xxs', color: '#16a34a', paddingStart: '2px', paddingBottom: '1px' }
+
+      return [header, ...orderLines, summaryRow]
     }
 
-    const lastWeekRows  = buildOrderRows(lastWeekOrders, 'สัปดาห์ที่แล้ว')
-    const thisWeekRows  = buildOrderRows(weekOrders, 'สัปดาห์นี้')
+    const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว')
+    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้')
 
-    const orderRows: object[] = (thisWeekRows.length === 0 && lastWeekRows.length === 0)
-      ? [{ type: 'text', text: 'ยังไม่มีใบจอง 2 สัปดาห์ที่ผ่านมา', size: 'xs', color: '#aaaaaa', align: 'center', margin: 'sm' }]
-      : [
-          ...lastWeekRows,
-          ...(lastWeekRows.length > 0 && thisWeekRows.length > 0 ? [{ type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
-          ...thisWeekRows,
-        ]
+    const orderRows: object[] = [
+      ...lastWeekRows,
+      { type: 'separator', margin: 'xs', color: '#e5e7eb' },
+      ...thisWeekRows,
+    ]
 
     // ── 3 ปุ่มแถวเดียว ───────────────────────────────────────────────────────
     const ordersUrl = `${BASE_URL}/orders`
