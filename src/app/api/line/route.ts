@@ -1216,6 +1216,29 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     ])
   }
 
+  // QR_LAST:{branchId} / QR_NOW:{branchId} — QR ชำระยอดค้างสัปดาห์ที่แล้ว/นี้
+  if (data.startsWith('QR_LAST:') || data.startsWith('QR_NOW:')) {
+    const isLast   = data.startsWith('QR_LAST:')
+    const branchId = parseInt(data.split(':')[1])
+    const promptPayId = process.env.PROMPTPAY_ID
+    if (!promptPayId) return reply(replyToken, [{ type: 'text', text: '⚠️ ยังไม่ได้ตั้งค่า PROMPTPAY_ID' }])
+
+    const orders = isLast ? await getLastWeekOrders(branchId) : await getCurrentWeekOrders(branchId)
+    const pending = orders.filter((o: {payment_status: string}) => o.payment_status !== 'paid')
+    const total   = pending.reduce((s: number, o: {total_amount: number}) => s + Number(o.total_amount), 0)
+
+    if (!total) return reply(replyToken, [{ type: 'text', text: `✅ ${isLast ? 'สัปดาห์ที่แล้ว' : 'สัปดาห์นี้'} ไม่มียอดค้างชำระครับ` }])
+
+    const weekLabel = isLast ? 'สัปดาห์ที่แล้ว' : 'สัปดาห์นี้'
+    const orderNos  = pending.map((o: {order_no: string}) => `#${o.order_no}`).join(', ')
+    const qrUrl     = promptPayQrUrl(promptPayId, total)
+
+    return reply(replyToken, [
+      { type: 'image', originalContentUrl: qrUrl, previewImageUrl: qrUrl },
+      { type: 'text', text: `💳 PromptPay — ${weekLabel}\n฿${fmt(total)}\n\nรายการ: ${orderNos}\n\nสแกน QR โอนเงินได้เลยครับ\nเสร็จแล้วส่งสลิปในกลุ่มนี้` },
+    ])
+  }
+
   // PAYCONFIRM: mark all pending orders paid (admin only via LINE user_id)
   if (data.startsWith('PAYCONFIRM:')) {
     const branchId = parseInt(data.split(':')[1])
@@ -1898,11 +1921,12 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     // ── helper: สร้างแถวรายการ ──────────────────────────────────────────────
     const fmtAmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
 
-    const buildOrderRows = (orders: OrderRow[], weekHeaderLabel: string): object[] => {
-      // header แสดงเสมอ
+    const buildOrderRows = (
+      orders: OrderRow[], weekHeaderLabel: string,
+      weekKey: 'LAST' | 'NOW', bId: number | null
+    ): object[] => {
       const header: object = {
-        type: 'box', layout: 'horizontal',
-        paddingTop: '3px', paddingBottom: '2px',
+        type: 'box', layout: 'horizontal', paddingTop: '3px', paddingBottom: '2px',
         contents: [
           { type: 'text', text: weekHeaderLabel, size: 'xxs', color: '#9b9484', weight: 'bold' },
         ],
@@ -1937,23 +1961,37 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         }
       })
 
-      const summaryRow: object = pendingAmt > 0
-        ? {
-            type: 'box', layout: 'horizontal',
-            paddingTop: '2px', paddingBottom: '1px', paddingStart: '2px', paddingEnd: '2px',
-            contents: [
-              { type: 'text', text: `${orders.length} รายการ  ค้าง:`, size: 'xxs', color: '#dc2626', flex: 5 },
-              { type: 'text', text: fmtAmt(pendingAmt), size: 'xxs', color: '#dc2626', weight: 'bold', flex: 3, align: 'end' },
-            ],
-          }
-        : { type: 'text', text: `${orders.length} รายการ  ✅ ชำระครบ`,
-            size: 'xxs', color: '#16a34a', margin: 'none' }
+      // summary row: ยอดรวม + ปุ่ม QR (ถ้ามีค้าง)
+      const summaryRow: object = {
+        type: 'box', layout: 'horizontal', spacing: 'sm',
+        paddingTop: '3px', paddingBottom: '1px',
+        contents: [
+          ...(pendingAmt > 0
+            ? [
+                { type: 'box', layout: 'vertical', flex: 1, justifyContent: 'center',
+                  contents: [
+                    { type: 'text', text: `${orders.length} รายการ`, size: 'xxs', color: '#888888' },
+                    { type: 'text', text: `ค้าง ฿${fmtAmt(pendingAmt)}`, size: 'xxs', color: '#dc2626', weight: 'bold' },
+                  ]},
+                ...(bId !== null ? [{
+                  type: 'box', layout: 'vertical', flex: 0,
+                  backgroundColor: '#1a3a6c', cornerRadius: '4px',
+                  paddingTop: '4px', paddingBottom: '4px', paddingStart: '8px', paddingEnd: '8px',
+                  justifyContent: 'center',
+                  action: { type: 'postback', data: `QR_${weekKey}:${bId}`, displayText: '💳 สร้าง QR ชำระเงิน' },
+                  contents: [{ type: 'text', text: '💳 QR', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
+                }] : []),
+              ]
+            : [{ type: 'text', text: `${orders.length} รายการ  ✅ ชำระครบ`, size: 'xxs', color: '#16a34a', margin: 'none' }]
+          ),
+        ],
+      }
 
       return [header, ...orderLines, summaryRow]
     }
 
-    const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว')
-    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้')
+    const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว', 'LAST', branchId)
+    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId)
 
     const orderRows: object[] = [
       ...lastWeekRows,
