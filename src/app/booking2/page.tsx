@@ -1514,11 +1514,17 @@ function Booking2Inner() {
                                       )}
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
-                                    <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>
-                                      {noVatColTotal > 0
-                                        ? fmt2(noVatColTotal - (appliedCouponCol === 'no-vat' ? appliedCouponVal : 0))
-                                        : ''}
-                                    </div>
+                                    {noVatColTotal > 0 && appliedCouponCol === 'no-vat' && appliedCouponVal > 0 ? (
+                                      <div className="w-full flex flex-col items-end gap-0">
+                                        <div className="text-[9px] text-gray-400 leading-none line-through">{fmt2(noVatColTotal)}</div>
+                                        <div className="text-[8px] text-red-500 font-bold leading-none">-{fmt2(appliedCouponVal)}</div>
+                                        <div className={`text-xl font-extrabold leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>{fmt2(noVatColTotal - appliedCouponVal)}</div>
+                                      </div>
+                                    ) : (
+                                      <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>
+                                        {noVatColTotal > 0 ? fmt2(noVatColTotal) : ''}
+                                      </div>
+                                    )}
                                   </div>
                                 </td>,
                                 // right: VAT
@@ -1539,11 +1545,17 @@ function Booking2Inner() {
                                       )}
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
-                                    <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {vatColTotal > 0
-                                        ? fmt2(vatColTotal - (appliedCouponCol === 'vat' ? appliedCouponVal : 0))
-                                        : ''}
-                                    </div>
+                                    {vatColTotal > 0 && appliedCouponCol === 'vat' && appliedCouponVal > 0 ? (
+                                      <div className="w-full flex flex-col items-end gap-0">
+                                        <div className="text-[9px] text-gray-400 leading-none line-through">{fmt2(vatColTotal)}</div>
+                                        <div className="text-[8px] text-red-500 font-bold leading-none">-{fmt2(appliedCouponVal)}</div>
+                                        <div className={`text-xl font-extrabold leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>{fmt2(vatColTotal - appliedCouponVal)}</div>
+                                      </div>
+                                    ) : (
+                                      <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
+                                        {vatColTotal > 0 ? fmt2(vatColTotal) : ''}
+                                      </div>
+                                    )}
                                   </div>
                                 </td>,
                               ]
