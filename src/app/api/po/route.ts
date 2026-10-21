@@ -93,6 +93,7 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS factory_total DECIMAL(12,2)`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS ordered_at TIMESTAMP`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS delivery_due DATE`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`)
 }
 
 async function genPoNo(): Promise<string> {

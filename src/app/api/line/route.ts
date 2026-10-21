@@ -76,6 +76,8 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0`).catch((e: unknown) => console.error('[ensureTable] paid_amount migration:', e))
   // System settings (key-value)
   await pool.query(`CREATE TABLE IF NOT EXISTS system_settings (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL)`).catch(() => {})
+  // po_orders migration — received_at may not exist if table was created before this column was added
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`).catch(() => {})
 }
 
 // ── System settings helpers ───────────────────────────────────────────────────
@@ -1038,13 +1040,13 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     for (const [idStr, q] of Object.entries(quantities)) {
       if (!q || (q as number) <= 0) continue
       await pool.query(
-        `UPDATE products_catalog SET quantity = COALESCE(quantity, 0) + $1 WHERE id = $2`,
+        `UPDATE products_catalog SET quantity = COALESCE(quantity, 0) + $1, last_added_qty = $1, last_added_at = NOW() WHERE id = $2`,
         [q, Number(idStr)]
       )
       await pool.query(
         `INSERT INTO catalog_stock_log (product_id, action, qty) VALUES ($1, 'po_receive', $2)`,
         [Number(idStr), q]
-      ).catch(() => {})
+      )
       itemCount++
     }
     return reply(replyToken, [{
