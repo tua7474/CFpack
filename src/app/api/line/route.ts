@@ -2067,7 +2067,8 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           })
         }
         summaryContents.push({ type: 'box', layout: 'vertical', flex: 1, justifyContent: 'center', contents: pendingInfo })
-        if (bId !== null) {
+        // แสดงปุ่ม QR เฉพาะเมื่อมียอดสุทธิที่ต้องชำระจริงๆ (netPending > 0)
+        if (bId !== null && netPending > 0) {
           summaryContents.push({
             type: 'box', layout: 'vertical', flex: 0,
             backgroundColor: '#1a3a6c', cornerRadius: '4px',
