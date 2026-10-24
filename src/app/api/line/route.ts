@@ -2059,7 +2059,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           const fmtC = (n: number) => n % 1 === 0 ? n.toLocaleString('th-TH') : fmtAmt(n)
           pendingInfo.push({
             type: 'text',
-            text: `หักเครดิต${fmtC(totalCredit)}=฿${fmtAmt(netPending)}`,
+            text: `หักค่าของ${fmtC(totalCredit)}=฿${fmtAmt(netPending)}`,
             size: 'xxs', color: '#ca8a04',
           })
         }
