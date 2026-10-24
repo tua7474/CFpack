@@ -75,6 +75,8 @@ export default function FoyLinePage() {
   const [rows,       setRows]     = useState<ProductionRow[]>([emptyRow()])
   const [stockColors, setStockColors] = useState<StockColor[]>([])
   const [loading,    setLoading]  = useState(true)
+  const [savingAll,  setSavingAll] = useState(false)
+  const [saveMsg,    setSaveMsg]  = useState<string | null>(null)
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
   // ── Load ────────────────────────────────────────────────────────────────────
@@ -97,18 +99,25 @@ export default function FoyLinePage() {
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
-  const saveRow = useCallback(async (row: ProductionRow, rowIdx: number) => {
-    const body = JSON.stringify(row)
+  const saveRow = useCallback(async (row: ProductionRow, rowIdx: number, syncStock = false) => {
     if (!row.id) {
       const res = await fetch('/api/foy-production', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(row),
       })
       const saved = await res.json()
       setRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, id: saved.id } : r))
     } else {
-      await fetch('/api/foy-production', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body,
+      const res = await fetch('/api/foy-production', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...row, syncStock }),
       })
+      if (syncStock) {
+        const data = await res.json()
+        if (data.synced_kg !== undefined) {
+          setRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, synced_kg: data.synced_kg } : r))
+        }
+      }
     }
   }, [])
 
@@ -116,8 +125,31 @@ export default function FoyLinePage() {
     if (!hasData(row)) return
     const prev = timers.current.get(rowIdx)
     if (prev) clearTimeout(prev)
-    timers.current.set(rowIdx, setTimeout(() => saveRow(row, rowIdx), 800))
+    timers.current.set(rowIdx, setTimeout(() => saveRow(row, rowIdx, false), 800))
   }, [saveRow])
+
+  const handleSaveAll = useCallback(async () => {
+    setSavingAll(true)
+    setSaveMsg(null)
+    try {
+      // ยกเลิก auto-save ที่ค้างอยู่ทุก row
+      timers.current.forEach(t => clearTimeout(t))
+      timers.current.clear()
+      // บันทึกทุก row พร้อม syncStock
+      const currentRows = rows
+      for (let rowIdx = 0; rowIdx < currentRows.length; rowIdx++) {
+        const row = currentRows[rowIdx]
+        if (!hasData(row)) continue
+        await saveRow(row, rowIdx, true)
+      }
+      setSaveMsg('✅ บันทึกและอัพเดทสต็อคแล้ว')
+      setTimeout(() => setSaveMsg(null), 3000)
+    } catch {
+      setSaveMsg('❌ เกิดข้อผิดพลาด')
+    } finally {
+      setSavingAll(false)
+    }
+  }, [rows, saveRow])
 
   // ── Color options: กรอง paper_stock ตาม model_name ที่เลือก ──────────────────
 
@@ -302,12 +334,24 @@ export default function FoyLinePage() {
                 <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left" style={{ minWidth: 210 }}>
                   <div className="flex flex-col justify-between h-full">
                     <div className="font-semibold">รุ่น / สี · วันที่ / กก.</div>
-                    <button
-                      onClick={addRow}
-                      className="mt-2 px-3 py-1 text-xs rounded bg-white/20 hover:bg-white/30 text-white font-medium transition-colors self-start"
-                    >
-                      + เพิ่มแถว
-                    </button>
+                    <div className="mt-2 flex flex-col gap-1">
+                      <button
+                        onClick={addRow}
+                        className="px-3 py-1 text-xs rounded bg-white/20 hover:bg-white/30 text-white font-medium transition-colors self-start"
+                      >
+                        + เพิ่มแถว
+                      </button>
+                      <button
+                        onClick={handleSaveAll}
+                        disabled={savingAll}
+                        className="px-3 py-1 text-xs rounded bg-green-600 hover:bg-green-500 disabled:opacity-60 text-white font-medium transition-colors self-start"
+                      >
+                        {savingAll ? 'กำลังบันทึก...' : '💾 บันทึก'}
+                      </button>
+                      {saveMsg && (
+                        <div className="text-[10px] text-white/90 font-medium">{saveMsg}</div>
+                      )}
+                    </div>
                   </div>
                 </th>
                 <th colSpan={maxSessions * 2} className="px-3 py-1.5 border border-white/20 text-center font-semibold">

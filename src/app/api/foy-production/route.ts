@@ -135,8 +135,9 @@ export async function PATCH(req: NextRequest) {
     b.id,
   ])
 
-  // Sync to stock if total increased and we have a color
-  if (delta > 0 && b.color_name) {
+  // Sync to stock only when explicitly requested (syncStock: true)
+  const syncStock: boolean = b.syncStock ?? false
+  if (syncStock && delta > 0 && b.color_name) {
     await syncStockAdd(b.color_name, delta)
     await pool.query(
       `UPDATE foy_production SET synced_kg = $1 WHERE id = $2`,
@@ -144,7 +145,7 @@ export async function PATCH(req: NextRequest) {
     )
   }
 
-  return NextResponse.json({ ok: true, synced_kg: delta > 0 ? newTotal : syncedKg })
+  return NextResponse.json({ ok: true, synced_kg: syncStock && delta > 0 ? newTotal : syncedKg })
 }
 
 export async function DELETE(req: NextRequest) {
