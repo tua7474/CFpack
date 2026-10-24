@@ -1974,6 +1974,12 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       lastWeekSlips  = lastSlips
     }
 
+    // คำนวณ carryover: เครดิต store สัปดาห์ที่แล้วที่เกินยอดค้างสัปดาห์ที่แล้ว
+    const lastPendingAmt = lastWeekOrders
+      .filter(o => o.payment_status !== 'paid')
+      .reduce((s, o) => s + Number(o.total_amount), 0)
+    const carryoverToNow = Math.max(0, lastWeekSlips.storeTotal - lastPendingAmt)
+
     // ── helper: สร้างแถวรายการ ──────────────────────────────────────────────
     const fmtAmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
 
@@ -1981,6 +1987,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       orders: OrderRow[], weekHeaderLabel: string,
       weekKey: 'LAST' | 'NOW', bId: number | null,
       slips: WeekSlipData,
+      carryover = 0,
     ): object[] => {
       const header: object = {
         type: 'box', layout: 'horizontal', paddingTop: '3px', paddingBottom: '2px',
@@ -2018,8 +2025,9 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       const pendingAmt = orders
         .filter(o => o.payment_status !== 'paid')
         .reduce((s, o) => s + Number(o.total_amount), 0)
-      // ยอดค้างสุทธิหลังหักเครดิตที่ยังไม่ได้ใช้ (store slips)
-      const netPending = Math.max(0, pendingAmt - slips.storeTotal)
+      // ยอดค้างสุทธิหลังหักเครดิตสัปดาห์นี้ + carryover จากสัปดาห์ก่อน
+      const totalCredit = slips.storeTotal + carryover
+      const netPending  = Math.max(0, pendingAmt - totalCredit)
 
       const orderLines = orders.map(o => {
         const paid    = o.payment_status === 'paid'
@@ -2046,11 +2054,15 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           { type: 'text', text: `${orders.length} รายการ / ฿${fmtAmt(totalAmt)}`, size: 'xxs', color: '#888888' },
           { type: 'text', text: `ค้าง ฿${fmtAmt(pendingAmt)}`, size: 'xxs', color: '#dc2626', weight: 'bold' },
         ]
-        // ถ้ามีเครดิตหักค่าของ → แสดงยอดสุทธิ
-        if (slips.storeTotal > 0) {
+        // ถ้ามีเครดิต → แสดงยอดสุทธิ
+        if (totalCredit > 0) {
+          const fmtC = (n: number) => n % 1 === 0 ? n.toLocaleString('th-TH') : fmtAmt(n)
+          const creditParts: string[] = []
+          if (slips.storeTotal > 0) creditParts.push(`สัปดาห์นี้ ฿${fmtC(slips.storeTotal)}`)
+          if (carryover > 0)        creditParts.push(`ส่วนเกินสัปดาห์ก่อน ฿${fmtC(carryover)}`)
           pendingInfo.push({
             type: 'text',
-            text: `หักเครดิต ฿${slips.storeTotal % 1 === 0 ? slips.storeTotal.toLocaleString('th-TH') : fmtAmt(slips.storeTotal)} → คงเหลือ ฿${fmtAmt(netPending)}`,
+            text: `หักเครดิต ${creditParts.join(' + ')} → คงเหลือ ฿${fmtAmt(netPending)}`,
             size: 'xxs', color: '#ca8a04',
           })
         }
@@ -2079,7 +2091,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
 
     const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว', 'LAST', branchId, lastWeekSlips)
-    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId, thisWeekSlips)
+    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId, thisWeekSlips, carryoverToNow)
 
     const orderRows: object[] = [
       ...lastWeekRows,
