@@ -459,6 +459,28 @@ async function getLastWeekOrders(branchId: number) {
   return rows
 }
 
+type WeekSlipData = { payCount: number; payTotal: number; storeCount: number; storeTotal: number }
+
+async function getWeekSlips(branchId: number, isLastWeek: boolean): Promise<WeekSlipData> {
+  const { rows } = await pool.query(`
+    SELECT applied, amount::float
+    FROM slips
+    WHERE branch_id = $1
+      AND status = 'confirmed'
+      AND category NOT IN ('vat', 'fee')
+      AND slip_date >= (date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')${isLastWeek ? " - INTERVAL '7 days'" : ''})::date
+      ${isLastWeek ? "AND slip_date < date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')::date" : ''}
+  `, [branchId])
+  const pay   = rows.filter((r: { applied: boolean }) => r.applied)
+  const store = rows.filter((r: { applied: boolean }) => !r.applied)
+  return {
+    payCount:   pay.length,
+    payTotal:   pay.reduce((s: number, r: { amount: number }) => s + r.amount, 0),
+    storeCount: store.length,
+    storeTotal: store.reduce((s: number, r: { amount: number }) => s + r.amount, 0),
+  }
+}
+
 // ── Flex Builders ─────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 7
@@ -1908,16 +1930,23 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     let weekOrders: OrderRow[] = []
     let lastWeekOrders: OrderRow[] = []
     let blocked = false
+    const emptySlips: WeekSlipData = { payCount: 0, payTotal: 0, storeCount: 0, storeTotal: 0 }
+    let thisWeekSlips: WeekSlipData = emptySlips
+    let lastWeekSlips: WeekSlipData = emptySlips
 
     if (branchId !== null) {
-      const [wOrders, lwOrders, blockedResult] = await Promise.all([
+      const [wOrders, lwOrders, blockedResult, nowSlips, lastSlips] = await Promise.all([
         getCurrentWeekOrders(branchId),
         getLastWeekOrders(branchId),
         checkBlockedFromDB(branchId),
+        getWeekSlips(branchId, false),
+        getWeekSlips(branchId, true),
       ])
       weekOrders     = wOrders
       lastWeekOrders = lwOrders
       blocked        = blockedResult
+      thisWeekSlips  = nowSlips
+      lastWeekSlips  = lastSlips
     }
 
     // ── helper: สร้างแถวรายการ ──────────────────────────────────────────────
@@ -1925,7 +1954,8 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
     const buildOrderRows = (
       orders: OrderRow[], weekHeaderLabel: string,
-      weekKey: 'LAST' | 'NOW', bId: number | null
+      weekKey: 'LAST' | 'NOW', bId: number | null,
+      slips: WeekSlipData,
     ): object[] => {
       const header: object = {
         type: 'box', layout: 'horizontal', paddingTop: '3px', paddingBottom: '2px',
@@ -1934,16 +1964,37 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         ],
       }
 
+      // แถวสลิปเงินเข้า (สีเขียว ตัวเล็ก)
+      const slipLines: object[] = []
+      if (slips.payCount > 0) {
+        slipLines.push({
+          type: 'text',
+          text: `💳 หักค่าของยอดตรงใบจอง ${slips.payCount}/${slips.payTotal % 1 === 0 ? slips.payTotal.toLocaleString('th-TH') : fmtAmt(slips.payTotal)}`,
+          size: 'xxs', color: '#16a34a', margin: 'none',
+        })
+      }
+      if (slips.storeCount > 0) {
+        slipLines.push({
+          type: 'text',
+          text: `💰 หักค่าของ ${slips.storeCount}/${slips.storeTotal % 1 === 0 ? slips.storeTotal.toLocaleString('th-TH') : fmtAmt(slips.storeTotal)}`,
+          size: 'xxs', color: '#16a34a', margin: 'none',
+        })
+      }
+
       if (orders.length === 0) {
         return [
           header,
           { type: 'text', text: 'ยังไม่มีใบจอง', size: 'xxs', color: '#aaaaaa', margin: 'none' },
+          ...slipLines,
         ]
       }
 
+      const totalAmt   = orders.reduce((s, o) => s + Number(o.total_amount), 0)
       const pendingAmt = orders
         .filter(o => o.payment_status !== 'paid')
         .reduce((s, o) => s + Number(o.total_amount), 0)
+      // ยอดค้างสุทธิหลังหักเครดิตที่ยังไม่ได้ใช้ (store slips)
+      const netPending = Math.max(0, pendingAmt - slips.storeTotal)
 
       const orderLines = orders.map(o => {
         const paid    = o.payment_status === 'paid'
@@ -1963,37 +2014,47 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         }
       })
 
-      // summary row: ยอดรวม + ปุ่ม QR (ถ้ามีค้าง)
+      // summary row: ยอดรวม + ยอดค้าง + ปุ่ม QR
+      const summaryContents: object[] = []
+      if (pendingAmt > 0) {
+        const pendingInfo: object[] = [
+          { type: 'text', text: `${orders.length} รายการ / ฿${fmtAmt(totalAmt)}`, size: 'xxs', color: '#888888' },
+          { type: 'text', text: `ค้าง ฿${fmtAmt(pendingAmt)}`, size: 'xxs', color: '#dc2626', weight: 'bold' },
+        ]
+        // ถ้ามีเครดิตหักค่าของ → แสดงยอดสุทธิ
+        if (slips.storeTotal > 0) {
+          pendingInfo.push({
+            type: 'text',
+            text: `หักเครดิต ฿${slips.storeTotal % 1 === 0 ? slips.storeTotal.toLocaleString('th-TH') : fmtAmt(slips.storeTotal)} → คงเหลือ ฿${fmtAmt(netPending)}`,
+            size: 'xxs', color: '#ca8a04',
+          })
+        }
+        summaryContents.push({ type: 'box', layout: 'vertical', flex: 1, justifyContent: 'center', contents: pendingInfo })
+        if (bId !== null) {
+          summaryContents.push({
+            type: 'box', layout: 'vertical', flex: 0,
+            backgroundColor: '#1a3a6c', cornerRadius: '4px',
+            paddingTop: '4px', paddingBottom: '4px', paddingStart: '8px', paddingEnd: '8px',
+            justifyContent: 'center',
+            action: { type: 'postback', data: `QR_${weekKey}:${bId}`, displayText: '💳 สร้าง QR ชำระเงิน' },
+            contents: [{ type: 'text', text: '💳 QR', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
+          })
+        }
+      } else {
+        summaryContents.push({ type: 'text', text: `${orders.length} รายการ  ✅ ชำระครบ`, size: 'xxs', color: '#16a34a', margin: 'none' })
+      }
+
       const summaryRow: object = {
         type: 'box', layout: 'horizontal', spacing: 'sm',
         paddingTop: '3px', paddingBottom: '1px',
-        contents: [
-          ...(pendingAmt > 0
-            ? [
-                { type: 'box', layout: 'vertical', flex: 1, justifyContent: 'center',
-                  contents: [
-                    { type: 'text', text: `${orders.length} รายการ`, size: 'xxs', color: '#888888' },
-                    { type: 'text', text: `ค้าง ฿${fmtAmt(pendingAmt)}`, size: 'xxs', color: '#dc2626', weight: 'bold' },
-                  ]},
-                ...(bId !== null ? [{
-                  type: 'box', layout: 'vertical', flex: 0,
-                  backgroundColor: '#1a3a6c', cornerRadius: '4px',
-                  paddingTop: '4px', paddingBottom: '4px', paddingStart: '8px', paddingEnd: '8px',
-                  justifyContent: 'center',
-                  action: { type: 'postback', data: `QR_${weekKey}:${bId}`, displayText: '💳 สร้าง QR ชำระเงิน' },
-                  contents: [{ type: 'text', text: '💳 QR', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
-                }] : []),
-              ]
-            : [{ type: 'text', text: `${orders.length} รายการ  ✅ ชำระครบ`, size: 'xxs', color: '#16a34a', margin: 'none' }]
-          ),
-        ],
+        contents: summaryContents,
       }
 
-      return [header, ...orderLines, summaryRow]
+      return [header, ...orderLines, ...slipLines, summaryRow]
     }
 
-    const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว', 'LAST', branchId)
-    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId)
+    const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว', 'LAST', branchId, lastWeekSlips)
+    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId, thisWeekSlips)
 
     const orderRows: object[] = [
       ...lastWeekRows,
