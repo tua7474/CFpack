@@ -1253,13 +1253,38 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
 
     if (!total) return reply(replyToken, [{ type: 'text', text: `✅ ${isLast ? 'สัปดาห์ที่แล้ว' : 'สัปดาห์นี้'} ไม่มียอดค้างชำระครับ` }])
 
+    // หักเครดิตหักค่าของ (store slips ที่ยังไม่ได้ใช้)
+    const thisSlips = await getWeekSlips(branchId, isLast)
+    let creditDeducted = thisSlips.storeTotal
+
+    // QR สัปดาห์นี้: หักเครดิตส่วนเกินที่ carryover มาจากสัปดาห์ที่แล้วด้วย
+    if (!isLast) {
+      const lastSlips   = await getWeekSlips(branchId, true)
+      const lastOrders  = await getLastWeekOrders(branchId)
+      const lastPending = lastOrders
+        .filter((o: {payment_status: string}) => o.payment_status !== 'paid')
+        .reduce((s: number, o: {total_amount: number}) => s + Number(o.total_amount), 0)
+      const carryover = Math.max(0, lastSlips.storeTotal - lastPending)
+      creditDeducted += carryover
+    }
+
+    const netTotal  = Math.max(0, total - creditDeducted)
     const weekLabel = isLast ? 'สัปดาห์ที่แล้ว' : 'สัปดาห์นี้'
     const orderNos  = pending.map((o: {order_no: string}) => `#${o.order_no}`).join(', ')
-    const qrUrl     = promptPayQrUrl(promptPayId, total)
+
+    if (netTotal === 0) {
+      return reply(replyToken, [{
+        type: 'text',
+        text: `✅ ${weekLabel} ยอดค้าง ฿${fmt(total)} ถูกหักครบด้วยเครดิตหักค่าของแล้วครับ`,
+      }])
+    }
+
+    const qrUrl = promptPayQrUrl(promptPayId, netTotal)
+    const creditNote = creditDeducted > 0 ? `\n(ยอดเต็ม ฿${fmt(total)} หักเครดิต ฿${fmt(creditDeducted)})` : ''
 
     return reply(replyToken, [
       { type: 'image', originalContentUrl: qrUrl, previewImageUrl: qrUrl },
-      { type: 'text', text: `💳 PromptPay — ${weekLabel}\n฿${fmt(total)}\n\nรายการ: ${orderNos}\n\nสแกน QR โอนเงินได้เลยครับ\nเสร็จแล้วส่งสลิปในกลุ่มนี้` },
+      { type: 'text', text: `💳 PromptPay — ${weekLabel}\n฿${fmt(netTotal)}${creditNote}\n\nรายการ: ${orderNos}\n\nสแกน QR โอนเงินได้เลยครับ\nเสร็จแล้วส่งสลิปในกลุ่มนี้` },
     ])
   }
 
