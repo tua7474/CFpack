@@ -2057,12 +2057,9 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         // ถ้ามีเครดิต → แสดงยอดสุทธิ
         if (totalCredit > 0) {
           const fmtC = (n: number) => n % 1 === 0 ? n.toLocaleString('th-TH') : fmtAmt(n)
-          const creditParts: string[] = []
-          if (slips.storeTotal > 0) creditParts.push(`สัปดาห์นี้ ฿${fmtC(slips.storeTotal)}`)
-          if (carryover > 0)        creditParts.push(`ส่วนเกินสัปดาห์ก่อน ฿${fmtC(carryover)}`)
           pendingInfo.push({
             type: 'text',
-            text: `หักเครดิต ${creditParts.join(' + ')} → คงเหลือ ฿${fmtAmt(netPending)}`,
+            text: `หักเครดิต${fmtC(totalCredit)}=฿${fmtAmt(netPending)}`,
             size: 'xxs', color: '#ca8a04',
           })
         }
