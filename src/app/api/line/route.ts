@@ -2047,24 +2047,21 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         }
       })
 
-      // summary row: ยอดรวม + ยอดค้าง + ปุ่ม QR
+      // summary row: ยอดรวม + บรรทัดสุดท้าย (สีตามสถานะ) + ปุ่ม QR
       const summaryContents: object[] = []
       if (pendingAmt > 0) {
+        const fmtC = (n: number) => n % 1 === 0 ? n.toLocaleString('th-TH') : fmtAmt(n)
+        // บรรทัดสุดท้าย: แดง=ยังค้าง, เขียว=หักครบ/เกิน
+        const lastLineText = totalCredit > 0
+          ? `หักค่าของ${fmtC(totalCredit)}=฿${fmtAmt(netPending)}`
+          : `ค้าง ฿${fmtAmt(pendingAmt)}`
+        const lastLineColor = netPending > 0 ? '#dc2626' : '#16a34a'
         const pendingInfo: object[] = [
           { type: 'text', text: `${orders.length} รายการ / ฿${fmtAmt(totalAmt)}`, size: 'xxs', color: '#888888' },
-          { type: 'text', text: `ค้าง ฿${fmtAmt(pendingAmt)}`, size: 'xxs', color: '#dc2626', weight: 'bold' },
+          { type: 'text', text: lastLineText, size: 'xxs', color: lastLineColor, weight: 'bold' },
         ]
-        // ถ้ามีเครดิต → แสดงยอดสุทธิ
-        if (totalCredit > 0) {
-          const fmtC = (n: number) => n % 1 === 0 ? n.toLocaleString('th-TH') : fmtAmt(n)
-          pendingInfo.push({
-            type: 'text',
-            text: `หักค่าของ${fmtC(totalCredit)}=฿${fmtAmt(netPending)}`,
-            size: 'xxs', color: '#ca8a04',
-          })
-        }
         summaryContents.push({ type: 'box', layout: 'vertical', flex: 1, justifyContent: 'center', contents: pendingInfo })
-        // แสดงปุ่ม QR เฉพาะเมื่อมียอดสุทธิที่ต้องชำระจริงๆ (netPending > 0)
+        // แสดงปุ่ม QR เฉพาะเมื่อมียอดสุทธิที่ต้องชำระ
         if (bId !== null && netPending > 0) {
           summaryContents.push({
             type: 'box', layout: 'vertical', flex: 0,
