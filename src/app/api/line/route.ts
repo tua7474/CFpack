@@ -2051,9 +2051,12 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       const summaryContents: object[] = []
       if (pendingAmt > 0) {
         const fmtC = (n: number) => n % 1 === 0 ? n.toLocaleString('th-TH') : fmtAmt(n)
+        const excessCredit = Math.max(0, totalCredit - pendingAmt)
         // บรรทัดสุดท้าย: แดง=ยังค้าง, เขียว=หักครบ/เกิน
         const lastLineText = totalCredit > 0
-          ? `หักค่าของ${fmtC(totalCredit)}=฿${fmtAmt(netPending)}`
+          ? (netPending > 0
+              ? `หักค่าของ${fmtC(totalCredit)}=฿${fmtAmt(netPending)}`
+              : `หักค่าของ${fmtC(totalCredit)}=เครดิต${fmtC(excessCredit)}`)
           : `ค้าง ฿${fmtAmt(pendingAmt)}`
         const lastLineColor = netPending > 0 ? '#dc2626' : '#16a34a'
         const pendingInfo: object[] = [
