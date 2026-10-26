@@ -340,8 +340,6 @@ function BranchRow({
   const [selectedWeek,   setSelectedWeek]   = useState<number | null>(null)
   const [weeklySummary,  setWeeklySummary]  = useState<Record<number, { pending: number; paid: number }>>({})
 
-  const thisMonth = new Date().getMonth() + 1
-  const thisYear  = new Date().getFullYear()
 
   const loadOrders = useCallback(async () => {
     // ดึงออเดอร์ 3 สัปดาห์ย้อนหลัง
@@ -368,9 +366,6 @@ function BranchRow({
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
-  const thisWeekData = weeklySummary[0] ?? { pending: 0, paid: 0 }
-  const thisMonthPaid    = thisWeekData.paid
-  const thisMonthPending = thisWeekData.pending
 
   const handleWeekClick = async (w: number) => {
     if (selectedWeek === w) { setSelectedWeek(null); return }
@@ -428,12 +423,6 @@ function BranchRow({
         )}
       </td>
 
-      {/* 2. สรุปสัปดาห์นี้ */}
-      <td className="px-3 py-2 border-r border-gray-200 text-center">
-        <div className="text-[10px] text-gray-400 mb-0.5">สัปดาห์ที่ {computeWeekBounds(0).weekNum}</div>
-        <div className="text-sm font-bold text-green-400">{thisMonthPending}</div>
-        <div className="text-xs text-gray-400">/ {thisMonthPaid} ชำระแล้ว</div>
-      </td>
 
       {/* 4. ปุ่ม 36 สัปดาห์ */}
       <td className="px-3 py-2">
@@ -1224,7 +1213,6 @@ export default function BranchesPage() {
                 {/* Row 1 */}
                 <tr className="bg-[#9b9484] text-white text-left">
                   <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap align-bottom">ชื่อสาขา</th>
-                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom">เดือนนี้</th>
                   <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 align-bottom">
                     <div className="flex flex-col gap-0.5">
                       <span className="whitespace-nowrap font-semibold leading-tight">ประวัติใบจอง</span>
@@ -1283,7 +1271,7 @@ export default function BranchesPage() {
                 {sortAndGroup(visibleBranches).map(({ color, items }) => (
                   <>
                     <tr key={`header-${color}`} className={GROUP_HEADER_BG[color]}>
-                      <td colSpan={7 + withdrawalTypes.length + SLIP_CATS.length} className="px-3 py-1 text-xs font-bold tracking-wide">
+                      <td colSpan={6 + withdrawalTypes.length + SLIP_CATS.length} className="px-3 py-1 text-xs font-bold tracking-wide">
                         {GROUP_LABEL[color]}
                       </td>
                     </tr>
