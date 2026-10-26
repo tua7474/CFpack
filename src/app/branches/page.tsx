@@ -1250,7 +1250,7 @@ export default function BranchesPage() {
                         return (
                           <button key={w} onClick={() => handleSelectGlobalWeek(w)}
                             className={`text-[10px] px-2 py-0.5 rounded border whitespace-nowrap transition-colors ${isActive ? 'bg-white text-gray-700 border-white font-semibold' : 'bg-white/15 border-white/40 hover:bg-white/30 text-white'}`}>
-                            สัปดาห์ {wb.weekNum}<span className="opacity-70"> ({wb.dateRange})</span>
+                            {wb.weekNum}<span className="opacity-70"> ({wb.dateRange})</span>
                           </button>
                         )
                       })}
