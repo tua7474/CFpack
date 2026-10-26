@@ -572,32 +572,15 @@ function BranchRow({
         const orders = activePeriod
           ? (periodUnpaidOrders[wt.id] ?? [])
           : (unpaidOrders[wt.id] ?? [])
+        const total = orders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
         return (
-          <td key={wt.id} className="px-2 py-1.5 border-r border-gray-200 align-top">
+          <td key={wt.id} className="px-2 py-1.5 border-r border-gray-200 text-center align-middle">
             {orders.length === 0 ? (
               <span className="text-[10px] text-gray-300">-</span>
             ) : (
-              <div className="flex flex-col gap-0.5">
-                {orders.flatMap(o => {
-                  const nvT = parseFloat(o.nv_total ?? '0') || 0
-                  const vT  = parseFloat(o.v_total  ?? '0') || 0
-                  const rows: { key: string; prefix: string; tag: 'NV'|'V'|null; amount: number }[] =
-                    nvT > 0 && vT > 0
-                      ? [{ key: `${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT },
-                         { key: `${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
-                      : nvT > 0 ? [{ key: `${o.id}-NV`, prefix: 'NV', tag: 'NV', amount: nvT }]
-                      : vT > 0  ? [{ key: `${o.id}-V`,  prefix: 'V',  tag: 'V',  amount: vT  }]
-                      : [{ key: `${o.id}-x`, prefix: '', tag: null, amount: parseFloat(o.total_amount) }]
-                  return rows.map(row => (
-                    <div key={row.key} className="text-[10px] whitespace-nowrap">
-                      <span className={row.tag === 'NV' ? 'text-orange-500' : row.tag === 'V' ? 'text-green-500' : 'text-gray-500'}>
-                        #{row.prefix}{o.order_no}
-                      </span>
-                      <span className="text-gray-500 ml-1">฿{fmtMoney(row.amount)}</span>
-                    </div>
-                  ))
-                })}
-              </div>
+              <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">
+                {orders.length}/{Math.round(total).toLocaleString('th-TH')}
+              </span>
             )}
           </td>
         )
@@ -1238,10 +1221,11 @@ export default function BranchesPage() {
           <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <table className="min-w-full text-xs">
               <thead>
+                {/* Row 1 */}
                 <tr className="bg-[#9b9484] text-white text-left">
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
-                  <th className="px-3 py-2 border-r border-gray-500 min-w-[360px]">
+                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap align-bottom">ชื่อสาขา</th>
+                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom">เดือนนี้</th>
+                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 min-w-[360px] align-bottom">
                     <div className="flex flex-col gap-0.5">
                       <span className="whitespace-nowrap font-semibold leading-tight">ประวัติใบจอง</span>
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -1269,20 +1253,28 @@ export default function BranchesPage() {
                       </div>
                     </div>
                   </th>
-                  <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[100px]">MAP</th>
-                  {withdrawalTypes.map(wt => (
-                    <th key={wt.id} className="px-2 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[120px]">
-                      <div className="text-[11px] font-semibold">{wt.name}</div>
+                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom min-w-[100px]">MAP</th>
+                  {withdrawalTypes.length > 0 && (
+                    <th colSpan={withdrawalTypes.length} className="px-2 py-1.5 border-r border-[#5a4530] text-center text-[11px] font-bold whitespace-nowrap bg-[#7d6348]">
+                      เบิกของ
                     </th>
-                  ))}
+                  )}
                   {SLIP_CATS.map((cat, i) => (
-                    <th key={cat.key} className={`px-2 py-1.5 whitespace-nowrap text-center ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-500' : ''}`}>
+                    <th rowSpan={2} key={cat.key} className={`px-2 py-1.5 whitespace-nowrap text-center align-bottom ${i < SLIP_CATS.length - 1 ? 'border-r border-gray-500' : ''}`}>
                       <div className="font-semibold text-[11px] mb-1">{cat.label}</div>
                       <button
                         onClick={() => setSlipPeriods(prev => ({ ...prev, [cat.key]: prev[cat.key] === 'month' ? 'week' : 'month' }))}
                         className="px-2 py-0.5 rounded border border-white/40 bg-white/15 hover:bg-white/30 text-white text-[10px] transition-colors whitespace-nowrap">
                         {(slipPeriods[cat.key] ?? 'month') === 'month' ? 'รอบเดือน' : 'รอบสัปดาห์'}
                       </button>
+                    </th>
+                  ))}
+                </tr>
+                {/* Row 2 — withdrawal sub-headers */}
+                <tr className="bg-[#7d6348] text-white text-center">
+                  {withdrawalTypes.map((wt, i) => (
+                    <th key={wt.id} className={`px-2 py-1 text-[10px] font-semibold whitespace-nowrap ${i < withdrawalTypes.length - 1 ? 'border-r border-[#5a4530]' : 'border-r border-[#5a4530]'}`}>
+                      {wt.name}
                     </th>
                   ))}
                 </tr>
@@ -1334,13 +1326,12 @@ export default function BranchesPage() {
                   {/* Withdrawal type totals */}
                   {withdrawalTypes.map(wt => {
                     const src = activePeriod ? periodUnpaidByBranch : unpaidByBranch
-                    const total = Object.values(src).reduce((s, byType) => {
-                      return s + (byType[wt.id] ?? []).reduce((ss, o) => ss + parseFloat(o.total_amount), 0)
-                    }, 0)
+                    const allOrders = Object.values(src).flatMap(byType => byType[wt.id] ?? [])
+                    const total = allOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
                     return (
                       <td key={wt.id} className="px-2 py-2 border-r border-gray-300 text-center">
                         {total > 0
-                          ? <span className="text-gray-600">฿{fmtMoney(total)}</span>
+                          ? <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">{allOrders.length}/{Math.round(total).toLocaleString('th-TH')}</span>
                           : <span className="text-gray-300 font-normal">-</span>}
                       </td>
                     )
