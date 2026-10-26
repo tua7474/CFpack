@@ -1242,29 +1242,31 @@ export default function BranchesPage() {
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">ชื่อสาขา</th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center">เดือนนี้</th>
                   <th className="px-3 py-2 border-r border-gray-500 min-w-[360px]">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="whitespace-nowrap font-semibold">ประวัติใบจอง</span>
-                      {[0, 1, 2].map(w => {
-                        const wb = computeWeekBounds(w)
-                        const isActive = activePeriod?.start === wb.start
-                        return (
-                          <button key={w} onClick={() => handleSelectGlobalWeek(w)}
-                            className={`text-[10px] px-2 py-0.5 rounded border whitespace-nowrap transition-colors ${isActive ? 'bg-white text-gray-700 border-white font-semibold' : 'bg-white/15 border-white/40 hover:bg-white/30 text-white'}`}>
-                            {wb.weekNum}<span className="opacity-70"> ({wb.dateRange})</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="whitespace-nowrap font-semibold leading-tight">ประวัติใบจอง</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[0, 1, 2].map(w => {
+                          const wb = computeWeekBounds(w)
+                          const isActive = activePeriod?.start === wb.start
+                          return (
+                            <button key={w} onClick={() => handleSelectGlobalWeek(w)}
+                              className={`text-[10px] px-2 py-0.5 rounded border whitespace-nowrap transition-colors ${isActive ? 'bg-white text-gray-700 border-white font-semibold' : 'bg-white/15 border-white/40 hover:bg-white/30 text-white'}`}>
+                              {wb.weekNum}<span className="opacity-70"> ({wb.dateRange})</span>
+                            </button>
+                          )
+                        })}
+                        <select value={selectedMonth} onChange={e => handleSelectGlobalMonth(e.target.value)}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${selectedMonth ? 'bg-white text-gray-700 border-white' : 'bg-white/15 border-white/40 text-white hover:bg-white/30'}`}>
+                          <option value="" className="text-black">รายเดือน ▾</option>
+                          {getMonthOptions().map(opt => <option key={opt.value} value={opt.value} className="text-black">{opt.label}</option>)}
+                        </select>
+                        {activePeriod && (
+                          <button onClick={() => { setActivePeriod(null); setSelectedMonth('') }}
+                            className="text-[10px] px-1.5 py-0.5 rounded border border-white/40 bg-white/10 hover:bg-white/30 text-white">
+                            ✕
                           </button>
-                        )
-                      })}
-                      <select value={selectedMonth} onChange={e => handleSelectGlobalMonth(e.target.value)}
-                        className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${selectedMonth ? 'bg-white text-gray-700 border-white' : 'bg-white/15 border-white/40 text-white hover:bg-white/30'}`}>
-                        <option value="" className="text-black">รายเดือน ▾</option>
-                        {getMonthOptions().map(opt => <option key={opt.value} value={opt.value} className="text-black">{opt.label}</option>)}
-                      </select>
-                      {activePeriod && (
-                        <button onClick={() => { setActivePeriod(null); setSelectedMonth('') }}
-                          className="text-[10px] px-1.5 py-0.5 rounded border border-white/40 bg-white/10 hover:bg-white/30 text-white">
-                          ✕
-                        </button>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </th>
                   <th className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center min-w-[100px]">MAP</th>
