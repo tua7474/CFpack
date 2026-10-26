@@ -303,8 +303,8 @@ function MapCell({ branchId, currentUrl, onSave }: {
     <div className="flex items-center gap-0.5">
       {currentUrl ? (
         <a href={currentUrl} target="_blank" rel="noopener noreferrer"
-          className="text-blue-500 hover:text-blue-700 text-base leading-none" title="ดูแผนที่">
-          🗺️
+          className="text-blue-500 hover:text-blue-700 text-[11px] font-semibold leading-none" title="ดูแผนที่">
+          Map
         </a>
       ) : (
         <span className="text-gray-300 text-xs">—</span>
