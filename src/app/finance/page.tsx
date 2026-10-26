@@ -160,25 +160,38 @@ function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: strin
 
 // ── WeeklyCompactCell — order/paid: last 3 weeks breakdown ───────────────────
 
-interface ModalInfo { title: string; entries: SlipEntry[] }
+interface ModalInfo { title: string; entries: SlipEntry[]; storeSlips?: SlipEntry[] }
 
-function WeeklyCompactCell({ entries, amtColor, title, onDetail }: {
+function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries }: {
   entries: SlipEntry[]; amtColor: string; title: string
   onDetail: (info: ModalInfo) => void
+  storeEntries?: SlipEntry[]
 }) {
   const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
   const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
   const groups = [
-    { label: '2 สัปดาห์ก่อน', items: entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr) },
-    { label: 'สัปดาห์ที่แล้ว',  items: entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr) },
-    { label: 'สัปดาห์นี้',       items: entries.filter(e => e.date >= thisMondayStr) },
+    {
+      label: '2 สัปดาห์ก่อน',
+      items:  entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
+      stores: (storeEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
+    },
+    {
+      label: 'สัปดาห์ที่แล้ว',
+      items:  entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
+      stores: (storeEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
+    },
+    {
+      label: 'สัปดาห์นี้',
+      items:  entries.filter(e => e.date >= thisMondayStr),
+      stores: (storeEntries ?? []).filter(e => e.date >= thisMondayStr),
+    },
   ].filter(g => g.items.length > 0)
   if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   return (
     <div className="flex flex-col gap-0.5">
-      {groups.map(({ label, items }) => (
+      {groups.map(({ label, items, stores }) => (
         <button key={label}
-          onClick={() => onDetail({ title: `${title} (${label})`, entries: items })}
+          onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
           className={`text-left text-[11px] font-mono font-semibold ${amtColor} hover:underline leading-tight`}
         >
           {fmt(items.reduce((s, e) => s + e.amount, 0))}
@@ -188,8 +201,9 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail }: {
   )
 }
 
-function OverallPendingCell({ orderEntries, paidEntries, title, onDetail }: {
+function OverallPendingCell({ orderEntries, paidEntries, storeEntries, title, onDetail }: {
   orderEntries: SlipEntry[]; paidEntries: SlipEntry[]
+  storeEntries?: SlipEntry[]
   title: string; onDetail: (info: ModalInfo) => void
 }) {
   const orderTotal = orderEntries.reduce((s, x) => s + x.amount, 0)
@@ -200,11 +214,96 @@ function OverallPendingCell({ orderEntries, paidEntries, title, onDetail }: {
   if (pending === 0) return <span className="text-gray-300 text-[11px] font-mono font-semibold">-</span>
   return (
     <button
-      onClick={() => onDetail({ title: `${title} — ค้างชำระ`, entries: orderEntries })}
+      onClick={() => onDetail({ title: `${title} — ค้างชำระ`, entries: orderEntries, storeSlips: storeEntries && storeEntries.length > 0 ? storeEntries : undefined })}
       className="text-left text-[11px] font-mono font-semibold text-red-600 hover:underline leading-tight"
     >
       {fmt(pending)}
     </button>
+  )
+}
+
+// ── DetailModal — modal with ตัดยอด buttons ────────────────────────────────────
+
+function DetailModal({ modal, onClose }: { modal: ModalInfo; onClose: () => void }) {
+  const [cutSet, setCutSet] = useState<Set<number>>(new Set())
+
+  const sorted = [...modal.entries].sort((a, b) => a.date.localeCompare(b.date))
+  const storeTotal = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
+  const cutTotal   = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
+  const remaining  = Math.max(0, storeTotal - cutTotal)
+  const showCut    = storeTotal > 0
+
+  const toggleCut = (i: number) => {
+    setCutSet(prev => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i); else next.add(i)
+      return next
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs mx-4 max-h-[80vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex justify-between items-center px-4 py-3 border-b border-gray-200">
+          <span className="font-bold text-sm text-gray-800 leading-tight">{modal.title}</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+
+        {/* Store credit balance */}
+        {showCut && (
+          <div className={`flex justify-between items-center px-4 py-2 border-b ${remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
+            <span className={`text-xs font-semibold ${remaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+              ยอดหักค่าของคงเหลือ
+            </span>
+            <span className={`text-sm font-bold font-mono ${remaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+              {fmtAmt(remaining)}
+            </span>
+          </div>
+        )}
+
+        {/* Entries */}
+        <div className="overflow-y-auto flex-1 px-4 py-2">
+          {sorted.map((e, i) => {
+            const isCut = cutSet.has(i)
+            return (
+              <div key={i} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0 gap-2">
+                <div className="flex flex-col leading-tight flex-1 min-w-0">
+                  <span className="text-xs text-gray-500">{fmtDateShort(e.date)}</span>
+                  {e.order_no && <span className="text-[10px] text-gray-400 font-mono">#{e.order_no}</span>}
+                </div>
+                <span className={`text-xs font-mono font-semibold flex-shrink-0 ${isCut ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                  {fmtAmt(e.amount)}
+                </span>
+                {showCut && (
+                  <button
+                    onClick={() => toggleCut(i)}
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 transition-colors ${
+                      isCut
+                        ? 'bg-green-500 text-white'
+                        : 'bg-red-500 text-white hover:bg-red-600'
+                    }`}
+                  >
+                    ตัดยอด
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-gray-200 flex justify-between items-center bg-gray-50 rounded-b-xl">
+          <span className="text-xs text-gray-500">{modal.entries.length} รายการ</span>
+          <span className="text-sm font-bold font-mono text-gray-800">
+            {fmtAmt(modal.entries.reduce((s, e) => s + e.amount, 0))}
+          </span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -415,13 +514,13 @@ export default function FinancePage() {
                             <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} />
+                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} storeEntries={b.store} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <OverallPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} title={b.name} onDetail={setModal} />
+                            <OverallPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} storeEntries={b.store} title={b.name} onDetail={setModal} />
                           </td>
                         </tr>
                         )
@@ -459,35 +558,7 @@ export default function FinancePage() {
       </main>
 
       {/* Detail modal */}
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs mx-4 max-h-[80vh] flex flex-col"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-200">
-              <span className="font-bold text-sm text-gray-800 leading-tight">{modal.title}</span>
-              <button onClick={() => setModal(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
-            </div>
-            <div className="overflow-y-auto flex-1 px-4 py-2">
-              {[...modal.entries].sort((a, b) => a.date.localeCompare(b.date)).map((e, i) => (
-                <div key={i} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
-                  <div className="flex flex-col leading-tight">
-                    <span className="text-xs text-gray-500">{fmtDateShort(e.date)}</span>
-                    {e.order_no && <span className="text-[10px] text-gray-400 font-mono">#{e.order_no}</span>}
-                  </div>
-                  <span className="text-xs font-mono font-semibold text-gray-800">{fmtAmt(e.amount)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="px-4 py-3 border-t border-gray-200 flex justify-between items-center bg-gray-50 rounded-b-xl">
-              <span className="text-xs text-gray-500">{modal.entries.length} รายการ</span>
-              <span className="text-sm font-bold font-mono text-gray-800">
-                {fmtAmt(modal.entries.reduce((s, e) => s + e.amount, 0))}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {modal && <DetailModal modal={modal} onClose={() => setModal(null)} />}
     </div>
   )
 }
