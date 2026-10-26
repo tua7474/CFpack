@@ -1253,22 +1253,23 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
 
     if (!total) return reply(replyToken, [{ type: 'text', text: `✅ ${isLast ? 'สัปดาห์ที่แล้ว' : 'สัปดาห์นี้'} ไม่มียอดค้างชำระครับ` }])
 
-    // หักเครดิตหักค่าของ (store slips ที่ยังไม่ได้ใช้)
-    const thisSlips = await getWeekSlips(branchId, isLast)
-    let creditDeducted = thisSlips.storeTotal
+    // คำนวณ cross-week credit allocation (logic เดียวกับ popup)
+    const [qrThisSlips, qrLastSlips, qrLastOrders] = await Promise.all([
+      getWeekSlips(branchId, false),
+      getWeekSlips(branchId, true),
+      getLastWeekOrders(branchId),
+    ])
+    const qrLastPending      = qrLastOrders
+      .filter((o: {payment_status: string}) => o.payment_status !== 'paid')
+      .reduce((s: number, o: {total_amount: number}) => s + Number(o.total_amount), 0)
+    const qrLastNetAfterOwn  = Math.max(0, qrLastPending - qrLastSlips.storeTotal)
+    const qrLastExcess       = Math.max(0, qrLastSlips.storeTotal - qrLastPending)
+    const qrThisForLast      = Math.min(qrThisSlips.storeTotal, qrLastNetAfterOwn)
+    const qrThisRemaining    = Math.max(0, qrThisSlips.storeTotal - qrThisForLast)
 
-    // QR สัปดาห์นี้: หักเครดิตส่วนเกินที่ carryover มาจากสัปดาห์ที่แล้วด้วย
-    if (!isLast) {
-      const lastSlips   = await getWeekSlips(branchId, true)
-      const lastOrders  = await getLastWeekOrders(branchId)
-      const lastPending = lastOrders
-        .filter((o: {payment_status: string}) => o.payment_status !== 'paid')
-        .reduce((s: number, o: {total_amount: number}) => s + Number(o.total_amount), 0)
-      const carryover = Math.max(0, lastSlips.storeTotal - lastPending)
-      creditDeducted += carryover
-    }
-
-    const netTotal  = Math.max(0, total - creditDeducted)
+    const netTotal = isLast
+      ? Math.max(0, total - qrLastSlips.storeTotal - qrThisForLast)
+      : Math.max(0, total - qrThisRemaining - qrLastExcess)
     const weekLabel = isLast ? 'สัปดาห์ที่แล้ว' : 'สัปดาห์นี้'
     const orderNos  = pending.map((o: {order_no: string}) => `#${o.order_no}`).join(', ')
 
@@ -1280,7 +1281,8 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     }
 
     const qrUrl = promptPayQrUrl(promptPayId, netTotal)
-    const creditNote = creditDeducted > 0 ? `\n(ยอดเต็ม ฿${fmt(total)} หักเครดิต ฿${fmt(creditDeducted)})` : ''
+    const creditUsed = total - netTotal
+    const creditNote = creditUsed > 0 ? `\n(ยอดเต็ม ฿${fmt(total)} หักค่าของ ฿${fmt(creditUsed)})` : ''
 
     return reply(replyToken, [
       { type: 'image', originalContentUrl: qrUrl, previewImageUrl: qrUrl },
@@ -1974,11 +1976,20 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       lastWeekSlips  = lastSlips
     }
 
-    // คำนวณ carryover: เครดิต store สัปดาห์ที่แล้วที่เกินยอดค้างสัปดาห์ที่แล้ว
-    const lastPendingAmt = lastWeekOrders
+    // ── Cross-week credit allocation ─────────────────────────────────────────
+    // 1. ยอดสัปดาห์นี้ปิดยอดค้างสัปดาห์ก่อนก่อนเสมอ
+    const lastPendingAmt      = lastWeekOrders
       .filter(o => o.payment_status !== 'paid')
       .reduce((s, o) => s + Number(o.total_amount), 0)
-    const carryoverToNow = Math.max(0, lastWeekSlips.storeTotal - lastPendingAmt)
+    const lastNetAfterOwn     = Math.max(0, lastPendingAmt - lastWeekSlips.storeTotal)
+    const lastWeekExcess      = Math.max(0, lastWeekSlips.storeTotal - lastPendingAmt)
+    const thisStoreForLast    = Math.min(thisWeekSlips.storeTotal, lastNetAfterOwn)
+    const thisStoreRemaining  = Math.max(0, thisWeekSlips.storeTotal - thisStoreForLast)
+    const carryoverToNow      = lastWeekExcess
+
+    // slips ที่ส่งเข้า buildOrderRows: ปรับ storeTotal ตาม allocation
+    const lastWeekSlipsEff = { ...lastWeekSlips, storeTotal: lastWeekSlips.storeTotal + thisStoreForLast }
+    const thisWeekSlipsEff = { ...thisWeekSlips, storeTotal: thisStoreRemaining }
 
     // ── helper: สร้างแถวรายการ ──────────────────────────────────────────────
     const fmtAmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
@@ -2088,8 +2099,8 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       return [header, ...orderLines, ...slipLines, summaryRow]
     }
 
-    const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว', 'LAST', branchId, lastWeekSlips)
-    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId, thisWeekSlips, carryoverToNow)
+    const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว', 'LAST', branchId, lastWeekSlipsEff, 0)
+    const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId, thisWeekSlipsEff, carryoverToNow)
 
     const orderRows: object[] = [
       ...lastWeekRows,
