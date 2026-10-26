@@ -437,7 +437,7 @@ function BranchRow({
 
       {/* 4. ปุ่ม 36 สัปดาห์ */}
       <td className="px-3 py-2">
-        <div className="flex flex-wrap gap-1 max-w-[420px]">
+        <div className="flex flex-wrap gap-1 max-w-fit">
           {Array.from({ length: 3 }, (_, w) => w).map(w => {
             const s = weeklySummary[w] ?? { pending: 0, paid: 0 }
             const { weekNum, year } = computeWeekBounds(w)
@@ -465,7 +465,7 @@ function BranchRow({
 
         {/* Global period orders */}
         {activePeriod && (
-          <div className="mt-2 border border-indigo-200 rounded p-2 bg-indigo-50/30 text-xs max-w-[420px]">
+          <div className="mt-2 border border-indigo-200 rounded p-2 bg-indigo-50/30 text-xs max-w-fit">
             <div className="font-semibold text-indigo-600 mb-1 text-[10px]">{activePeriod.label}</div>
             {periodOrders.length === 0 ? (
               <div className="text-gray-400">ไม่มีรายการ</div>
@@ -504,7 +504,7 @@ function BranchRow({
 
         {/* Week detail */}
         {selectedWeek !== null && (
-          <div className="mt-2 border border-gray-200 rounded p-2 bg-white text-xs max-w-[420px]">
+          <div className="mt-2 border border-gray-200 rounded p-2 bg-white text-xs max-w-fit">
             <div className="font-semibold text-gray-500 mb-1">
               สัปดาห์ที่ {computeWeekBounds(selectedWeek).weekNum} · {computeWeekBounds(selectedWeek).dateRange}
             </div>
@@ -1225,7 +1225,7 @@ export default function BranchesPage() {
                 <tr className="bg-[#9b9484] text-white text-left">
                   <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap align-bottom">ชื่อสาขา</th>
                   <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom">เดือนนี้</th>
-                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 min-w-[360px] align-bottom">
+                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 align-bottom">
                     <div className="flex flex-col gap-0.5">
                       <span className="whitespace-nowrap font-semibold leading-tight">ประวัติใบจอง</span>
                       <div className="flex flex-wrap items-center gap-1.5">
