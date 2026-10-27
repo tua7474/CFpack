@@ -162,10 +162,11 @@ function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: strin
 
 interface ModalInfo { title: string; entries: SlipEntry[]; storeSlips?: SlipEntry[] }
 
-function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries }: {
+function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, showCount }: {
   entries: SlipEntry[]; amtColor: string; title: string
   onDetail: (info: ModalInfo) => void
   storeEntries?: SlipEntry[]
+  showCount?: boolean
 }) {
   const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
   const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -194,7 +195,7 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries }:
           onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
           className={`text-left text-[11px] font-mono font-semibold ${amtColor} hover:underline leading-tight`}
         >
-          {fmt(items.reduce((s, e) => s + e.amount, 0))}
+          {showCount ? `${items.length}/` : ''}{fmt(items.reduce((s, e) => s + e.amount, 0))}
         </button>
       ))}
     </div>
@@ -514,7 +515,7 @@ export default function FinancePage() {
                             <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} />
+                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} showCount />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
