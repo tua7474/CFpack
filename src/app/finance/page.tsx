@@ -190,14 +190,21 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, s
   if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   return (
     <div className="flex flex-col gap-0.5">
-      {groups.map(({ label, items, stores }) => (
-        <button key={label}
-          onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
-          className={`text-left text-[11px] font-mono font-semibold ${amtColor} hover:underline leading-tight`}
-        >
-          {showCount ? `${items.length}/` : ''}{fmt(items.reduce((s, e) => s + e.amount, 0))}
-        </button>
-      ))}
+      {groups.map(({ label, items, stores }) => {
+        const orderTotal = items.reduce((s, e) => s + e.amount, 0)
+        const creditTotal = stores.reduce((s, e) => s + e.amount, 0)
+        const dynColor = storeEntries !== undefined
+          ? (creditTotal >= orderTotal ? 'text-green-600' : 'text-red-500')
+          : amtColor
+        return (
+          <button key={label}
+            onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
+            className={`text-left text-[11px] font-mono font-semibold ${dynColor} hover:underline leading-tight`}
+          >
+            {showCount ? `${items.length}/` : ''}{fmt(orderTotal)}
+          </button>
+        )
+      })}
     </div>
   )
 }
