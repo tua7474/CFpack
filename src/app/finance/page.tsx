@@ -522,7 +522,7 @@ export default function FinancePage() {
                             <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} showCount />
+                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`ตัดยอด — ${b.name}`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} showCount />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
