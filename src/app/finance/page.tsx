@@ -505,7 +505,7 @@ export default function FinancePage() {
                             <GroupedSlipCell entries={b.pay}   amtColor="text-green-700" title={`${b.name} — ยอดตรงใบจอง`}   onDetail={setModal} compact />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <GroupedSlipCell entries={b.store} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} compact />
+                            <GroupedSlipCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} compact />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <MonthlySlipCell entries={b.vat} amtColor="text-blue-700"   title={`${b.name} — แวต`} onDetail={setModal} />
@@ -514,13 +514,13 @@ export default function FinancePage() {
                             <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} storeEntries={b.store} />
+                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`${b.name} — ยอดรวมใบจอง`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <OverallPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} storeEntries={b.store} title={b.name} onDetail={setModal} />
+                            <OverallPendingCell orderEntries={b.order_entries} paidEntries={[...b.pay, ...b.store]} storeEntries={[...b.pay, ...b.store]} title={b.name} onDetail={setModal} />
                           </td>
                         </tr>
                         )
@@ -529,7 +529,7 @@ export default function FinancePage() {
                       <tr key={`gt-${color}`} className={`border-b-2 border-gray-300 text-[10px] font-semibold ${GROUP_HEADER_BG[color]} opacity-80`}>
                         <td className="px-3 py-1 text-right border-r border-gray-300 whitespace-nowrap">รวมกลุ่ม</td>
                         <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gPay)}</td>
-                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gStore)}</td>
+                        <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gPay + gStore)}</td>
                         <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gVat)}</td>
                         <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gFee)}</td>
                         <td className="px-3 py-1 text-right font-mono border-r border-gray-300 whitespace-nowrap">{fmtTotal(gTotal)}</td>
@@ -543,7 +543,7 @@ export default function FinancePage() {
                   <tr className="bg-[#9b9484] text-white font-bold text-xs">
                     <td className="px-3 py-2 border-r border-gray-500 whitespace-nowrap">รวมทั้งหมด ({periodLabel[period]})</td>
                     <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.pay(data))}</td>
-                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.store(data))}</td>
+                    <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.pay(data) + grand.store(data))}</td>
                     <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.vat(data))}</td>
                     <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.fee(data))}</td>
                     <td className="px-3 py-2 border-r border-gray-500 text-right font-mono whitespace-nowrap">{fmtTotal(grand.total(data))}</td>
