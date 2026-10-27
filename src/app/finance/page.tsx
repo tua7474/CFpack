@@ -304,11 +304,28 @@ function DetailModal({ modal, onClose }: { modal: ModalInfo; onClose: () => void
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-200 flex justify-between items-center bg-gray-50 rounded-b-xl">
-          <span className="text-xs text-gray-500">{modal.entries.length} รายการ</span>
-          <span className="text-sm font-bold font-mono text-gray-800">
-            {fmtAmt(modal.entries.reduce((s, e) => s + e.amount, 0))}
-          </span>
+        <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 rounded-b-xl flex flex-col gap-1.5">
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-gray-500">{modal.entries.length} รายการ</span>
+            <span className="text-sm font-bold font-mono text-gray-800">
+              {fmtAmt(modal.entries.reduce((s, e) => s + e.amount, 0))}
+            </span>
+          </div>
+          {showCut && (() => {
+            const orderTotal = modal.entries.reduce((s, e) => s + e.amount, 0)
+            const net = orderTotal - storeTotal
+            const isOwed = net > 0
+            return (
+              <div className={`flex justify-between items-center pt-1 border-t ${isOwed ? 'border-red-200' : 'border-green-200'}`}>
+                <span className={`text-[11px] font-mono ${isOwed ? 'text-red-500' : 'text-green-600'}`}>
+                  {fmtAmt(orderTotal)} - {fmtAmt(storeTotal)}
+                </span>
+                <span className={`text-sm font-bold font-mono ${isOwed ? 'text-red-500' : 'text-green-600'}`}>
+                  = {isOwed ? fmtAmt(net) : `เครดิต ${fmtAmt(Math.abs(net))}`}
+                </span>
+              </div>
+            )
+          })()}
         </div>
       </div>
     </div>
