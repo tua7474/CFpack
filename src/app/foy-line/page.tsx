@@ -19,6 +19,7 @@ interface Session {
 
 interface ProductionRow {
   id?: number
+  lot_number?: string   // YYMMDDHHMM generated at creation
   model_name?: string   // stored in product_name in DB
   color_name?: string
   product_id?: number   // catalog product id (for color reference)
@@ -37,6 +38,15 @@ interface StockColor {
 
 function todayStr() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+}
+
+function genLotNumber(): string {
+  const bkk = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  // sv-SE → "YYYY-MM-DD HH:MM:SS"
+  const [date, time] = bkk.split(' ')
+  const [y, m, d] = date.split('-')
+  const [h, min] = time.split(':')
+  return `${y.slice(2)}${m}${d}${h}${min}`
 }
 
 function fmtDateShort(d?: string) {
@@ -250,7 +260,7 @@ export default function FoyLinePage() {
     setRows(prev => prev.filter((_, i) => i !== rowIdx))
   }, [rows])
 
-  const addRow = () => setRows(prev => [...prev, emptyRow()])
+  const addRow = () => setRows(prev => [...prev, { ...emptyRow(), lot_number: genLotNumber() }])
 
   const addSession = useCallback((rowIdx: number) => {
     setRows(prev => {
@@ -331,6 +341,9 @@ export default function FoyLinePage() {
             <thead>
               {/* Row 1 */}
               <tr className="bg-[#9b9484] text-white">
+                <th rowSpan={3} className="px-2 py-2 border border-white/20 text-center font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>
+                  ชื่อล็อต
+                </th>
                 <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left" style={{ minWidth: 210 }}>
                   <div className="flex flex-col justify-between h-full">
                     <div className="font-semibold">รุ่น / สี · วันที่ / กก.</div>
@@ -395,6 +408,13 @@ export default function FoyLinePage() {
 
                 return (
                   <tr key={rowIdx} className={`border-b border-gray-100 hover:bg-yellow-50/30 align-top ${displayIdx % 2 === 0 ? 'bg-white' : 'bg-gray-200'}`}>
+
+                    {/* ── Col 0: ชื่อล็อต ── */}
+                    <td className="px-2 py-1.5 border-r border-gray-200 align-middle text-center">
+                      <div className="text-[11px] font-mono font-semibold text-gray-600 whitespace-nowrap">
+                        {row.lot_number ?? '—'}
+                      </div>
+                    </td>
 
                     {/* ── Col 1: วัตถุดิบ ── */}
                     <td className="px-2 py-1.5 border-r border-gray-200 align-top">
