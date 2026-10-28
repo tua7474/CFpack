@@ -389,6 +389,9 @@ export default function FoyLinePage() {
                 <th rowSpan={3} className="px-3 py-2 border border-white/20 text-center whitespace-nowrap bg-green-700" style={{ minWidth: 64 }}>
                   รวม<br/>กก.
                 </th>
+                <th rowSpan={3} className="px-2 py-2 border border-white/20 text-center whitespace-nowrap bg-amber-700" style={{ minWidth: 64 }}>
+                  ทุน<br/>:กิโล
+                </th>
                 <th rowSpan={3} className="px-3 py-2 border border-white/20 text-center whitespace-nowrap bg-blue-700" style={{ minWidth: 64 }}>
                   เหลือ<br/>กก.
                 </th>
@@ -570,6 +573,23 @@ export default function FoyLinePage() {
                         </div>
                       )}
                     </td>
+
+                    {/* ── ทุน:กิโล ── */}
+                    {(() => {
+                      const totalCost = (row.paper_cost ?? 0) + (row.transport_cost ?? 0)
+                      const costPerKg = totalCost > 0 && total > 0 ? totalCost / total : null
+                      return (
+                        <td className="px-2 py-2 text-center font-bold bg-amber-50 border-l border-gray-200 align-middle">
+                          {costPerKg !== null ? (
+                            <div className="whitespace-nowrap text-sm text-amber-700">
+                              {costPerKg.toLocaleString('th-TH', { maximumFractionDigits: 2 })}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300 text-sm">—</span>
+                          )}
+                        </td>
+                      )
+                    })()}
 
                     {/* ── เหลือ กก. ── */}
                     <td className="px-3 py-2 text-center font-bold bg-blue-50 border-l border-gray-200 align-middle">
