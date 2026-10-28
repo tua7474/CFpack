@@ -207,7 +207,7 @@ export default function StockPage() {
     const res = await fetch('/api/stock', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, action, qty }),
+      body: JSON.stringify({ id, action, qty, branch_name: action === 'book' ? (session?.branch_name ?? null) : undefined }),
     })
     setBusy(b => ({ ...b, [`${action}-${id}`]: false }))
     if (res.ok) {

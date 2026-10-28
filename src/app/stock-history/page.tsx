@@ -7,6 +7,7 @@ interface LogRow {
   id: number
   qty: string
   created_at: string
+  branch_name: string | null
 }
 
 function fmtQty(n: string | number | null): string {
@@ -99,7 +100,12 @@ export default function StockHistoryPage({
                 {rows.map((row, i) => (
                   <tr key={row.id} className="bg-white even:bg-gray-50 border-t border-gray-100">
                     <td className="px-4 py-2 text-center text-gray-400 text-xs">{i + 1}</td>
-                    <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{fmtDate(row.created_at)}</td>
+                    <td className="px-4 py-2">
+                      <div className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(row.created_at)}</div>
+                      {row.branch_name && (
+                        <div className="text-[10px] text-gray-400 leading-tight">{row.branch_name}</div>
+                      )}
+                    </td>
                     <td className={`px-4 py-2 text-right font-medium whitespace-nowrap ${isAdd ? 'text-green-500' : 'text-orange-500'}`}>
                       {isAdd ? '+' : '−'}{fmtQty(row.qty)}
                     </td>

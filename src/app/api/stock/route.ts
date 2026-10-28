@@ -102,6 +102,7 @@ export async function GET() {
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS prev_warehouse_price DECIMAL(10,2)`)
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS price_updated_at TIMESTAMP`)
   await pool.query(`ALTER TABLE paper_stock ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT '2 มิล'`)
+  await pool.query(`ALTER TABLE paper_stock_log ADD COLUMN IF NOT EXISTS branch_name VARCHAR(200)`)
   // Category visibility table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS paper_stock_category_vis (
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   const body = await request.json()
-  const { id, action, qty } = body
+  const { id, action, qty, branch_name } = body
 
   if (action === 'category_vis') {
     const { category, show_in_booking } = body
@@ -220,8 +221,8 @@ export async function PATCH(request: Request) {
       [qty, id]
     )
     await pool.query(
-      `INSERT INTO paper_stock_log (paper_stock_id, action, qty) VALUES ($1, 'book', $2)`,
-      [id, qty]
+      `INSERT INTO paper_stock_log (paper_stock_id, action, qty, branch_name) VALUES ($1, 'book', $2, $3)`,
+      [id, qty, branch_name ?? null]
     )
     await syncToCatalog(rows[0].model_name)
     return NextResponse.json(rows[0])
