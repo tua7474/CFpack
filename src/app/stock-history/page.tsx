@@ -27,12 +27,15 @@ function fmtDate(iso: string | null): string {
 export default function StockHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string; type?: string; name?: string }>
+  searchParams: Promise<{ id?: string; type?: string; name?: string; model?: string; color?: string; category?: string }>
 }) {
   const params      = use(searchParams)
-  const stockId     = params.id   ?? ''
-  const type        = params.type ?? 'add'
-  const productName = params.name ?? ''
+  const stockId     = params.id       ?? ''
+  const type        = params.type     ?? 'add'
+  const productName = params.name     ?? ''
+  const modelName   = params.model    ? decodeURIComponent(params.model)    : ''
+  const colorName   = params.color    ? decodeURIComponent(params.color)    : ''
+  const category    = params.category ? decodeURIComponent(params.category) : ''
 
   const [rows, setRows]       = useState<LogRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,6 +51,10 @@ export default function StockHistoryPage({
 
   const title = type === 'add' ? 'ประวัติการเพิ่มสต็อค' : 'ประวัติการจอง'
   const isAdd = type === 'add'
+
+  // Product detail line shown on each row
+  const productLine = [modelName, colorName, category, stockId ? `#${stockId}` : '']
+    .filter(Boolean).join(' · ')
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -74,16 +81,23 @@ export default function StockHistoryPage({
               <thead>
                 <tr className="bg-[#9b9484] text-white text-left">
                   <th className="px-4 py-2 w-10 text-center">#</th>
-                  <th className="px-4 py-2">วันเวลา</th>
+                  <th className="px-4 py-2">รายการ / วันเวลา</th>
                   <th className="px-4 py-2 text-right">จำนวน</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, i) => (
                   <tr key={row.id} className="bg-white even:bg-gray-50 border-t border-gray-100">
-                    <td className="px-4 py-2 text-center text-gray-400 text-xs">{i + 1}</td>
-                    <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{fmtDate(row.created_at)}</td>
-                    <td className={`px-4 py-2 text-right font-medium whitespace-nowrap ${isAdd ? 'text-green-400' : 'text-green-400'}`}>
+                    <td className="px-4 py-2 text-center text-gray-400 text-xs align-top">{i + 1}</td>
+                    <td className="px-4 py-2">
+                      {productLine && (
+                        <div className="text-[11px] font-medium text-gray-700 leading-tight mb-0.5">
+                          {productLine}
+                        </div>
+                      )}
+                      <div className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(row.created_at)}</div>
+                    </td>
+                    <td className={`px-4 py-2 text-right font-medium whitespace-nowrap align-top ${isAdd ? 'text-green-500' : 'text-orange-500'}`}>
                       {isAdd ? '+' : '−'}{fmtQty(row.qty)}
                     </td>
                   </tr>

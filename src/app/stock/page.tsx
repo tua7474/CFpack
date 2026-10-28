@@ -692,7 +692,7 @@ export default function StockPage() {
                             value={addInputs[item.id] ?? ''}
                             onChange={e => setAddInputs(p => ({ ...p, [item.id]: e.target.value }))}
                             className="w-16 px-1.5 py-1 text-xs rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-gray-400 text-right" />
-                          <Link href={`/stock-history?id=${item.id}&type=add&name=${encodeURIComponent(item.model_name + ' ' + item.color_name)}`}
+                          <Link href={`/stock-history?id=${item.id}&type=add&name=${encodeURIComponent(item.model_name + ' ' + item.color_name)}&model=${encodeURIComponent(item.model_name)}&color=${encodeURIComponent(item.color_name)}&category=${encodeURIComponent(item.category)}`}
                             className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 text-gray-500 border border-gray-300 transition-colors whitespace-nowrap">
                             ประวัติ
                           </Link>
@@ -715,7 +715,7 @@ export default function StockPage() {
                             className="px-2 py-1 text-xs rounded bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-400 transition-colors disabled:opacity-50 whitespace-nowrap">
                             − จอง
                           </button>
-                          <Link href={`/stock-history?id=${item.id}&type=book&name=${encodeURIComponent(item.model_name + ' ' + item.color_name)}`}
+                          <Link href={`/stock-history?id=${item.id}&type=book&name=${encodeURIComponent(item.model_name + ' ' + item.color_name)}&model=${encodeURIComponent(item.model_name)}&color=${encodeURIComponent(item.color_name)}&category=${encodeURIComponent(item.category)}`}
                             className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 text-gray-500 border border-gray-300 transition-colors whitespace-nowrap">
                             ประวัติ
                           </Link>
