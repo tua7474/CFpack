@@ -339,7 +339,7 @@ export default function FoyLinePage() {
                         onClick={addRow}
                         className="px-3 py-1 text-xs rounded bg-white/20 hover:bg-white/30 text-white font-medium transition-colors self-start"
                       >
-                        + เพิ่มแถว
+                        +ล็อตใหม่
                       </button>
                       <button
                         onClick={handleSaveAll}
