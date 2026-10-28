@@ -437,29 +437,29 @@ export default function FoyLinePage() {
                     {/* ── Col 0b: ต้นทุนล็อต ── */}
                     <td className="px-2 py-1.5 border-r border-gray-200 align-top">
                       <div className="flex flex-col gap-0.5">
+                        {/* บรรทัด 1: กระดาษ + ค่ารถ บรรทัดเดียวกัน */}
                         <div className="flex items-center gap-1">
-                          <span className="text-[9px] text-gray-400 w-[46px] shrink-0 text-right">กระดาษ</span>
+                          <span className="text-[9px] text-gray-400 shrink-0">กระดาษ</span>
                           <input
                             type="number" inputMode="decimal" step="1"
                             value={row.paper_cost ?? ''}
                             onChange={e => updateCost(rowIdx, 'paper_cost', e.target.value)}
-                            className="w-[60px] px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-right text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-[52px] px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-right text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="0"
                           />
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[9px] text-gray-400 w-[46px] shrink-0 text-right">ค่ารถ</span>
+                          <span className="text-[9px] text-gray-400 shrink-0">รถ</span>
                           <input
                             type="number" inputMode="decimal" step="1"
                             value={row.transport_cost ?? ''}
                             onChange={e => updateCost(rowIdx, 'transport_cost', e.target.value)}
-                            className="w-[60px] px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-right text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-[52px] px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-right text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="0"
                           />
                         </div>
+                        {/* บรรทัด 2: รวม */}
                         <div className="flex items-center gap-1 border-t border-gray-100 pt-0.5 mt-0.5">
-                          <span className="text-[9px] text-gray-500 w-[46px] shrink-0 text-right font-medium">รวม</span>
-                          <span className="w-[60px] text-[10px] font-bold text-right text-orange-600 pr-0.5">
+                          <span className="text-[9px] text-gray-500 shrink-0 font-medium">รวม</span>
+                          <span className="text-[10px] font-bold text-orange-600">
                             {((row.paper_cost ?? 0) + (row.transport_cost ?? 0)) > 0
                               ? ((row.paper_cost ?? 0) + (row.transport_cost ?? 0)).toLocaleString('th-TH', { maximumFractionDigits: 0 })
                               : '—'}
