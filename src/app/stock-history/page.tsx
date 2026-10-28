@@ -56,6 +56,14 @@ export default function StockHistoryPage({
   const productLine = [modelName, colorName, category, stockId ? `#${stockId}` : '']
     .filter(Boolean).join(' · ')
 
+  // thead color by category (matches model row colors in stock page)
+  const theadCls =
+    category === '2 มิล'   ? 'bg-[#F7DC6F] text-gray-700' :
+    category === '4 มิล'   ? 'bg-[#F0B27A] text-gray-700' :
+    category === '1.5 มิล' ? 'bg-[#F1948A] text-gray-700' :
+    category === 'ฝอยหยัก' ? 'bg-[#C39BD3] text-gray-700' :
+    'bg-[#9b9484] text-white'
+
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center gap-3">
@@ -79,7 +87,7 @@ export default function StockHistoryPage({
           <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden max-w-lg">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-[#9b9484] text-white text-left">
+                <tr className={`${theadCls} text-left font-semibold`}>
                   <th className="px-4 py-2 w-10 text-center">#</th>
                   <th className="px-4 py-2">วันเวลา</th>
                   <th className="px-4 py-2 text-right">จำนวน</th>
