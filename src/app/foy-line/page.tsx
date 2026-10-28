@@ -20,6 +20,8 @@ interface Session {
 interface ProductionRow {
   id?: number
   lot_number?: string   // YYMMDDHHMM generated at creation
+  paper_cost?: number   // ราคากระดาษ
+  transport_cost?: number // ค่ารถ
   model_name?: string   // stored in product_name in DB
   color_name?: string
   product_id?: number   // catalog product id (for color reference)
@@ -219,6 +221,16 @@ export default function FoyLinePage() {
     })
   }, [scheduleSave])
 
+  const updateCost = useCallback((rowIdx: number, field: 'paper_cost' | 'transport_cost', raw: string) => {
+    const val = raw === '' ? undefined : Number(raw)
+    setRows(prev => {
+      const updated = { ...prev[rowIdx], [field]: val }
+      const next = [...prev]; next[rowIdx] = updated
+      scheduleSave(updated, rowIdx)
+      return next
+    })
+  }, [scheduleSave])
+
   const updateSessionKg = useCallback((rowIdx: number, si: number, raw: string) => {
     const val = raw === '' ? undefined : Number(raw)
     setRows(prev => {
@@ -344,6 +356,9 @@ export default function FoyLinePage() {
                 <th rowSpan={3} className="px-2 py-2 border border-white/20 text-center font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>
                   ชื่อล็อต
                 </th>
+                <th rowSpan={3} className="px-2 py-2 border border-white/20 text-center font-semibold" style={{ minWidth: 120 }}>
+                  ต้นทุนล็อต
+                </th>
                 <th rowSpan={3} className="px-3 py-2 border border-white/20 text-left" style={{ minWidth: 210 }}>
                   <div className="flex flex-col justify-between h-full">
                     <div className="font-semibold">รุ่น / สี · วันที่ / กก.</div>
@@ -413,6 +428,40 @@ export default function FoyLinePage() {
                     <td className="px-2 py-1.5 border-r border-gray-200 align-middle text-center">
                       <div className="text-[11px] font-mono font-semibold text-gray-600 whitespace-nowrap">
                         {row.lot_number ?? '—'}
+                      </div>
+                    </td>
+
+                    {/* ── Col 0b: ต้นทุนล็อต ── */}
+                    <td className="px-2 py-1.5 border-r border-gray-200 align-top">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-gray-400 w-[46px] shrink-0 text-right">กระดาษ</span>
+                          <input
+                            type="number" inputMode="decimal" step="1"
+                            value={row.paper_cost ?? ''}
+                            onChange={e => updateCost(rowIdx, 'paper_cost', e.target.value)}
+                            className="w-[60px] px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-right text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-gray-400 w-[46px] shrink-0 text-right">ค่ารถ</span>
+                          <input
+                            type="number" inputMode="decimal" step="1"
+                            value={row.transport_cost ?? ''}
+                            onChange={e => updateCost(rowIdx, 'transport_cost', e.target.value)}
+                            className="w-[60px] px-0.5 py-0.5 text-[10px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#9b9484] text-right text-black bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1 border-t border-gray-100 pt-0.5 mt-0.5">
+                          <span className="text-[9px] text-gray-500 w-[46px] shrink-0 text-right font-medium">รวม</span>
+                          <span className="w-[60px] text-[10px] font-bold text-right text-orange-600 pr-0.5">
+                            {((row.paper_cost ?? 0) + (row.transport_cost ?? 0)) > 0
+                              ? ((row.paper_cost ?? 0) + (row.transport_cost ?? 0)).toLocaleString('th-TH', { maximumFractionDigits: 0 })
+                              : '—'}
+                          </span>
+                        </div>
                       </div>
                     </td>
 

@@ -21,6 +21,8 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS color_name VARCHAR(200)`).catch(() => {})
   await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS synced_kg DECIMAL(12,4) NOT NULL DEFAULT 0`).catch(() => {})
   await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS lot_number VARCHAR(20)`).catch(() => {})
+  await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS paper_cost DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
+  await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS transport_cost DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
 }
 
 // Field mapping (DB → frontend):
@@ -71,6 +73,8 @@ export async function GET() {
            product_name AS model_name,
            color_name,
            lot_number,
+           paper_cost::float,
+           transport_cost::float,
            new_job_kg::float   AS raw_kg,
            new_job_date::text  AS raw_date,
            sessions,
@@ -86,15 +90,17 @@ export async function POST(req: NextRequest) {
   const b = await req.json()
   const { rows } = await pool.query(`
     INSERT INTO foy_production
-      (product_id, product_name, color_name, lot_number, new_job_kg, new_job_date, sessions)
-    VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+      (product_id, product_name, color_name, lot_number, paper_cost, transport_cost, new_job_kg, new_job_date, sessions)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id
   `, [
-    b.product_id  ?? null,
-    b.model_name  ?? null,
-    b.color_name  ?? null,
-    b.lot_number  ?? null,
-    b.raw_kg      ?? null,
-    b.raw_date    ?? null,
+    b.product_id      ?? null,
+    b.model_name      ?? null,
+    b.color_name      ?? null,
+    b.lot_number      ?? null,
+    b.paper_cost      ?? 0,
+    b.transport_cost  ?? 0,
+    b.raw_kg          ?? null,
+    b.raw_date        ?? null,
     JSON.stringify(b.sessions ?? []),
   ])
   return NextResponse.json(rows[0], { status: 201 })
@@ -120,22 +126,26 @@ export async function PATCH(req: NextRequest) {
   // Update row
   await pool.query(`
     UPDATE foy_production SET
-      product_id   = $1,
-      product_name = $2,
-      color_name   = $3,
-      lot_number   = $4,
-      new_job_kg   = $5,
-      new_job_date = $6,
-      sessions     = $7,
-      updated_at   = NOW()
-    WHERE id = $8
+      product_id     = $1,
+      product_name   = $2,
+      color_name     = $3,
+      lot_number     = $4,
+      paper_cost     = $5,
+      transport_cost = $6,
+      new_job_kg     = $7,
+      new_job_date   = $8,
+      sessions       = $9,
+      updated_at     = NOW()
+    WHERE id = $10
   `, [
-    b.product_id  ?? null,
-    b.model_name  ?? null,
-    b.color_name  ?? null,
-    b.lot_number  ?? null,
-    b.raw_kg      ?? null,
-    b.raw_date    ?? null,
+    b.product_id      ?? null,
+    b.model_name      ?? null,
+    b.color_name      ?? null,
+    b.lot_number      ?? null,
+    b.paper_cost      ?? 0,
+    b.transport_cost  ?? 0,
+    b.raw_kg          ?? null,
+    b.raw_date        ?? null,
     JSON.stringify(newSessions),
     b.id,
   ])
