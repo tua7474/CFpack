@@ -72,9 +72,6 @@ export default function StockHistoryPage({
         </Link>
         <div>
           <h1 className="text-xl font-bold">{title}</h1>
-          {productName && (
-            <p className="text-orange-200 text-xs mt-0.5">{decodeURIComponent(productName)}</p>
-          )}
         </div>
       </header>
 
