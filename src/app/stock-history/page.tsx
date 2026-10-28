@@ -87,7 +87,12 @@ export default function StockHistoryPage({
           <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden max-w-lg">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className={`${theadCls} text-left font-semibold`}>
+                {productLine && (
+                  <tr className={theadCls}>
+                    <th colSpan={3} className="px-4 py-1.5 text-[12px] font-semibold">{productLine}</th>
+                  </tr>
+                )}
+                <tr className={`${theadCls} text-left font-semibold border-t border-black/10`}>
                   <th className="px-4 py-2 w-10 text-center">#</th>
                   <th className="px-4 py-2">วันเวลา</th>
                   <th className="px-4 py-2 text-right">จำนวน</th>
@@ -97,12 +102,7 @@ export default function StockHistoryPage({
                 {rows.map((row, i) => (
                   <tr key={row.id} className="bg-white even:bg-gray-50 border-t border-gray-100">
                     <td className="px-4 py-2 text-center text-gray-400 text-xs">{i + 1}</td>
-                    <td className="px-4 py-2">
-                      {productLine && (
-                        <div className="text-[11px] font-medium text-gray-700 leading-tight">{productLine}</div>
-                      )}
-                      <div className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(row.created_at)}</div>
-                    </td>
+                    <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{fmtDate(row.created_at)}</td>
                     <td className={`px-4 py-2 text-right font-medium whitespace-nowrap ${isAdd ? 'text-green-500' : 'text-orange-500'}`}>
                       {isAdd ? '+' : '−'}{fmtQty(row.qty)}
                     </td>
