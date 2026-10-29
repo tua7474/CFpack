@@ -23,6 +23,7 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS lot_number VARCHAR(20)`).catch(() => {})
   await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS paper_cost DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
   await pool.query(`ALTER TABLE foy_production ADD COLUMN IF NOT EXISTS transport_cost DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
+  await pool.query(`ALTER TABLE paper_stock_log ADD COLUMN IF NOT EXISTS lot_number VARCHAR(20)`).catch(() => {})
 }
 
 // Field mapping (DB → frontend):
@@ -38,7 +39,7 @@ function sessionsTotal(sessions: { kg?: number }[]): number {
   return sessions.reduce((s, sess) => s + (Number(sess?.kg) || 0), 0)
 }
 
-async function syncStockAdd(colorName: string, deltaKg: number) {
+async function syncStockAdd(colorName: string, deltaKg: number, lotNumber?: string | null) {
   const { rows } = await pool.query(
     `UPDATE paper_stock
      SET stock_qty      = stock_qty + $1,
@@ -50,8 +51,8 @@ async function syncStockAdd(colorName: string, deltaKg: number) {
   )
   if (rows.length === 0) return
   await pool.query(
-    `INSERT INTO paper_stock_log (paper_stock_id, action, qty) VALUES ($1, 'foy_add', $2)`,
-    [rows[0].id, deltaKg]
+    `INSERT INTO paper_stock_log (paper_stock_id, action, qty, lot_number) VALUES ($1, 'foy_add', $2, $3)`,
+    [rows[0].id, deltaKg, lotNumber ?? null]
   )
   // Sync total to catalog
   const { rows: tot } = await pool.query(
@@ -153,7 +154,7 @@ export async function PATCH(req: NextRequest) {
   // Sync to stock only when explicitly requested (syncStock: true)
   const syncStock: boolean = b.syncStock ?? false
   if (syncStock && delta > 0 && b.color_name) {
-    await syncStockAdd(b.color_name, delta)
+    await syncStockAdd(b.color_name, delta, b.lot_number ?? null)
     await pool.query(
       `UPDATE foy_production SET synced_kg = $1 WHERE id = $2`,
       [newTotal, b.id]

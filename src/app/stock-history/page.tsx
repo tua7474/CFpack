@@ -8,6 +8,8 @@ interface LogRow {
   qty: string
   created_at: string
   branch_name: string | null
+  lot_number: string | null
+  action: string | null
 }
 
 function fmtQty(n: string | number | null): string {
@@ -93,6 +95,7 @@ export default function StockHistoryPage({
                 <tr className={`${theadCls} text-left font-semibold border-t border-black/10`}>
                   <th className="px-4 py-2 w-10 text-center">#</th>
                   <th className="px-4 py-2">วันเวลา</th>
+                  {isAdd && <th className="px-4 py-2">ล็อต</th>}
                   <th className="px-4 py-2 text-right">จำนวน</th>
                 </tr>
               </thead>
@@ -105,7 +108,21 @@ export default function StockHistoryPage({
                       {row.branch_name && (
                         <div className="text-[10px] text-gray-400 leading-tight">{row.branch_name}</div>
                       )}
+                      {row.action === 'foy_add' && !row.lot_number && (
+                        <div className="text-[10px] text-blue-400 leading-tight">ไลน์ผลิต</div>
+                      )}
                     </td>
+                    {isAdd && (
+                      <td className="px-4 py-2">
+                        {row.lot_number ? (
+                          <span className="px-2 py-0.5 text-[11px] rounded-full bg-blue-100 text-blue-700 font-mono font-semibold whitespace-nowrap">
+                            {row.lot_number}
+                          </span>
+                        ) : row.action === 'add' ? (
+                          <span className="text-[10px] text-gray-400">เพิ่มตรง</span>
+                        ) : null}
+                      </td>
+                    )}
                     <td className={`px-4 py-2 text-right font-medium whitespace-nowrap ${isAdd ? 'text-green-500' : 'text-orange-500'}`}>
                       {isAdd ? '+' : '−'}{fmtQty(row.qty)}
                     </td>

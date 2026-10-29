@@ -9,13 +9,15 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get('type') // 'add' or 'book'
     if (!id || !type) return NextResponse.json({ error: 'id and type required' }, { status: 400 })
 
+    const actionFilter = type === 'add' ? `action IN ('add', 'foy_add')` : `action = $2`
+    const queryParams  = type === 'add' ? [id] : [id, type]
     const { rows } = await pool.query(
-      `SELECT id, qty, created_at, branch_name
+      `SELECT id, qty, created_at, branch_name, lot_number, action
        FROM paper_stock_log
-       WHERE paper_stock_id = $1 AND action = $2
+       WHERE paper_stock_id = $1 AND ${actionFilter}
        ORDER BY created_at DESC
        LIMIT 200`,
-      [id, type]
+      queryParams
     )
     return NextResponse.json(rows)
   } catch (err) {
