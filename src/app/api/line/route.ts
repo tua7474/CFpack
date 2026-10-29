@@ -1557,6 +1557,37 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     return reply(replyToken, [{ type: 'text', text: `✅ บันทึกค่าแวต ฿${fmtAmt} เรียบร้อยแล้วครับ` }])
   }
 
+  // SLIP_STORE_DIRECT:{id}:{type} — หักค่าของ + ปลายทางในคลิกเดียว (ข้าม slipTypeCard)
+  if (data.startsWith('SLIP_STORE_DIRECT:')) {
+    if (!await isLineAdmin(userId, source)) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้นที่สามารถยืนยันรับสลิปได้' }])
+    }
+    const parts    = data.split(':')
+    const slipId   = parseInt(parts[1])
+    const slipType = parts[2]
+    const slipTypeLabel = SLIP_TYPE_OPTS.find(o => o.key === slipType)?.label ?? slipType
+
+    const { rows: existing } = await pool.query('SELECT status FROM slips WHERE id=$1', [slipId])
+    if (existing[0]?.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: '✅ ดำเนินการไปแล้วครับ' }])
+    }
+
+    const { rows: [slip] } = await pool.query(
+      `UPDATE slips SET status='confirmed', category=$2, applied=false WHERE id=$1 RETURNING branch_id, amount`,
+      [slipId, slipType]
+    )
+    if (!slip?.branch_id) await ensureSlipBranch(slipId, source)
+    const slipAmount: number = parseFloat(slip?.amount ?? '0') || 0
+    const { rows: br } = slip?.branch_id !== null && slip?.branch_id !== undefined
+      ? await pool.query('SELECT name FROM branches WHERE id=$1', [slip.branch_id])
+      : { rows: [] as { name: string }[] }
+    const branchName = br[0]?.name ?? ''
+    return reply(replyToken, [{
+      type: 'text',
+      text: `✅ บันทึกยอดไว้หักค่าของเรียบร้อย\n${slipTypeLabel}\n฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${branchName ? `\nสาขา: ${branchName}` : ''}`
+    }])
+  }
+
   // SLIP_PURPOSE:{id}:{PAY|STORE} — ขั้นตอนที่ 1: เลือกวัตถุประสงค์
   if (data.startsWith('SLIP_PURPOSE:')) {
     if (!await isLineAdmin(userId, source)) {
@@ -2316,17 +2347,37 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
           autoBox,
           ...payRow,
           { type: 'separator', margin: 'xs', color: '#d1d5db' },
-          // 4 ปุ่ม: หักค่าของ | แวต | FEE | ไม่ใช่สลิป
+          // แถว 1: 5 ปุ่มหักค่าของ (ปลายทาง)
+          {
+            type: 'box', layout: 'vertical', margin: 'xs', spacing: 'none',
+            contents: [
+              { type: 'text', text: 'หักค่าของ ▸', size: 'xxs', color: '#9a3412', weight: 'bold', margin: 'none' },
+              {
+                type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+                contents: [
+                  { type: 'box', layout: 'vertical', flex: 1, backgroundColor: '#E57373', cornerRadius: '4px', paddingAll: '5px',
+                    action: { type: 'postback', data: `SLIP_STORE_DIRECT:${slip.id}:วรวุฒิ`, displayText: 'หักค่าของ — วรวุฒิ' },
+                    contents: [{ type: 'text', text: 'วว', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }] },
+                  { type: 'box', layout: 'vertical', flex: 1, backgroundColor: '#4FC3F7', cornerRadius: '4px', paddingAll: '5px',
+                    action: { type: 'postback', data: `SLIP_STORE_DIRECT:${slip.id}:print`, displayText: 'หักค่าของ — Print' },
+                    contents: [{ type: 'text', text: 'PR', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }] },
+                  { type: 'box', layout: 'vertical', flex: 1, backgroundColor: '#66BB6A', cornerRadius: '4px', paddingAll: '5px',
+                    action: { type: 'postback', data: `SLIP_STORE_DIRECT:${slip.id}:pack`, displayText: 'หักค่าของ — PACK' },
+                    contents: [{ type: 'text', text: 'PK', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }] },
+                  { type: 'box', layout: 'vertical', flex: 1, backgroundColor: '#FFA726', cornerRadius: '4px', paddingAll: '5px',
+                    action: { type: 'postback', data: `SLIP_STORE_DIRECT:${slip.id}:bb`, displayText: 'หักค่าของ — BB' },
+                    contents: [{ type: 'text', text: 'BB', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }] },
+                  { type: 'box', layout: 'vertical', flex: 1, backgroundColor: '#AB47BC', cornerRadius: '4px', paddingAll: '5px',
+                    action: { type: 'postback', data: `SLIP_STORE_DIRECT:${slip.id}:กล่อง`, displayText: 'หักค่าของ — กล่อง' },
+                    contents: [{ type: 'text', text: 'กล.', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }] },
+                ],
+              },
+            ],
+          },
+          // แถว 2: แวต | Fee | ไม่ใช่สลิป
           {
             type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
             contents: [
-              {
-                type: 'box', layout: 'vertical', flex: 1,
-                backgroundColor: suggest?.purpose === 'STORE' ? '#ea580c' : '#fed7aa',
-                cornerRadius: '4px', paddingAll: '5px',
-                action: { type: 'postback', data: `SLIP_PURPOSE:${slip.id}:STORE`, displayText: 'หักค่าของ' },
-                contents: [{ type: 'text', text: 'หักค่าของ', size: 'xxs', color: suggest?.purpose === 'STORE' ? '#ffffff' : '#9a3412', align: 'center', weight: 'bold' }],
-              },
               {
                 type: 'box', layout: 'vertical', flex: 1,
                 backgroundColor: '#e5e7eb', cornerRadius: '4px', paddingAll: '5px',
@@ -2340,7 +2391,7 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
                 contents: [{ type: 'text', text: 'Fee', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
               },
               {
-                type: 'box', layout: 'vertical', flex: 1,
+                type: 'box', layout: 'vertical', flex: 2,
                 backgroundColor: '#dc2626', cornerRadius: '4px', paddingAll: '5px',
                 action: { type: 'postback', data: `SLIP_CANCEL:${slip.id}`, displayText: 'ไม่ใช่สลิป' },
                 contents: [{ type: 'text', text: 'ไม่ใช่สลิป', size: 'xxs', color: '#ffffff', align: 'center', weight: 'bold' }],
