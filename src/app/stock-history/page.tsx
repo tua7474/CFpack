@@ -84,6 +84,7 @@ export default function StockHistoryPage({
         ) : rows.length === 0 ? (
           <div className="flex items-center justify-center h-40 text-gray-400">ยังไม่มีประวัติ</div>
         ) : (
+          <>
           {isAdd && (
             <div className="mb-2 flex gap-3 text-xs">
               <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-blue-50 text-blue-600 font-semibold border border-blue-200">
@@ -145,6 +146,7 @@ export default function StockHistoryPage({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </main>
     </div>
