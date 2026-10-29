@@ -272,7 +272,7 @@ export default function FoyLinePage() {
     setRows(prev => prev.filter((_, i) => i !== rowIdx))
   }, [rows])
 
-  const addRow = () => setRows(prev => [...prev, { ...emptyRow(), lot_number: genLotNumber() }])
+  const addRow = () => setRows(prev => [{ ...emptyRow(), lot_number: genLotNumber() }, ...prev])
 
   const addSession = useCallback((rowIdx: number) => {
     setRows(prev => {
