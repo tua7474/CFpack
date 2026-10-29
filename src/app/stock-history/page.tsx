@@ -84,12 +84,22 @@ export default function StockHistoryPage({
         ) : rows.length === 0 ? (
           <div className="flex items-center justify-center h-40 text-gray-400">ยังไม่มีประวัติ</div>
         ) : (
+          {isAdd && (
+            <div className="mb-2 flex gap-3 text-xs">
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-blue-50 text-blue-600 font-semibold border border-blue-200">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-300 inline-block" /> 🌀 ไลน์ผลิต
+              </span>
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-green-50 text-green-700 font-semibold border border-green-200">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-300 inline-block" /> 📦 เพิ่มตรง
+              </span>
+            </div>
+          )}
           <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden max-w-lg">
             <table className="min-w-full text-sm">
               <thead>
                 {productLine && (
                   <tr className={theadCls}>
-                    <th colSpan={3} className="px-4 py-1.5 text-[12px] font-semibold">{productLine}</th>
+                    <th colSpan={isAdd ? 4 : 3} className="px-4 py-1.5 text-[12px] font-semibold">{productLine}</th>
                   </tr>
                 )}
                 <tr className={`${theadCls} text-left font-semibold border-t border-black/10`}>
@@ -100,16 +110,21 @@ export default function StockHistoryPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
-                  <tr key={row.id} className="bg-white even:bg-gray-50 border-t border-gray-100">
+                {rows.map((row, i) => {
+                  const isFoyAdd = row.action === 'foy_add'
+                  const rowBg = !isAdd ? 'bg-white' : isFoyAdd ? 'bg-blue-50' : 'bg-green-50'
+                  return (
+                  <tr key={row.id} className={`${rowBg} border-t border-gray-100`}>
                     <td className="px-4 py-2 text-center text-gray-400 text-xs">{i + 1}</td>
                     <td className="px-4 py-2">
                       <div className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(row.created_at)}</div>
                       {row.branch_name && (
                         <div className="text-[10px] text-gray-400 leading-tight">{row.branch_name}</div>
                       )}
-                      {row.action === 'foy_add' && !row.lot_number && (
-                        <div className="text-[10px] text-blue-400 leading-tight">ไลน์ผลิต</div>
+                      {isAdd && (
+                        <div className={`text-[10px] font-semibold leading-tight ${isFoyAdd ? 'text-blue-500' : 'text-green-600'}`}>
+                          {isFoyAdd ? '🌀 ไลน์ผลิต' : '📦 เพิ่มตรง'}
+                        </div>
                       )}
                     </td>
                     {isAdd && (
@@ -118,16 +133,15 @@ export default function StockHistoryPage({
                           <span className="px-2 py-0.5 text-[11px] rounded-full bg-blue-100 text-blue-700 font-mono font-semibold whitespace-nowrap">
                             {row.lot_number}
                           </span>
-                        ) : row.action === 'add' ? (
-                          <span className="text-[10px] text-gray-400">เพิ่มตรง</span>
                         ) : null}
                       </td>
                     )}
-                    <td className={`px-4 py-2 text-right font-medium whitespace-nowrap ${isAdd ? 'text-green-500' : 'text-orange-500'}`}>
+                    <td className={`px-4 py-2 text-right font-medium whitespace-nowrap ${isAdd ? 'text-green-600' : 'text-orange-500'}`}>
                       {isAdd ? '+' : '−'}{fmtQty(row.qty)}
                     </td>
                   </tr>
-                ))}
+                )})}
+
               </tbody>
             </table>
           </div>

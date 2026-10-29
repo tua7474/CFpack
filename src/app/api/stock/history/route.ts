@@ -4,6 +4,7 @@ import pool from '@/lib/db'
 // GET /api/stock/history?id=X&type=add|book
 export async function GET(req: NextRequest) {
   try {
+    await pool.query(`ALTER TABLE paper_stock_log ADD COLUMN IF NOT EXISTS lot_number VARCHAR(20)`).catch(() => {})
     const { searchParams } = new URL(req.url)
     const id   = Number(searchParams.get('id'))
     const type = searchParams.get('type') // 'add' or 'book'
