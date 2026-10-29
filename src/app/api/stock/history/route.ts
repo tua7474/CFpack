@@ -10,51 +10,73 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get('type') // 'add' or 'book'
     if (!id || !type) return NextResponse.json({ error: 'id and type required' }, { status: 400 })
 
+    // ดึง foy_add entries เสมอ (ใช้เป็น timeline markers ทั้งสองหน้า)
+    const { rows: lotMarkers } = await pool.query(
+      `SELECT id, qty::text AS qty, created_at, lot_number, 'foy_add' AS action
+       FROM paper_stock_log
+       WHERE paper_stock_id = $1 AND action = 'foy_add'
+       ORDER BY created_at ASC`,
+      [id]
+    )
+
     if (type === 'add') {
-      const { rows } = await pool.query(
-        `SELECT id, qty, created_at, branch_name, lot_number, action
+      // ประวัติเพิ่มสต็อค: รวม 'add' + 'foy_add' เรียงตาม date DESC
+      // foy_add = is_lot_marker ด้วย
+      const { rows: addRows } = await pool.query(
+        `SELECT id, qty::text AS qty, created_at, branch_name, lot_number, action
          FROM paper_stock_log
          WHERE paper_stock_id = $1 AND action IN ('add', 'foy_add')
          ORDER BY created_at DESC
          LIMIT 200`,
         [id]
       )
-      return NextResponse.json(rows)
+      const result = addRows.map(r => ({
+        ...r,
+        active_lot: null,
+        is_lot_marker: r.action === 'foy_add',
+      }))
+      return NextResponse.json(result)
     }
 
-    // type === 'book': annotate each booking with the active lot at that time
-    // active lot = most recent foy_add before the booking's created_at
+    // type === 'book'
     const { rows: bookRows } = await pool.query(
-      `SELECT id, qty, created_at, branch_name, action
+      `SELECT id, qty::text AS qty, created_at, branch_name, action
        FROM paper_stock_log
        WHERE paper_stock_id = $1 AND action = 'book'
        ORDER BY created_at DESC
        LIMIT 200`,
       [id]
     )
-    const { rows: lotRows } = await pool.query(
-      `SELECT lot_number, created_at
-       FROM paper_stock_log
-       WHERE paper_stock_id = $1 AND action = 'foy_add' AND lot_number IS NOT NULL
-       ORDER BY created_at ASC`,
-      [id]
-    )
 
-    // For each booking, find the active lot (last foy_add before or at booking time)
+    // หา active_lot สำหรับแต่ละ booking
     const annotated = bookRows.map(row => {
       const bookTime = new Date(row.created_at).getTime()
       let activeLot: string | null = null
-      for (const lot of lotRows) {
-        if (new Date(lot.created_at).getTime() <= bookTime) {
-          activeLot = lot.lot_number
-        } else {
-          break
-        }
+      for (const lot of lotMarkers) {
+        if (new Date(lot.created_at).getTime() <= bookTime) activeLot = lot.lot_number
+        else break
       }
-      return { ...row, active_lot: activeLot }
+      return { ...row, lot_number: null, active_lot: activeLot, is_lot_marker: false }
     })
 
-    return NextResponse.json(annotated)
+    // แปลง lotMarkers เป็น marker rows สำหรับ inject เข้า timeline
+    const markerRows = lotMarkers.map(lot => ({
+      id: lot.id,
+      qty: lot.qty,
+      created_at: lot.created_at,
+      branch_name: null,
+      action: 'foy_add',
+      lot_number: lot.lot_number,
+      active_lot: null,
+      is_lot_marker: true,
+    }))
+
+    // รวมและเรียงตาม date DESC
+    const merged = [...annotated, ...markerRows].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+
+    return NextResponse.json(merged)
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

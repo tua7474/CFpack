@@ -10,7 +10,8 @@ interface LogRow {
   branch_name: string | null
   lot_number: string | null
   action: string | null
-  active_lot: string | null   // booking only: lot active at time of booking
+  active_lot: string | null
+  is_lot_marker: boolean
 }
 
 function fmtQty(n: string | number | null): string {
@@ -28,27 +29,53 @@ function fmtDate(iso: string | null): string {
   })
 }
 
-// สีสลับสำหรับแต่ละล็อต (วนซ้ำ)
 const LOT_PALETTE = [
-  { row: 'bg-orange-50',  badge: 'bg-orange-100 text-orange-700 border-orange-300' },
-  { row: 'bg-sky-50',     badge: 'bg-sky-100 text-sky-700 border-sky-300' },
-  { row: 'bg-violet-50',  badge: 'bg-violet-100 text-violet-700 border-violet-300' },
-  { row: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
-  { row: 'bg-rose-50',    badge: 'bg-rose-100 text-rose-700 border-rose-300' },
-  { row: 'bg-yellow-50',  badge: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+  { row: 'bg-orange-50',  badge: 'bg-orange-100 text-orange-700 border-orange-300',   marker: 'bg-orange-400'  },
+  { row: 'bg-sky-50',     badge: 'bg-sky-100 text-sky-700 border-sky-300',             marker: 'bg-sky-400'     },
+  { row: 'bg-violet-50',  badge: 'bg-violet-100 text-violet-700 border-violet-300',   marker: 'bg-violet-400'  },
+  { row: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-700 border-emerald-300', marker: 'bg-emerald-400' },
+  { row: 'bg-rose-50',    badge: 'bg-rose-100 text-rose-700 border-rose-300',         marker: 'bg-rose-400'    },
+  { row: 'bg-yellow-50',  badge: 'bg-yellow-100 text-yellow-700 border-yellow-300',   marker: 'bg-yellow-400'  },
 ]
+
+// banner แสดงเมื่อล็อตใหม่เข้าสต็อค
+function LotMarkerRow({ lot_number, created_at, qty, paletteIdx, colSpan }: {
+  lot_number: string | null; created_at: string; qty: string; paletteIdx: number; colSpan: number
+}) {
+  const palette = LOT_PALETTE[paletteIdx % LOT_PALETTE.length]
+  return (
+    <tr className="border-t-2 border-b-2 border-white">
+      <td colSpan={colSpan} className="p-0">
+        <div className={`${palette.marker} flex items-center justify-between px-3 py-1.5 gap-2`}>
+          <div className="flex items-center gap-2">
+            <span className="text-white text-xs font-bold">🌀 ล็อตใหม่เข้าสต็อค</span>
+            {lot_number && (
+              <span className="px-2 py-0.5 rounded-full bg-white/30 text-white font-mono text-[11px] font-bold whitespace-nowrap">
+                {lot_number}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-white/80 text-[10px] whitespace-nowrap">{fmtDate(created_at)}</span>
+            <span className="text-white text-[11px] font-semibold whitespace-nowrap">+{fmtQty(qty)} กก.</span>
+          </div>
+        </div>
+      </td>
+    </tr>
+  )
+}
 
 export default function StockHistoryPage({
   searchParams,
 }: {
   searchParams: Promise<{ id?: string; type?: string; name?: string; model?: string; color?: string; category?: string }>
 }) {
-  const params      = use(searchParams)
-  const stockId     = params.id       ?? ''
-  const type        = params.type     ?? 'add'
-  const modelName   = params.model    ? decodeURIComponent(params.model)    : ''
-  const colorName   = params.color    ? decodeURIComponent(params.color)    : ''
-  const category    = params.category ? decodeURIComponent(params.category) : ''
+  const params    = use(searchParams)
+  const stockId   = params.id       ?? ''
+  const type      = params.type     ?? 'add'
+  const modelName = params.model    ? decodeURIComponent(params.model)    : ''
+  const colorName = params.color    ? decodeURIComponent(params.color)    : ''
+  const category  = params.category ? decodeURIComponent(params.category) : ''
 
   const [rows, setRows]       = useState<LogRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,13 +102,17 @@ export default function StockHistoryPage({
     category === 'ฝอยหยัก' ? 'bg-[#C39BD3] text-gray-700' :
     'bg-[#9b9484] text-white'
 
-  // สร้าง lot→index map เพื่อกำหนดสี (สำหรับ booking)
+  // lot → palette index (เรียงตามลำดับที่ล็อตเข้ามา จากเก่าสุด)
   const lotIndexMap = new Map<string, number>()
   let lotCounter = 0
+  // ล็อตเก่าสุดอยู่ล่างสุด (DESC) ดังนั้น reverse ก่อน
   for (const row of [...rows].reverse()) {
-    const lot = row.active_lot ?? '__none__'
-    if (!lotIndexMap.has(lot)) { lotIndexMap.set(lot, lotCounter++) }
+    const key = row.is_lot_marker ? (row.lot_number ?? '__marker__') : (row.active_lot ?? '__none__')
+    if (!lotIndexMap.has(key)) lotIndexMap.set(key, lotCounter++)
   }
+
+  // นับเฉพาะแถวที่ไม่ใช่ marker สำหรับลำดับที่
+  let dataRowIdx = 0
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -99,7 +130,6 @@ export default function StockHistoryPage({
           <div className="flex items-center justify-center h-40 text-gray-400">ยังไม่มีประวัติ</div>
         ) : (
           <div className="max-w-lg">
-            {/* Legend */}
             {isAdd && (
               <div className="mb-2 flex gap-3 text-xs">
                 <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-blue-50 text-blue-600 font-semibold border border-blue-200">
@@ -116,7 +146,7 @@ export default function StockHistoryPage({
                 <thead>
                   {productLine && (
                     <tr className={theadCls}>
-                      <th colSpan={isAdd ? 4 : 4} className="px-4 py-1.5 text-[12px] font-semibold">{productLine}</th>
+                      <th colSpan={4} className="px-4 py-1.5 text-[12px] font-semibold">{productLine}</th>
                     </tr>
                   )}
                   <tr className={`${theadCls} text-left font-semibold border-t border-black/10`}>
@@ -127,20 +157,34 @@ export default function StockHistoryPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {isAdd ? (
-                    // ── ประวัติเพิ่มสต็อค ──────────────────────────────────────
-                    rows.map((row, i) => {
-                      const isFoyAdd = row.action === 'foy_add'
-                      const rowBg = isFoyAdd ? 'bg-blue-50' : 'bg-green-50'
+                  {rows.map((row) => {
+                    // ── Lot marker banner ──────────────────────────────────────
+                    if (row.is_lot_marker) {
+                      const paletteIdx = lotIndexMap.get(row.lot_number ?? '__marker__') ?? 0
                       return (
-                        <tr key={row.id} className={`${rowBg} border-t border-gray-100`}>
-                          <td className="px-4 py-2 text-center text-gray-400 text-xs">{i + 1}</td>
+                        <LotMarkerRow
+                          key={`marker-${row.id}`}
+                          lot_number={row.lot_number}
+                          created_at={row.created_at}
+                          qty={row.qty}
+                          paletteIdx={paletteIdx}
+                          colSpan={4}
+                        />
+                      )
+                    }
+
+                    // ── Data row ───────────────────────────────────────────────
+                    const rowNum = ++dataRowIdx
+
+                    if (isAdd) {
+                      // add history: non-marker = manual add (action='add')
+                      return (
+                        <tr key={row.id} className="bg-green-50 border-t border-gray-100">
+                          <td className="px-4 py-2 text-center text-gray-400 text-xs">{rowNum}</td>
                           <td className="px-4 py-2">
                             <div className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(row.created_at)}</div>
                             {row.branch_name && <div className="text-[10px] text-gray-400">{row.branch_name}</div>}
-                            <div className={`text-[10px] font-semibold ${isFoyAdd ? 'text-blue-500' : 'text-green-600'}`}>
-                              {isFoyAdd ? '🌀 ไลน์ผลิต' : '📦 เพิ่มตรง'}
-                            </div>
+                            <div className="text-[10px] font-semibold text-green-600">📦 เพิ่มตรง</div>
                           </td>
                           <td className="px-4 py-2">
                             {row.lot_number && (
@@ -154,51 +198,38 @@ export default function StockHistoryPage({
                           </td>
                         </tr>
                       )
-                    })
-                  ) : (
-                    // ── ประวัติการจอง (แยกล็อต) ───────────────────────────────
-                    rows.map((row, i) => {
-                      const lot = row.active_lot
-                      const lotIdx = lotIndexMap.get(lot ?? '__none__') ?? 0
-                      const palette = LOT_PALETTE[lotIdx % LOT_PALETTE.length]
-                      const noLot = !lot
-                      const rowBg = noLot ? 'bg-gray-50' : palette.row
-                      const badgeCls = noLot ? 'bg-gray-100 text-gray-400 border-gray-200' : palette.badge
+                    }
 
-                      // แสดง separator เมื่อล็อตเปลี่ยน (เทียบกับแถวก่อนหน้า)
-                      const prevLot = i > 0 ? (rows[i - 1].active_lot ?? null) : undefined
-                      const lotChanged = i > 0 && prevLot !== lot
+                    // book history row
+                    const lot = row.active_lot
+                    const lotIdx = lotIndexMap.get(lot ?? '__none__') ?? 0
+                    const palette = LOT_PALETTE[lotIdx % LOT_PALETTE.length]
+                    const noLot = !lot
+                    const rowBg   = noLot ? 'bg-gray-50' : palette.row
+                    const badgeCls = noLot ? 'bg-gray-100 text-gray-400 border-gray-200' : palette.badge
 
-                      return [
-                        lotChanged && (
-                          <tr key={`sep-${row.id}`} className="border-t-2 border-dashed border-gray-400">
-                            <td colSpan={4} className="px-4 py-1 text-[11px] text-gray-500 font-semibold bg-gray-100">
-                              ▼ เริ่มล็อตใหม่ {lot ? `· ${lot}` : '(ไม่มีข้อมูลล็อต)'}
-                            </td>
-                          </tr>
-                        ),
-                        <tr key={row.id} className={`${rowBg} border-t border-white/60`}>
-                          <td className="px-4 py-2 text-center text-gray-400 text-xs">{i + 1}</td>
-                          <td className="px-4 py-2">
-                            <div className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(row.created_at)}</div>
-                            {row.branch_name && <div className="text-[10px] text-gray-400">{row.branch_name}</div>}
-                          </td>
-                          <td className="px-4 py-2">
-                            {lot ? (
-                              <span className={`px-2 py-0.5 text-[11px] rounded-full font-mono font-semibold border whitespace-nowrap ${badgeCls}`}>
-                                {lot}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-right font-medium text-orange-500 whitespace-nowrap">
-                            −{fmtQty(row.qty)}
-                          </td>
-                        </tr>,
-                      ]
-                    })
-                  )}
+                    return (
+                      <tr key={row.id} className={`${rowBg} border-t border-white/60`}>
+                        <td className="px-4 py-2 text-center text-gray-400 text-xs">{rowNum}</td>
+                        <td className="px-4 py-2">
+                          <div className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(row.created_at)}</div>
+                          {row.branch_name && <div className="text-[10px] text-gray-400">{row.branch_name}</div>}
+                        </td>
+                        <td className="px-4 py-2">
+                          {lot ? (
+                            <span className={`px-2 py-0.5 text-[11px] rounded-full font-mono font-semibold border whitespace-nowrap ${badgeCls}`}>
+                              {lot}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium text-orange-500 whitespace-nowrap">
+                          −{fmtQty(row.qty)}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
