@@ -993,25 +993,55 @@ export default function BranchesPage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="bg-gray-100 border-t-2 border-gray-400 text-xs font-semibold">
-                  <td colSpan={2} className="px-3 py-2 border-r border-gray-300 text-right text-gray-500 text-[11px]">รวม</td>
-                  {/* ประวัติใบจอง total */}
-                  <td className="px-3 py-2 border-r border-gray-300"></td>
-                  {/* MAP total — no aggregation needed */}
-                  <td className="px-3 py-2 border-r border-gray-300"></td>
-                  {/* Withdrawal type totals */}
-                  {withdrawalTypes.map(wt => {
-                    const allOrders = Object.values(unpaidByBranch).flatMap(byType => byType[wt.id] ?? [])
-                    const total = allOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
+                {(() => {
+                  const thisW  = computeWeekBounds(0)
+                  const lastW  = computeWeekBounds(1)
+                  const twoW   = computeWeekBounds(2)
+                  const bkk    = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+                  const monthStart = `${bkk.getFullYear()}-${String(bkk.getMonth() + 1).padStart(2, '0')}-01`
+                  const allEntries = Object.values(orderEntriesByBranch).flat()
+                  const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+                  const periods = [
+                    { label: 'สัปดาห์นี้',     items: allEntries.filter(e => e.date >= thisW.start) },
+                    { label: 'สัปดาห์ที่แล้ว',  items: allEntries.filter(e => e.date >= lastW.start && e.date < thisW.start) },
+                    { label: '2 สัปดาห์ก่อน',  items: allEntries.filter(e => e.date >= twoW.start  && e.date < lastW.start) },
+                    { label: 'เดือนนี้',        items: allEntries.filter(e => e.date >= monthStart) },
+                  ]
+                  return periods.map(({ label, items }, idx) => {
+                    const total   = items.reduce((s, e) => s + e.amount, 0)
+                    const allPaid = items.length > 0 && items.every(e => e.payment_status === 'paid')
+                    const color   = items.length === 0 ? 'text-gray-300' : allPaid ? 'text-green-600' : 'text-red-500'
                     return (
-                      <td key={wt.id} className="px-2 py-2 border-r border-gray-300 text-center">
-                        {total > 0
-                          ? <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">{allOrders.length}/{Math.round(total).toLocaleString('th-TH')}</span>
-                          : <span className="text-gray-300 font-normal">-</span>}
-                      </td>
+                      <tr key={label} className={`bg-gray-50 text-xs ${idx === 0 ? 'border-t-2 border-gray-400' : 'border-t border-gray-200'}`}>
+                        <td className="px-3 py-1.5 border-r border-gray-200 text-[10px] font-semibold text-gray-500 text-right whitespace-nowrap">
+                          {label}
+                        </td>
+                        <td className="px-3 py-1.5 border-r border-gray-200">
+                          {items.length === 0
+                            ? <span className="text-gray-300 text-[10px]">-</span>
+                            : <span className={`text-[11px] font-mono font-semibold ${color}`}>{items.length}/{fmt(total)}</span>
+                          }
+                        </td>
+                        {idx === 0 && (
+                          <>
+                            <td rowSpan={4} className="px-1 py-1 border-r border-gray-200" />
+                            {withdrawalTypes.map(wt => {
+                              const allOrders = Object.values(unpaidByBranch).flatMap(byType => byType[wt.id] ?? [])
+                              const wtTotal   = allOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
+                              return (
+                                <td key={wt.id} rowSpan={4} className="px-2 border-r border-gray-200 text-center align-middle">
+                                  {wtTotal > 0
+                                    ? <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">{allOrders.length}/{Math.round(wtTotal).toLocaleString('th-TH')}</span>
+                                    : <span className="text-gray-300 font-normal">-</span>}
+                                </td>
+                              )
+                            })}
+                          </>
+                        )}
+                      </tr>
                     )
-                  })}
-                </tr>
+                  })
+                })()}
               </tfoot>
             </table>
           </div>
