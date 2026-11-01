@@ -388,12 +388,12 @@ export default function Home() {
       </header>
 
       {/* Tab bar */}
-      <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex">
-        <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50">
+      <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
+        <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">
           📦 สต็อคสินค้า
         </span>
         <Link href="/stock"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🌿 สต็อคกระดาษฝอย
         </Link>
         <Link href="/orders"
@@ -401,19 +401,19 @@ export default function Home() {
           📋 ใบจอง
         </Link>
         <Link href="/branches"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🏪 สาขาและตัวแทน
         </Link>
         <Link href="/delivery"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           🚚 จัดส่ง
         </Link>
         <Link href="/withdrawal"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           📤 เบิกของ
         </Link>
         <Link href="/restock"
-          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors">
+          className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
           📥 ใบPO
         </Link>
         <Link href="/suppliers"
