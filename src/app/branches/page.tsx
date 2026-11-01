@@ -1208,7 +1208,7 @@ export default function BranchesPage() {
           <div className="flex items-center justify-center h-40 text-gray-400">ยังไม่มีสาขา</div>
         ) : (
           <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <table className="min-w-full text-xs">
+            <table className="text-xs w-auto">
               <thead>
                 {/* Row 1 */}
                 <tr className="bg-[#9b9484] text-white text-left">
