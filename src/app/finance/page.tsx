@@ -48,7 +48,7 @@ const GROUP_LABEL: Record<ColorGroup, string> = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface SlipEntry { date: string; amount: number; order_no?: string }
+interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string }
 interface BranchFinance {
   id: number; name: string; color_group: string | null
   pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[]
@@ -236,17 +236,22 @@ function OverallPendingCell({ orderEntries, paidEntries, storeEntries, title, on
 function DetailModal({ modal, onClose, onSaved }: {
   modal: ModalInfo; onClose: () => void; onSaved?: () => void
 }) {
-  const [cutSet,  setCutSet]  = useState<Set<number>>(new Set())
+  const sorted     = [...modal.entries].sort((a, b) => a.date.localeCompare(b.date))
+  // Pre-populate already-paid entries; these are locked and won't be re-saved
+  const paidSet    = new Set(sorted.flatMap((e, i) => e.payment_status === 'paid' ? [i] : []))
+  const [cutSet,  setCutSet]  = useState<Set<number>>(() => new Set(paidSet))
   const [saving,  setSaving]  = useState(false)
 
-  const sorted     = [...modal.entries].sort((a, b) => a.date.localeCompare(b.date))
   const storeTotal = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
   const cutTotal   = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
   const remaining  = Math.max(0, storeTotal - cutTotal)
   const showCut    = storeTotal > 0
-  const hasCut     = cutSet.size > 0
+  // Only newly-cut entries (not pre-paid) need saving
+  const newlyCut   = sorted.filter((e, i) => cutSet.has(i) && !paidSet.has(i) && e.order_no)
+  const hasCut     = newlyCut.length > 0
 
   const toggleCut = (i: number) => {
+    if (paidSet.has(i)) return // locked — already paid
     setCutSet(prev => {
       const next = new Set(prev)
       if (next.has(i)) next.delete(i); else next.add(i)
@@ -255,9 +260,7 @@ function DetailModal({ modal, onClose, onSaved }: {
   }
 
   const handleSave = async () => {
-    const toSave = sorted
-      .filter((e, i) => cutSet.has(i) && e.order_no)
-      .map(e => e.order_no!)
+    const toSave = newlyCut.map(e => e.order_no!)
     if (toSave.length === 0) return
     setSaving(true)
     await Promise.all(toSave.map(order_no =>
@@ -299,7 +302,8 @@ function DetailModal({ modal, onClose, onSaved }: {
         {/* Entries */}
         <div className="overflow-y-auto flex-1 px-4 py-2">
           {sorted.map((e, i) => {
-            const isCut = cutSet.has(i)
+            const isCut   = cutSet.has(i)
+            const isPaid  = paidSet.has(i)
             return (
               <div key={i} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0 gap-2">
                 <div className="flex flex-col leading-tight flex-1 min-w-0">
@@ -310,16 +314,22 @@ function DetailModal({ modal, onClose, onSaved }: {
                   {fmtAmt(e.amount)}
                 </span>
                 {showCut && (
-                  <button
-                    onClick={() => toggleCut(i)}
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 transition-colors ${
-                      isCut
-                        ? 'bg-green-500 text-white'
-                        : 'bg-red-500 text-white hover:bg-red-600'
-                    }`}
-                  >
-                    {isCut ? '✓ ตัดแล้ว' : 'ตัดยอด'}
-                  </button>
+                  isPaid ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-green-100 text-green-600 border border-green-300">
+                      ✓ ชำระแล้ว
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => toggleCut(i)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 transition-colors ${
+                        isCut
+                          ? 'bg-green-500 text-white'
+                          : 'bg-red-500 text-white hover:bg-red-600'
+                      }`}
+                    >
+                      {isCut ? '✓ ตัดแล้ว' : 'ตัดยอด'}
+                    </button>
+                  )
                 )}
               </div>
             )
@@ -355,7 +365,7 @@ function DetailModal({ modal, onClose, onSaved }: {
               disabled={saving}
               className="mt-1 w-full py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
             >
-              {saving ? 'กำลังบันทึก...' : `✅ บันทึก (${cutSet.size} รายการ)`}
+              {saving ? 'กำลังบันทึก...' : `✅ บันทึก (${newlyCut.length} รายการ)`}
             </button>
           )}
         </div>

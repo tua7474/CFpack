@@ -33,7 +33,7 @@ async function ensureFeeTable() {
   `)
 }
 
-export interface SlipEntry { date: string; amount: number; order_no?: string }
+export interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string }
 export interface BranchFinanceRow {
   id: number; name: string; color_group: string | null
   pay:   SlipEntry[]
@@ -87,7 +87,8 @@ export async function GET(req: NextRequest) {
     SELECT o.branch_id,
            (o.created_at AT TIME ZONE 'Asia/Bangkok')::date::text AS date,
            o.total_amount::float AS amount,
-           o.order_no
+           o.order_no,
+           o.payment_status
     FROM booking_orders o
     WHERE o.branch_id IS NOT NULL AND o.status != 'cancelled'
     ORDER BY o.branch_id, o.created_at ASC
@@ -95,7 +96,7 @@ export async function GET(req: NextRequest) {
   const orderEntryMap: Record<number, SlipEntry[]> = {}
   for (const r of orderEntryRows) {
     if (!orderEntryMap[r.branch_id]) orderEntryMap[r.branch_id] = []
-    orderEntryMap[r.branch_id].push({ date: r.date, amount: r.amount, order_no: r.order_no })
+    orderEntryMap[r.branch_id].push({ date: r.date, amount: r.amount, order_no: r.order_no, payment_status: r.payment_status })
   }
 
   // Order totals per branch
