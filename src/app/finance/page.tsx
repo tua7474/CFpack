@@ -233,14 +233,18 @@ function OverallPendingCell({ orderEntries, paidEntries, storeEntries, title, on
 
 // ── DetailModal — modal with ตัดยอด buttons ────────────────────────────────────
 
-function DetailModal({ modal, onClose }: { modal: ModalInfo; onClose: () => void }) {
-  const [cutSet, setCutSet] = useState<Set<number>>(new Set())
+function DetailModal({ modal, onClose, onSaved }: {
+  modal: ModalInfo; onClose: () => void; onSaved?: () => void
+}) {
+  const [cutSet,  setCutSet]  = useState<Set<number>>(new Set())
+  const [saving,  setSaving]  = useState(false)
 
-  const sorted = [...modal.entries].sort((a, b) => a.date.localeCompare(b.date))
+  const sorted     = [...modal.entries].sort((a, b) => a.date.localeCompare(b.date))
   const storeTotal = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
   const cutTotal   = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
   const remaining  = Math.max(0, storeTotal - cutTotal)
   const showCut    = storeTotal > 0
+  const hasCut     = cutSet.size > 0
 
   const toggleCut = (i: number) => {
     setCutSet(prev => {
@@ -248,6 +252,24 @@ function DetailModal({ modal, onClose }: { modal: ModalInfo; onClose: () => void
       if (next.has(i)) next.delete(i); else next.add(i)
       return next
     })
+  }
+
+  const handleSave = async () => {
+    const toSave = sorted
+      .filter((e, i) => cutSet.has(i) && e.order_no)
+      .map(e => e.order_no!)
+    if (toSave.length === 0) return
+    setSaving(true)
+    await Promise.all(toSave.map(order_no =>
+      fetch('/api/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_no, payment_status: 'paid' }),
+      })
+    ))
+    setSaving(false)
+    onSaved?.()
+    onClose()
   }
 
   return (
@@ -281,10 +303,10 @@ function DetailModal({ modal, onClose }: { modal: ModalInfo; onClose: () => void
             return (
               <div key={i} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0 gap-2">
                 <div className="flex flex-col leading-tight flex-1 min-w-0">
-                  <span className="text-xs text-gray-500">{fmtDateShort(e.date)}</span>
-                  {e.order_no && <span className="text-[10px] text-gray-400 font-mono">#{e.order_no}</span>}
+                  <span className={`text-xs ${isCut ? 'text-green-600' : 'text-gray-500'}`}>{fmtDateShort(e.date)}</span>
+                  {e.order_no && <span className={`text-[10px] font-mono ${isCut ? 'text-green-500' : 'text-gray-400'}`}>#{e.order_no}</span>}
                 </div>
-                <span className={`text-xs font-mono font-semibold flex-shrink-0 ${isCut ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                <span className={`text-xs font-mono font-semibold flex-shrink-0 ${isCut ? 'text-green-600' : 'text-gray-800'}`}>
                   {fmtAmt(e.amount)}
                 </span>
                 {showCut && (
@@ -296,7 +318,7 @@ function DetailModal({ modal, onClose }: { modal: ModalInfo; onClose: () => void
                         : 'bg-red-500 text-white hover:bg-red-600'
                     }`}
                   >
-                    ตัดยอด
+                    {isCut ? '✓ ตัดแล้ว' : 'ตัดยอด'}
                   </button>
                 )}
               </div>
@@ -327,6 +349,15 @@ function DetailModal({ modal, onClose }: { modal: ModalInfo; onClose: () => void
               </div>
             )
           })()}
+          {hasCut && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="mt-1 w-full py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+            >
+              {saving ? 'กำลังบันทึก...' : `✅ บันทึก (${cutSet.size} รายการ)`}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -584,7 +615,7 @@ export default function FinancePage() {
       </main>
 
       {/* Detail modal */}
-      {modal && <DetailModal modal={modal} onClose={() => setModal(null)} />}
+      {modal && <DetailModal modal={modal} onClose={() => setModal(null)} onSaved={() => { setModal(null); load() }} />}
     </div>
   )
 }
