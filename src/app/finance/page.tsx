@@ -193,9 +193,9 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, s
     <div className="flex flex-col gap-0.5">
       {groups.map(({ label, items, stores }) => {
         const orderTotal = items.reduce((s, e) => s + e.amount, 0)
-        const creditTotal = stores.reduce((s, e) => s + e.amount, 0)
+        const allPaid = items.length > 0 && items.every(e => e.payment_status === 'paid')
         const dynColor = storeEntries !== undefined
-          ? (creditTotal >= orderTotal ? 'text-green-600' : 'text-red-500')
+          ? (allPaid ? 'text-green-600' : 'text-red-500')
           : amtColor
         return (
           <button key={label}
