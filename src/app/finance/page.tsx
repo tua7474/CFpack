@@ -86,7 +86,9 @@ function getWeekBounds() {
   const twoMon   = new Date(thisMon); twoMon.setDate(thisMon.getDate() - 14)
   // ใช้ local date parts โดยตรง — ไม่ใช้ toISOString() เพราะจะแปลงเป็น UTC ทำให้ผิดสัปดาห์ (+7h ทำให้จันทร์กลายเป็นอาทิตย์)
   const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon), twoMondaysStr: fmt(twoMon) }
+  // ISO weekday: Mon=1 … Sun=7  (ใช้ตรวจว่าถึงวันพุธ=3 หรือยัง)
+  const isoDow = dow === 0 ? 7 : dow
+  return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon), twoMondaysStr: fmt(twoMon), isoDow }
 }
 
 // ── MonthlySlipCell — vat/fee: 3 month groups ────────────────────────────────
@@ -169,40 +171,50 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, s
   storeEntries?: SlipEntry[]
   showCount?: boolean
 }) {
-  const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
+  const { thisMondayStr, lastMondayStr, twoMondaysStr, isoDow } = getWeekBounds()
   const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
   const groups = [
     {
       label: '2 สัปดาห์ก่อน',
       items:  entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
       stores: (storeEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
+      pastWed: true,          // ผ่านวันพุธมานานแล้ว
     },
     {
       label: 'สัปดาห์ที่แล้ว',
       items:  entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
       stores: (storeEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
+      pastWed: isoDow >= 3,   // วันนี้ถึงวันพุธหรือเลยแล้ว
     },
     {
       label: 'สัปดาห์นี้',
       items:  entries.filter(e => e.date >= thisMondayStr),
       stores: (storeEntries ?? []).filter(e => e.date >= thisMondayStr),
+      pastWed: false,         // สัปดาห์ปัจจุบัน ยังไม่นับ
     },
   ].filter(g => g.items.length > 0)
   if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   return (
     <div className="flex flex-col gap-0.5">
-      {groups.map(({ label, items, stores }) => {
+      {groups.map(({ label, items, stores, pastWed }) => {
         const orderTotal = items.reduce((s, e) => s + e.amount, 0)
-        const allPaid = items.length > 0 && items.every(e => e.payment_status === 'paid')
-        const dynColor = storeEntries !== undefined
+        const allPaid    = items.length > 0 && items.every(e => e.payment_status === 'paid')
+        const noSlips    = stores.length === 0
+        const suspended  = storeEntries !== undefined && !allPaid && noSlips && pastWed
+        const dynColor   = storeEntries !== undefined
           ? (allPaid ? 'text-green-600' : 'text-red-500')
           : amtColor
         return (
           <button key={label}
             onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
-            className={`text-left text-[11px] font-mono font-semibold ${dynColor} hover:underline leading-tight`}
+            className={`text-left text-[11px] font-mono font-semibold ${dynColor} hover:underline leading-tight flex items-center gap-1`}
           >
-            {showCount ? `${items.length}/` : ''}{fmt(orderTotal)}
+            <span>{showCount ? `${items.length}/` : ''}{fmt(orderTotal)}</span>
+            {suspended && (
+              <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-600 border border-red-300 leading-none whitespace-nowrap">
+                🚫 ระงับ
+              </span>
+            )}
           </button>
         )
       })}
