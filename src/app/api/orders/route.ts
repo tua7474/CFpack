@@ -43,11 +43,11 @@ async function notifyNewBooking(
       {
         type: 'box', layout: 'horizontal', spacing: 'xs',
         contents: [
-          { type: 'text', text: label,       size: 'xs', color: '#ffffff', flex: 3, weight: 'bold', wrap: true },
-          { type: 'text', text: `#${order_no}`, size: 'xs', color: '#aaffaa', flex: 3, align: 'end', wrap: false },
+          { type: 'text', text: label,       size: 'xs', color: '#555555', flex: 3, weight: 'bold', wrap: true },
+          { type: 'text', text: `#${order_no}`, size: 'xs', color: '#9b9484', flex: 3, align: 'end', wrap: false },
         ],
       },
-      { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', color: '#4ade80', weight: 'bold', align: 'center', margin: 'xs' },
+      { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', color: '#27ae60', weight: 'bold', align: 'center', margin: 'xs' },
     ]
 
     const headerBox = {
@@ -64,12 +64,12 @@ async function notifyNewBooking(
         header: headerBox,
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
-          backgroundColor: '#6b6459',
+          backgroundColor: '#F5EED8',
           contents: bodyContents,
         },
         footer: {
           type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px',
-          backgroundColor: '#6b6459',
+          backgroundColor: '#F5EED8',
           contents: [
             {
               type: 'button', style: 'primary', color: '#9b9484', height: 'sm', flex: 1,
@@ -93,12 +93,12 @@ async function notifyNewBooking(
         header: headerBox,
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
-          backgroundColor: '#6b6459',
+          backgroundColor: '#F5EED8',
           contents: bodyContents,
         },
         footer: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
-          backgroundColor: '#6b6459',
+          backgroundColor: '#F5EED8',
           contents: [
             {
               type: 'button', style: 'primary', color: '#4ade80', height: 'sm',
@@ -106,7 +106,7 @@ async function notifyNewBooking(
             },
             {
               type: 'text', text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
-              size: 'xxs', color: '#aaffaa', align: 'center', wrap: true, margin: 'xs',
+              size: 'xxs', color: '#9b9484', align: 'center', wrap: true, margin: 'xs',
             },
           ],
         },
