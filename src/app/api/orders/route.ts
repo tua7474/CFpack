@@ -39,7 +39,14 @@ async function notifyNewBooking(
     const editUrl   = `${baseUrl}/booking2?edit=${order_no}`
     const ordersUrl = `${baseUrl}/orders`
 
-    const makeFlexMsg = (): object => ({
+    const bodyContents = [
+      { type: 'text', text: `สาขา: ${label}`, size: 'sm', color: '#555555', wrap: true },
+      { type: 'text', text: `เลขที่: #${order_no}`, weight: 'bold', size: 'xl', color: '#111111' },
+      { type: 'text', text: `ยอด: ฿${fmt(total_amount)}`, size: 'md', color: '#27AE60', weight: 'bold' },
+    ]
+
+    // ── Flex สำหรับกลุ่มกลาง (แอดมิน) ──────────────────────────────────────────
+    const centralFlexMsg: object = {
       type: 'flex',
       altText: `✅ ใบจอง #${order_no} — ${label} — ฿${fmt(total_amount)}`,
       contents: {
@@ -49,14 +56,7 @@ async function notifyNewBooking(
           backgroundColor: '#27AE60', paddingAll: '12px',
           contents: [{ type: 'text', text: '✅ บันทึกใบจองสำเร็จ', weight: 'bold', color: '#FFFFFF', size: 'md' }],
         },
-        body: {
-          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px',
-          contents: [
-            { type: 'text', text: `สาขา: ${label}`, size: 'sm', color: '#555555', wrap: true },
-            { type: 'text', text: `เลขที่: #${order_no}`, weight: 'bold', size: 'xl', color: '#111111' },
-            { type: 'text', text: `ยอด: ฿${fmt(total_amount)}`, size: 'md', color: '#27AE60', weight: 'bold' },
-          ],
-        },
+        body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px', contents: bodyContents },
         footer: {
           type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
           contents: [
@@ -71,13 +71,41 @@ async function notifyNewBooking(
           ],
         },
       },
-    })
+    }
+
+    // ── Flex สำหรับกลุ่มสาขา — มีปุ่ม "รับออเดอร์" + ขอบคุณ ─────────────────────
+    const branchFlexMsg: object = {
+      type: 'flex',
+      altText: `✅ จองสำเร็จ #${order_no} — ฿${fmt(total_amount)}`,
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box', layout: 'vertical',
+          backgroundColor: '#27AE60', paddingAll: '12px',
+          contents: [{ type: 'text', text: '✅ บันทึกใบจองสำเร็จ', weight: 'bold', color: '#FFFFFF', size: 'md' }],
+        },
+        body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px', contents: bodyContents },
+        footer: {
+          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
+          contents: [
+            {
+              type: 'button', style: 'primary', color: '#27AE60', height: 'sm',
+              action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl },
+            },
+            {
+              type: 'text',
+              text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
+              size: 'xs', color: '#888888', align: 'center', wrap: true, margin: 'sm',
+            },
+          ],
+        },
+      },
+    }
 
     // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
-    const flexMsg = makeFlexMsg()
     const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [flexMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [flexMsg]))
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralFlexMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchFlexMsg]))
     console.log('[notifyNewBooking] targets centralGroupId:', centralGroupId, 'branchGroupId:', branchGroupId, '| order:', order_no)
     if (!centralGroupId) console.warn('[notifyNewBooking] order_notify_group_id not set in system_settings!')
     await Promise.all(pushTasks)
