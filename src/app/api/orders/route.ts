@@ -50,9 +50,22 @@ async function notifyNewBooking(
       { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', color: '#27ae60', weight: 'bold', align: 'center', margin: 'xs' },
     ]
 
-    const headerBox = {
+    const centralHeaderBox = {
       type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '8px',
       contents: [{ type: 'text', text: '✅ จองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs' }],
+    }
+
+    // header สาขา: ซ้ายชื่อ ขวาปุ่มรับออเดอร์
+    const branchHeaderBox = {
+      type: 'box', layout: 'horizontal', backgroundColor: '#9b9484', paddingAll: '8px',
+      alignItems: 'center', spacing: 'sm',
+      contents: [
+        { type: 'text', text: '✅ จองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs', flex: 1 },
+        {
+          type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 0,
+          action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl },
+        },
+      ],
     }
 
     // ── Flex สำหรับกลุ่มกลาง (แอดมิน) ──────────────────────────────────────────
@@ -61,7 +74,7 @@ async function notifyNewBooking(
       altText: `✅ ใบจอง #${order_no} — ${label} — ฿${fmt(total_amount)}`,
       contents: {
         type: 'bubble', size: 'kilo',
-        header: headerBox,
+        header: centralHeaderBox,
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
@@ -84,26 +97,18 @@ async function notifyNewBooking(
       },
     }
 
-    // ── Flex สำหรับกลุ่มสาขา — มีปุ่ม "รับออเดอร์" + ขอบคุณ ─────────────────────
+    // ── Flex สำหรับกลุ่มสาขา — ปุ่มรับออเดอร์อยู่ header + ขอบคุณใน body ─────────
     const branchFlexMsg: object = {
       type: 'flex',
       altText: `✅ จองสำเร็จ #${order_no} — ฿${fmt(total_amount)}`,
       contents: {
         type: 'bubble', size: 'kilo',
-        header: headerBox,
+        header: branchHeaderBox,
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
-          contents: bodyContents,
-        },
-        footer: {
-          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
-          backgroundColor: '#F5EED8',
           contents: [
-            {
-              type: 'button', style: 'primary', color: '#4ade80', height: 'sm',
-              action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl },
-            },
+            ...bodyContents,
             {
               type: 'text', text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
               size: 'xxs', color: '#9b9484', align: 'center', wrap: true, margin: 'xs',
