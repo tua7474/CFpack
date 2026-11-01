@@ -40,33 +40,44 @@ async function notifyNewBooking(
     const ordersUrl = `${baseUrl}/orders`
 
     const bodyContents = [
-      { type: 'text', text: `สาขา: ${label}`, size: 'sm', color: '#555555', wrap: true },
-      { type: 'text', text: `เลขที่: #${order_no}`, weight: 'bold', size: 'xl', color: '#111111' },
-      { type: 'text', text: `ยอด: ฿${fmt(total_amount)}`, size: 'md', color: '#27AE60', weight: 'bold' },
+      {
+        type: 'box', layout: 'horizontal', spacing: 'xs',
+        contents: [
+          { type: 'text', text: label,       size: 'xs', color: '#ffffff', flex: 3, weight: 'bold', wrap: true },
+          { type: 'text', text: `#${order_no}`, size: 'xs', color: '#aaffaa', flex: 3, align: 'end', wrap: false },
+        ],
+      },
+      { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', color: '#4ade80', weight: 'bold', align: 'center', margin: 'xs' },
     ]
+
+    const headerBox = {
+      type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '8px',
+      contents: [{ type: 'text', text: '✅ จองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs' }],
+    }
 
     // ── Flex สำหรับกลุ่มกลาง (แอดมิน) ──────────────────────────────────────────
     const centralFlexMsg: object = {
       type: 'flex',
       altText: `✅ ใบจอง #${order_no} — ${label} — ฿${fmt(total_amount)}`,
       contents: {
-        type: 'bubble',
-        header: {
-          type: 'box', layout: 'vertical',
-          backgroundColor: '#27AE60', paddingAll: '12px',
-          contents: [{ type: 'text', text: '✅ บันทึกใบจองสำเร็จ', weight: 'bold', color: '#FFFFFF', size: 'md' }],
+        type: 'bubble', size: 'kilo',
+        header: headerBox,
+        body: {
+          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
+          backgroundColor: '#6b6459',
+          contents: bodyContents,
         },
-        body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px', contents: bodyContents },
         footer: {
-          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
+          type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px',
+          backgroundColor: '#6b6459',
           contents: [
             {
-              type: 'button', style: 'primary', color: '#E67E22', height: 'sm',
-              action: { type: 'uri', label: '✏️ แก้ไขใบจอง', uri: editUrl },
+              type: 'button', style: 'primary', color: '#9b9484', height: 'sm', flex: 1,
+              action: { type: 'uri', label: '✏️ แก้ไข', uri: editUrl },
             },
             {
-              type: 'button', style: 'primary', color: '#27AE60', height: 'sm',
-              action: { type: 'uri', label: '📦 ขึ้นของ / สั่งพิมพ์', uri: ordersUrl },
+              type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 1,
+              action: { type: 'uri', label: '📦 ขึ้นของ', uri: ordersUrl },
             },
           ],
         },
@@ -78,24 +89,24 @@ async function notifyNewBooking(
       type: 'flex',
       altText: `✅ จองสำเร็จ #${order_no} — ฿${fmt(total_amount)}`,
       contents: {
-        type: 'bubble',
-        header: {
-          type: 'box', layout: 'vertical',
-          backgroundColor: '#27AE60', paddingAll: '12px',
-          contents: [{ type: 'text', text: '✅ บันทึกใบจองสำเร็จ', weight: 'bold', color: '#FFFFFF', size: 'md' }],
+        type: 'bubble', size: 'kilo',
+        header: headerBox,
+        body: {
+          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
+          backgroundColor: '#6b6459',
+          contents: bodyContents,
         },
-        body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px', contents: bodyContents },
         footer: {
-          type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
+          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
+          backgroundColor: '#6b6459',
           contents: [
             {
-              type: 'button', style: 'primary', color: '#27AE60', height: 'sm',
+              type: 'button', style: 'primary', color: '#4ade80', height: 'sm',
               action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl },
             },
             {
-              type: 'text',
-              text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
-              size: 'xs', color: '#888888', align: 'center', wrap: true, margin: 'sm',
+              type: 'text', text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
+              size: 'xxs', color: '#aaffaa', align: 'center', wrap: true, margin: 'xs',
             },
           ],
         },
