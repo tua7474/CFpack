@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
       pool.query(`SELECT id, name FROM withdrawal_types ORDER BY id`),
       dateFrom && dateTo
         ? pool.query(`
-            SELECT id, order_no, total_amount::text, payment_status, branch_id, withdrawal_type_id
+            SELECT id, order_no, total_amount::text, payment_status, branch_id, withdrawal_type_id,
+                   (created_at AT TIME ZONE 'Asia/Bangkok')::date::text AS date
             FROM booking_orders
             WHERE branch_id IS NOT NULL AND withdrawal_type_id IS NOT NULL
               AND (created_at AT TIME ZONE 'Asia/Bangkok')::date >= $1
@@ -39,16 +40,18 @@ export async function GET(req: NextRequest) {
             ORDER BY created_at DESC
           `, [dateFrom, dateTo])
         : pool.query(`
-            SELECT id, order_no, total_amount::text, payment_status, branch_id, withdrawal_type_id
+            SELECT id, order_no, total_amount::text, payment_status, branch_id, withdrawal_type_id,
+                   (created_at AT TIME ZONE 'Asia/Bangkok')::date::text AS date
             FROM booking_orders
             WHERE payment_status != 'paid'
+              AND status != 'cancelled'
               AND branch_id IS NOT NULL AND withdrawal_type_id IS NOT NULL
             ORDER BY created_at DESC
           `),
     ])
 
     // Group: branch_id → withdrawal_type_id → orders[]
-    const byBranch: Record<number, Record<number, { id: number; order_no: string; total_amount: string; payment_status?: string }[]>> = {}
+    const byBranch: Record<number, Record<number, { id: number; order_no: string; total_amount: string; payment_status?: string; date?: string }[]>> = {}
     for (const o of orders) {
       if (!byBranch[o.branch_id]) byBranch[o.branch_id] = {}
       if (!byBranch[o.branch_id][o.withdrawal_type_id]) byBranch[o.branch_id][o.withdrawal_type_id] = []
@@ -57,6 +60,7 @@ export async function GET(req: NextRequest) {
         order_no: o.order_no,
         total_amount: o.total_amount,
         payment_status: o.payment_status,
+        date: o.date,
       })
     }
 

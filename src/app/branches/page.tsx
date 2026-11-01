@@ -95,7 +95,7 @@ const SLIP_CATS = [
 ] as const
 
 interface WithdrawalType { id: number; name: string }
-interface UnpaidOrder { id: number; order_no: string; total_amount: string; nv_total: string | null; v_total: string | null }
+interface UnpaidOrder { id: number; order_no: string; total_amount: string; nv_total: string | null; v_total: string | null; date?: string }
 
 interface BranchSession {
   branch_id: number; branch_name: string; phone: string
@@ -1002,42 +1002,43 @@ export default function BranchesPage() {
                   const allEntries = Object.values(orderEntriesByBranch).flat()
                   const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
                   const periods = [
-                    { label: 'สัปดาห์นี้',     items: allEntries.filter(e => e.date >= thisW.start) },
-                    { label: 'สัปดาห์ที่แล้ว',  items: allEntries.filter(e => e.date >= lastW.start && e.date < thisW.start) },
-                    { label: '2 สัปดาห์ก่อน',  items: allEntries.filter(e => e.date >= twoW.start  && e.date < lastW.start) },
-                    { label: 'เดือนนี้',        items: allEntries.filter(e => e.date >= monthStart) },
+                    { label: 'สัปดาห์นี้',     from: thisW.start, to: null,          to2: null },
+                    { label: 'สัปดาห์ที่แล้ว',  from: lastW.start, to: thisW.start,   to2: null },
+                    { label: '2 สัปดาห์ก่อน',  from: twoW.start,  to: lastW.start,   to2: null },
+                    { label: 'เดือนนี้',        from: monthStart,  to: null,          to2: null },
                   ]
-                  return periods.map(({ label, items }, idx) => {
-                    const total   = items.reduce((s, e) => s + e.amount, 0)
-                    const allPaid = items.length > 0 && items.every(e => e.payment_status === 'paid')
-                    const color   = items.length === 0 ? 'text-gray-300' : allPaid ? 'text-green-600' : 'text-red-500'
+                  return periods.map(({ label, from, to }, idx) => {
+                    const orderItems = allEntries.filter(e => e.date >= from && (to === null || e.date < to))
+                    const total   = orderItems.reduce((s, e) => s + e.amount, 0)
+                    const allPaid = orderItems.length > 0 && orderItems.every(e => e.payment_status === 'paid')
+                    const color   = orderItems.length === 0 ? 'text-gray-300' : allPaid ? 'text-green-600' : 'text-red-500'
                     return (
                       <tr key={label} className={`bg-gray-50 text-xs ${idx === 0 ? 'border-t-2 border-gray-400' : 'border-t border-gray-200'}`}>
                         <td className="px-3 py-1.5 border-r border-gray-200 text-[10px] font-semibold text-gray-500 text-right whitespace-nowrap">
                           {label}
                         </td>
                         <td className="px-3 py-1.5 border-r border-gray-200">
-                          {items.length === 0
+                          {orderItems.length === 0
                             ? <span className="text-gray-300 text-[10px]">-</span>
-                            : <span className={`text-[11px] font-mono font-semibold ${color}`}>{items.length}/{fmt(total)}</span>
+                            : <span className={`text-[11px] font-mono font-semibold ${color}`}>{orderItems.length}/{fmt(total)}</span>
                           }
                         </td>
-                        {idx === 0 && (
-                          <>
-                            <td rowSpan={4} className="px-1 py-1 border-r border-gray-200" />
-                            {withdrawalTypes.map(wt => {
-                              const allOrders = Object.values(unpaidByBranch).flatMap(byType => byType[wt.id] ?? [])
-                              const wtTotal   = allOrders.reduce((s, o) => s + parseFloat(o.total_amount), 0)
-                              return (
-                                <td key={wt.id} rowSpan={4} className="px-2 border-r border-gray-200 text-center align-middle">
-                                  {wtTotal > 0
-                                    ? <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">{allOrders.length}/{Math.round(wtTotal).toLocaleString('th-TH')}</span>
-                                    : <span className="text-gray-300 font-normal">-</span>}
-                                </td>
-                              )
-                            })}
-                          </>
-                        )}
+                        {/* MAP — rowspan ครั้งแรก */}
+                        {idx === 0 && <td rowSpan={4} className="px-1 py-1 border-r border-gray-200" />}
+                        {/* Withdrawal columns — คำนวณตาม period */}
+                        {withdrawalTypes.map(wt => {
+                          const allOrders = Object.values(unpaidByBranch).flatMap(byType => byType[wt.id] ?? [])
+                          const filtered  = allOrders.filter(o => o.date && o.date >= from && (to === null || o.date < to))
+                          const wtTotal   = filtered.reduce((s, o) => s + parseFloat(o.total_amount), 0)
+                          return (
+                            <td key={wt.id} className="px-2 py-1.5 border-r border-gray-200 text-center">
+                              {filtered.length === 0
+                                ? <span className="text-gray-300 text-[10px]">-</span>
+                                : <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">{filtered.length}/{Math.round(wtTotal).toLocaleString('th-TH')}</span>
+                              }
+                            </td>
+                          )
+                        })}
                       </tr>
                     )
                   })
