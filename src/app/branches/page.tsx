@@ -399,22 +399,21 @@ function BranchRow({
 
       {/* 1. ชื่อสาขา */}
       <td className={`px-3 py-2 border-r border-gray-600 font-semibold whitespace-nowrap ${colorGroup === 'black' ? 'text-white border-gray-600' : 'text-green-400 border-gray-200'}`}>
-        <div>{branch.name}</div>
+        <div className="flex items-center justify-between gap-2">
+          <span>{branch.name}</span>
+          {session?.is_admin && (
+            <button onClick={() => onManage(branch)}
+              className={`text-[10px] font-normal underline cursor-pointer ${colorGroup === 'black' ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-green-400'}`}>
+              จัดการ
+            </button>
+          )}
+        </div>
         {branch.phones.length > 0 && (
           <div className="mt-0.5">
             {branch.phones.map(p => (
-              <div key={p.id}
-                className={`text-[10px] ${colorGroup === 'black' ? 'text-gray-400' : 'text-gray-400'}`}>
-                {p.phone}
-              </div>
+              <div key={p.id} className="text-[10px] text-gray-400">{p.phone}</div>
             ))}
           </div>
-        )}
-        {session?.is_admin && (
-          <button onClick={() => onManage(branch)}
-            className={`mt-1 text-[10px] underline cursor-pointer ${colorGroup === 'black' ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-green-400'}`}>
-            จัดการ
-          </button>
         )}
       </td>
 
