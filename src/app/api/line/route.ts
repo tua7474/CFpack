@@ -431,15 +431,35 @@ async function getPendingOrders(branchId: number) {
   return rows
 }
 
+// คืนค่า YYYY-MM-DD ของวันจันทร์ต้นสัปดาห์ weeksAgo สัปดาห์ก่อน (Bangkok UTC+7)
+function getWeekStartDate(weeksAgo: number): string {
+  const now = new Date(Date.now() + 7 * 3600 * 1000)
+  const dow = now.getUTCDay() || 7 // 1=Mon … 7=Sun
+  const mon = new Date(now)
+  mon.setUTCDate(now.getUTCDate() - (dow - 1) - weeksAgo * 7)
+  return `${mon.getUTCFullYear()}-${String(mon.getUTCMonth() + 1).padStart(2, '0')}-${String(mon.getUTCDate()).padStart(2, '0')}`
+}
+
+// ดึงทุกออเดอร์ของสาขา (ไม่จำกัดจำนวน ไม่กรองวันที่ ยกเว้น cancelled) — ตรงกับ finance page
+async function getAllBranchOrders(branchId: number) {
+  const { rows } = await pool.query(`
+    SELECT order_no, total_amount::float AS total_amount, status, payment_status, created_at
+    FROM booking_orders
+    WHERE branch_id = $1 AND status != 'cancelled'
+    ORDER BY created_at ASC
+  `, [branchId])
+  return rows
+}
+
 async function getCurrentWeekOrders(branchId: number) {
   const { rows } = await pool.query(`
     SELECT order_no, total_amount::float AS total_amount, status, payment_status, created_at
     FROM booking_orders
     WHERE branch_id = $1
+      AND status != 'cancelled'
       AND created_at AT TIME ZONE 'Asia/Bangkok'
           >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
     ORDER BY created_at ASC
-    LIMIT 10
   `, [branchId])
   return rows
 }
@@ -449,28 +469,29 @@ async function getLastWeekOrders(branchId: number) {
     SELECT order_no, total_amount::float AS total_amount, status, payment_status, created_at
     FROM booking_orders
     WHERE branch_id = $1
+      AND status != 'cancelled'
       AND created_at AT TIME ZONE 'Asia/Bangkok'
           >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - interval '7 days'
       AND created_at AT TIME ZONE 'Asia/Bangkok'
           < date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
     ORDER BY created_at ASC
-    LIMIT 10
   `, [branchId])
   return rows
 }
 
 type WeekSlipData = { payCount: number; payTotal: number; storeCount: number; storeTotal: number }
 
-async function getWeekSlips(branchId: number, isLastWeek: boolean): Promise<WeekSlipData> {
+// weeksAgo: 0=สัปดาห์นี้, 1=สัปดาห์ที่แล้ว, 2=2 สัปดาห์ก่อน
+async function getWeekSlips(branchId: number, weeksAgo: number): Promise<WeekSlipData> {
   const { rows } = await pool.query(`
     SELECT applied, amount::float
     FROM slips
     WHERE branch_id = $1
       AND status = 'confirmed'
       AND category NOT IN ('vat', 'fee')
-      AND slip_date >= (date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')${isLastWeek ? " - INTERVAL '7 days'" : ''})::date
-      ${isLastWeek ? "AND slip_date < date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')::date" : ''}
-  `, [branchId])
+      AND slip_date >= (date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - ($2 * INTERVAL '1 week'))::date
+      AND ($2 = 0 OR slip_date < (date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - (($2 - 1) * INTERVAL '1 week'))::date)
+  `, [branchId, weeksAgo])
   const pay   = rows.filter((r: { applied: boolean }) => r.applied)
   const store = rows.filter((r: { applied: boolean }) => !r.applied)
   return {
@@ -1255,8 +1276,8 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
 
     // คำนวณ cross-week credit allocation (logic เดียวกับ popup)
     const [qrThisSlips, qrLastSlips, qrLastOrders] = await Promise.all([
-      getWeekSlips(branchId, false),
-      getWeekSlips(branchId, true),
+      getWeekSlips(branchId, 0),
+      getWeekSlips(branchId, 1),
       getLastWeekOrders(branchId),
     ])
     const qrLastPending      = qrLastOrders
@@ -1983,29 +2004,38 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       }
     }
 
-    // ── ดึงข้อมูล: ตรวจสอบบล็อก + ใบจองสัปดาห์นี้ ──────────────────────────
+    // ── ดึงข้อมูล: ตรวจสอบบล็อก + ใบจองทั้งหมด (เหมือน finance page ยอดรวมใบจอง) ──
     type OrderRow = { order_no: string; total_amount: number; status: string; payment_status: string; created_at: string }
-    let weekOrders: OrderRow[] = []
-    let lastWeekOrders: OrderRow[] = []
+    let allOrders: OrderRow[] = []
     let blocked = false
     const emptySlips: WeekSlipData = { payCount: 0, payTotal: 0, storeCount: 0, storeTotal: 0 }
-    let thisWeekSlips: WeekSlipData = emptySlips
-    let lastWeekSlips: WeekSlipData = emptySlips
+    let twoWeeksAgoSlips: WeekSlipData = emptySlips
+    let lastWeekSlips:    WeekSlipData = emptySlips
+    let thisWeekSlips:    WeekSlipData = emptySlips
 
     if (branchId !== null) {
-      const [wOrders, lwOrders, blockedResult, nowSlips, lastSlips] = await Promise.all([
-        getCurrentWeekOrders(branchId),
-        getLastWeekOrders(branchId),
+      const [allOrd, blockedResult, twoSlips, lastSlips, nowSlips] = await Promise.all([
+        getAllBranchOrders(branchId),
         checkBlockedFromDB(branchId),
-        getWeekSlips(branchId, false),
-        getWeekSlips(branchId, true),
+        getWeekSlips(branchId, 2),
+        getWeekSlips(branchId, 1),
+        getWeekSlips(branchId, 0),
       ])
-      weekOrders     = wOrders
-      lastWeekOrders = lwOrders
-      blocked        = blockedResult
-      thisWeekSlips  = nowSlips
-      lastWeekSlips  = lastSlips
+      allOrders       = allOrd
+      blocked         = blockedResult
+      twoWeeksAgoSlips = twoSlips
+      lastWeekSlips    = lastSlips
+      thisWeekSlips    = nowSlips
     }
+
+    // ── แบ่งออเดอร์เป็น 3 สัปดาห์ (เหมือน finance WeeklyCompactCell) ─────────
+    const thisMonStart = getWeekStartDate(0)
+    const lastMonStart = getWeekStartDate(1)
+    const twoMonStart  = getWeekStartDate(2)
+    const toDateStr = (o: OrderRow) => new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+    const twoWeeksOrders = allOrders.filter(o => { const d = toDateStr(o); return d >= twoMonStart && d < lastMonStart })
+    const lastWeekOrders = allOrders.filter(o => { const d = toDateStr(o); return d >= lastMonStart && d < thisMonStart })
+    const weekOrders     = allOrders.filter(o => toDateStr(o) >= thisMonStart)
 
     // ── Cross-week credit allocation ─────────────────────────────────────────
     // 1. ยอดสัปดาห์นี้ปิดยอดค้างสัปดาห์ก่อนก่อนเสมอ
@@ -2130,10 +2160,13 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       return [header, ...orderLines, ...slipLines, summaryRow]
     }
 
+    const twoWeeksRows  = buildOrderRows(twoWeeksOrders, '📅 2 สัปดาห์ก่อน',  'LAST', branchId, twoWeeksAgoSlips, 0)
     const lastWeekRows  = buildOrderRows(lastWeekOrders, '📅 สัปดาห์ที่แล้ว', 'LAST', branchId, lastWeekSlipsEff, 0)
     const thisWeekRows  = buildOrderRows(weekOrders,     '📅 สัปดาห์นี้',     'NOW',  branchId, thisWeekSlipsEff, carryoverToNow)
 
     const orderRows: object[] = [
+      ...twoWeeksRows,
+      { type: 'separator', margin: 'xs', color: '#e5e7eb' },
       ...lastWeekRows,
       { type: 'separator', margin: 'xs', color: '#e5e7eb' },
       ...thisWeekRows,
