@@ -84,7 +84,8 @@ function getWeekBounds() {
   const thisMon  = new Date(bkk); thisMon.setDate(bkk.getDate() - toMon); thisMon.setHours(0,0,0,0)
   const lastMon  = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7)
   const twoMon   = new Date(thisMon); twoMon.setDate(thisMon.getDate() - 14)
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  // ใช้ local date parts โดยตรง — ไม่ใช้ toISOString() เพราะจะแปลงเป็น UTC ทำให้ผิดสัปดาห์ (+7h ทำให้จันทร์กลายเป็นอาทิตย์)
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon), twoMondaysStr: fmt(twoMon) }
 }
 
