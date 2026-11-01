@@ -256,6 +256,7 @@ function Booking2Inner() {
   const [saving, setSaving]         = useState(false)
   const [saveMsg, setSaveMsg]       = useState<string | null>(null)
   const [resetKey, setResetKey]     = useState(0)
+  const [cancelModal, setCancelModal] = useState<'confirm' | 'success' | null>(null)
   const [qtyPopup, setQtyPopup]     = useState<{ id: number; name: string; subgroupName: string; stockQty: number; accent: string } | null>(null)
   const [popupVal, setPopupVal]     = useState('')
   const popupInputRef               = useRef<HTMLInputElement>(null)
@@ -802,9 +803,13 @@ function Booking2Inner() {
 
   // ── Cancel order ──────────────────────────────────────────────────────────
 
-  const handleCancelOrder = async () => {
+  const handleCancelOrder = () => {
     if (!editOrderNo) return
-    if (!confirm(`ยืนยันยกเลิกใบจอง ${editOrderNo} ?`)) return
+    setCancelModal('confirm')
+  }
+
+  const executeCancelOrder = async () => {
+    if (!editOrderNo) return
     setSaving(true)
     setSaveMsg(null)
     try {
@@ -836,9 +841,10 @@ function Booking2Inner() {
       if (!res.ok) throw new Error()
       localStorage.removeItem('cf_foy_result')
       localStorage.removeItem('cf_foy_items')
-      setSaveMsg(`ยกเลิกใบจอง ${editOrderNo} สำเร็จ`)
-      setTimeout(() => { window.location.href = '/orders' }, 1500)
+      setCancelModal('success')
+      setTimeout(() => { window.location.href = '/orders' }, 2000)
     } catch {
+      setCancelModal(null)
       setSaveMsg('เกิดข้อผิดพลาด กรุณาลองใหม่')
     } finally {
       setSaving(false)
@@ -2321,6 +2327,46 @@ function Booking2Inner() {
           </div>
         )
       })()}
+
+      {/* ── Cancel order modal ─────────────────────────────────────────────── */}
+      {cancelModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 flex flex-col items-center gap-4">
+            {cancelModal === 'confirm' ? (
+              <>
+                <div className="text-4xl">🗑️</div>
+                <div className="text-base font-bold text-gray-800 text-center">
+                  ยืนยันยกเลิกใบจอง<br />
+                  <span className="text-red-500 font-mono">{editOrderNo}</span> ?
+                </div>
+                <p className="text-xs text-gray-400 text-center">รายการสินค้าทั้งหมดจะถูกยกเลิก และสต็อคจะถูกคืน</p>
+                <div className="flex gap-3 w-full mt-1">
+                  <button
+                    onClick={() => setCancelModal(null)}
+                    disabled={saving}
+                    className="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-sm transition-colors disabled:opacity-50"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={executeCancelOrder}
+                    disabled={saving}
+                    className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'กำลังดำเนินการ...' : 'ยืนยัน'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl">✅</div>
+                <div className="text-lg font-bold text-green-600 text-center">ยกเลิกใบจองสำเร็จ</div>
+                <div className="text-sm text-gray-400 text-center">กำลังกลับไปหน้ารายการ...</div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
