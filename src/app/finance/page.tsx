@@ -78,17 +78,17 @@ function fmtTotal(n: number): string {
 // ── Week boundaries (Bangkok time) ───────────────────────────────────────────
 
 function getWeekBounds() {
-  const bkk      = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
-  const dow      = bkk.getDay()
-  const toMon    = dow === 0 ? 6 : dow - 1
-  const thisMon  = new Date(bkk); thisMon.setDate(bkk.getDate() - toMon); thisMon.setHours(0,0,0,0)
-  const lastMon  = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7)
-  const twoMon   = new Date(thisMon); twoMon.setDate(thisMon.getDate() - 14)
-  // ใช้ local date parts โดยตรง — ไม่ใช้ toISOString() เพราะจะแปลงเป็น UTC ทำให้ผิดสัปดาห์ (+7h ทำให้จันทร์กลายเป็นอาทิตย์)
+  const bkk     = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const dow     = bkk.getDay()  // 0=อาทิตย์ … 6=เสาร์
+  // สัปดาห์เริ่มอาทิตย์ — ลบ dow วันเพื่อย้อนกลับไปอาทิตย์ต้นสัปดาห์
+  const thisSun = new Date(bkk); thisSun.setDate(bkk.getDate() - dow); thisSun.setHours(0,0,0,0)
+  const lastSun = new Date(thisSun); lastSun.setDate(thisSun.getDate() - 7)
+  const twoSun  = new Date(thisSun); twoSun.setDate(thisSun.getDate() - 14)
+  // ใช้ local date parts โดยตรง — ไม่ใช้ toISOString() เพราะจะแปลงเป็น UTC ทำให้ผิดสัปดาห์
   const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  // ISO weekday: Mon=1 … Sun=7  (ใช้ตรวจว่าถึงวันพุธ=3 หรือยัง)
-  const isoDow = dow === 0 ? 7 : dow
-  return { thisMondayStr: fmt(thisMon), lastMondayStr: fmt(lastMon), twoMondaysStr: fmt(twoMon), isoDow }
+  // ตรวจว่าถึงวันพุธหรือยัง (อาทิตย์=0 จันทร์=1 อังคาร=2 พุธ=3)
+  const isoDow = dow
+  return { thisMondayStr: fmt(thisSun), lastMondayStr: fmt(lastSun), twoMondaysStr: fmt(twoSun), isoDow }
 }
 
 // ── MonthlySlipCell — vat/fee: 3 month groups ────────────────────────────────
