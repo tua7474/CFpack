@@ -504,7 +504,7 @@ function Booking2Inner() {
       for (const [idStr, qty] of Object.entries(pending)) {
         const p = products.find(p => p.id === Number(idStr))
         if (!p || qty <= 0) continue
-        total += (parseFloat(p.price ?? '0') || 0) * qty
+        total += (getProductPrice(p.price)) * qty
       }
     }
     if (total < 25000) setVehicleType('')
@@ -519,7 +519,7 @@ function Booking2Inner() {
     let hasOther = false
     for (const p of products) {
       const qty = pending[p.id] ?? 0
-      const price = parseFloat(p.price ?? '0') || 0
+      const price = getProductPrice(p.price)
       const val = qty * price
       if (BOX_GROUPS.has(p.group_name)) bt += val
       else { otherTotal += val; if (qty > 0) hasOther = true }
@@ -532,7 +532,7 @@ function Booking2Inner() {
     let hasBubble = false, hasNonBubble = false, bubbleAmt = 0
     for (const p of products) {
       const qty = pending[p.id] ?? 0
-      const price = parseFloat(p.price ?? '0') || 0
+      const price = getProductPrice(p.price)
       if (BUBBLE_GROUPS_SET.has(p.group_name)) {
         if (qty > 0) { hasBubble = true; bubbleAmt += qty * price }
       } else if (qty > 0) hasNonBubble = true
@@ -728,7 +728,7 @@ function Booking2Inner() {
         const p = productMap.get(id)
         if (!p || qty <= 0) continue
         quantities[id] = qty
-        const price = parseFloat(p.price ?? '0') || 0
+        const price = getProductPrice(p.price)
         computedTotal += price * qty
       }
       if (editOrderNo) {
@@ -847,6 +847,14 @@ function Booking2Inner() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
+  // ราคาสินค้าปรับตาม color group ของสาขา (orange=base, yellow=+9%, red=+9%+7%)
+  const getProductPrice = (rawPrice: string | null): number => {
+    const base = parseFloat(rawPrice ?? '0') || 0
+    if (branchColorGroup === 'yellow') return Math.round(base * 1.09 * 100) / 100
+    if (branchColorGroup === 'red')    return Math.round(base * 1.09 * 1.07 * 100) / 100
+    return base  // orange or null → base price
+  }
+
   // ราคากระดาษฝอยต่อรุ่น ตาม color group ของสาขา
   const getFoyModelPrice = (category: string, modelName: string): number => {
     const fi = foyStockItems.find(it => it.category === category && it.model_name === modelName)
@@ -916,7 +924,7 @@ function Booking2Inner() {
       if (row.type !== 'product') continue
       const _qty = pending[row.product.id] ?? 0
       if (BUBBLE_GROUPS_SET.has(row.product.group_name)) {
-        if (_qty > 0) { _hasBB = true; _bbAmt += _qty * (parseFloat(row.product.price ?? '0') || 0) }
+        if (_qty > 0) { _hasBB = true; _bbAmt += _qty * (getProductPrice(row.product.price)) }
       } else if (_qty > 0) _hasNonBB = true
     }
   }
@@ -994,7 +1002,7 @@ function Booking2Inner() {
         secTotal += row.amount
       } else {
         const qty   = pending[row.product.id] ?? 0
-        const price = parseFloat(row.product.price ?? '0') || 0
+        const price = getProductPrice(row.product.price)
         const val   = price * qty
         if (sec.is_vat_included) grayTotal += val
         else orangeTotal += val
@@ -1033,7 +1041,7 @@ function Booking2Inner() {
     for (const row of sec.rows) {
       if (row.type !== 'product') continue
       const qty = pending[row.product.id] ?? 0
-      const price = parseFloat(row.product.price ?? '0') || 0
+      const price = getProductPrice(row.product.price)
       if (BOX_GROUPS_RENDER.has(row.product.group_name)) boxTotal += qty * price
       else if (qty > 0) hasNonBoxItems = true
     }
@@ -1054,7 +1062,7 @@ function Booking2Inner() {
         totalBubbleUnits += qty * getBubbleUnits(row.product.product_name)
         if (qty > 0) {
           hasBubbleItems = true
-          bubbleTotalAmt += qty * (parseFloat(row.product.price ?? '0') || 0)
+          bubbleTotalAmt += qty * (getProductPrice(row.product.price))
         }
       } else if (qty > 0) {
         hasNonBubbleInOrder = true
@@ -1768,7 +1776,7 @@ function Booking2Inner() {
                           }
 
                           const { product: p } = cell
-                          const price      = parseFloat(p.price ?? '0') || 0
+                          const price      = getProductPrice(p.price)
                           const stockQty   = parseFloat(p.stock_qty ?? '0') || 0
                           const qty        = stockPrintMode ? stockQty : (pending[p.id] ?? 0)
                           const total      = qty * price
@@ -2035,7 +2043,7 @@ function Booking2Inner() {
                   } else if (row.type === 'product') {
                     const qty = pending[row.product.id] ?? 0
                     if (qty > 0) {
-                      const price = parseFloat(row.product.price ?? '0') || 0
+                      const price = getProductPrice(row.product.price)
                       const item: PrintItem = { subgroup: currentSg, name: row.product.product_name, qty, price, total: price * qty }
                       if (SWITCHABLE_SUBGROUP_NAMES.has(currentSg)) nvItems.push(item)
                       else vItems.push(item)
