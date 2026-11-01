@@ -552,7 +552,7 @@ function BranchRow({
         </td>
 
       {/* MAP */}
-      <td className="px-1 py-1 border-r border-gray-200 align-middle text-center">
+      <td className="px-1 py-1 border-r border-gray-200 align-middle text-center w-px whitespace-nowrap">
         <MapCell branchId={branch.id} currentUrl={branch.map_url} onSave={onMapSave} />
       </td>
 
@@ -1241,7 +1241,7 @@ export default function BranchesPage() {
                       </div>
                     </div>
                   </th>
-                  <th rowSpan={2} className="px-1 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom">MAP</th>
+                  <th rowSpan={2} className="px-1 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom w-px">MAP</th>
                   {withdrawalTypes.length > 0 && (
                     <th colSpan={withdrawalTypes.length} className="px-2 py-1.5 border-r border-[#5a4530] text-center text-[11px] font-bold whitespace-nowrap bg-[#7d6348]">
                       เบิกของ
