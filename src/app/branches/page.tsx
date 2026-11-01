@@ -145,21 +145,27 @@ function computeWeekBounds(weeksAgo: number) {
 
 // ── Slip Confirm Modal ────────────────────────────────────────────────────────
 
-function SlipConfirmModal({ slip, onClose, onSaved }: {
+function SlipConfirmModal({ slip, onClose, onSaved, session, branches }: {
   slip: Slip; onClose: () => void; onSaved: () => void
+  session: BranchSession | null; branches: Branch[]
 }) {
   const [slipDate,     setSlipDate]     = useState(slip.slip_date)
   const [accountName,  setAccountName]  = useState(slip.account_name ?? '')
   const [category,     setCategory]     = useState(slip.category)
+  const [branchId,     setBranchId]     = useState<number | null>(slip.branch_id)
   const [saving,       setSaving]       = useState(false)
   const [confirmDel,   setConfirmDel]   = useState(false)
 
+  const isAdmin = session?.is_admin ?? false
+
   const handleConfirm = async () => {
     setSaving(true)
+    const body: Record<string, unknown> = { id: slip.id, slip_date: slipDate, account_name: accountName, category, status: 'confirmed' }
+    if (isAdmin) body.branch_id = branchId
     await fetch('/api/slips', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: slip.id, slip_date: slipDate, account_name: accountName, category, status: 'confirmed' }),
+      body: JSON.stringify(body),
     })
     setSaving(false)
     onSaved()
@@ -203,14 +209,26 @@ function SlipConfirmModal({ slip, onClose, onSaved }: {
         </div>
 
         {/* หมวดสลิป — editable */}
-        <div className="mb-4">
-          <div className="text-xs text-gray-500 mb-1">หมวดสลิป</div>
+        <div className="mb-3">
+          <div className="text-xs text-gray-500 mb-1">ประเภท</div>
           <select value={category} onChange={e => setCategory(e.target.value)}
             className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white">
             {SLIP_CATS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
             <option value="other">อื่นๆ</option>
           </select>
         </div>
+
+        {/* ปลายทาง — admin only */}
+        {isAdmin && (
+          <div className="mb-4">
+            <div className="text-xs text-gray-500 mb-1">ปลายทาง</div>
+            <select value={branchId ?? ''} onChange={e => setBranchId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white">
+              <option value="">— ยังไม่ระบุ —</option>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+        )}
 
         <button onClick={handleConfirm} disabled={saving}
           className="w-full py-2 text-sm rounded bg-[#9b9484] text-white font-semibold disabled:opacity-50 mb-2">
@@ -841,6 +859,8 @@ export default function BranchesPage() {
           slip={confirmSlip}
           onClose={() => setConfirmSlip(null)}
           onSaved={() => { setConfirmSlip(null); loadPendingSlips() }}
+          session={session}
+          branches={branches}
         />
       )}
 

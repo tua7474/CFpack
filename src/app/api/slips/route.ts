@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, slip_date, account_name, category, status, applied } = await req.json()
+    const { id, slip_date, account_name, category, status, applied, branch_id } = await req.json()
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
     const sets: string[] = []
@@ -203,6 +203,7 @@ export async function PATCH(req: NextRequest) {
     if (category     !== undefined) { sets.push(`category=$${i++}`);     vals.push(category) }
     if (status       !== undefined) { sets.push(`status=$${i++}`);       vals.push(status) }
     if (applied      !== undefined) { sets.push(`applied=$${i++}`);      vals.push(applied) }
+    if (branch_id    !== undefined) { sets.push(`branch_id=$${i++}`);    vals.push(branch_id) }
     if (!sets.length) return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
 
     vals.push(id)
