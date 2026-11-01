@@ -230,6 +230,84 @@ async function notifyEditBooking(
   } catch (e) { console.error('[notifyEditBooking] error:', e) }
 }
 
+// ── notifyCancelBooking ───────────────────────────────────────────────────────
+
+async function notifyCancelBooking(
+  branch_id: number | null, order_no: string,
+  total_amount: number, branch_name: string | null
+) {
+  if (!LINE_TOKEN) return
+  try {
+    const [branchRow, settingRow] = await Promise.all([
+      branch_id ? pool.query(`SELECT line_group_id FROM branches WHERE id=$1`, [branch_id]) : null,
+      pool.query(`SELECT value FROM system_settings WHERE key='order_notify_group_id'`).catch(() => ({ rows: [] })),
+    ])
+    const branchGroupId  = branchRow?.rows[0]?.line_group_id ?? null
+    const centralGroupId = settingRow?.rows[0]?.value ?? null
+
+    const fmt   = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
+    const label = branch_name ?? (branch_id ? `สาขา #${branch_id}` : 'ไม่ระบุสาขา')
+
+    const bodyContents = [
+      {
+        type: 'box', layout: 'horizontal', spacing: 'xs',
+        contents: [
+          { type: 'text', text: label,          size: 'xs', color: '#555555', flex: 3, weight: 'bold', wrap: true },
+          { type: 'text', text: `#${order_no}`, size: 'xs', color: '#9b9484', flex: 3, align: 'end', wrap: false },
+        ],
+      },
+      { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', color: '#9b9484', weight: 'bold', align: 'center', margin: 'xs' },
+    ]
+
+    // ── กลุ่มกลาง ────────────────────────────────────────────────────────────
+    const centralMsg: object = {
+      type: 'flex',
+      altText: `🗑️ ยกเลิกใบจองสำเร็จ #${order_no} — ${label}`,
+      contents: {
+        type: 'bubble', size: 'kilo',
+        header: {
+          type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '8px',
+          contents: [{ type: 'text', text: '🗑️ ยกเลิกใบจองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs' }],
+        },
+        body: {
+          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
+          backgroundColor: '#F5EED8',
+          contents: bodyContents,
+        },
+      },
+    }
+
+    // ── กลุ่มสาขา ────────────────────────────────────────────────────────────
+    const branchMsg: object = {
+      type: 'flex',
+      altText: `🗑️ ยกเลิกใบจองสำเร็จ #${order_no}`,
+      contents: {
+        type: 'bubble', size: 'kilo',
+        header: {
+          type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '8px',
+          contents: [{ type: 'text', text: '🗑️ ยกเลิกใบจองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs' }],
+        },
+        body: {
+          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
+          backgroundColor: '#F5EED8',
+          contents: [
+            ...bodyContents,
+            {
+              type: 'text', text: 'ใบจองนี้ถูกยกเลิกแล้วค่ะ',
+              size: 'xxs', color: '#9b9484', align: 'center', wrap: true, margin: 'xs',
+            },
+          ],
+        },
+      },
+    }
+
+    const pushTasks: Promise<unknown>[] = []
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchMsg]))
+    await Promise.all(pushTasks)
+  } catch (e) { console.error('[notifyCancelBooking] error:', e) }
+}
+
 // ── Table ─────────────────────────────────────────────────────────────────────
 
 const CREATE_TABLE = `
@@ -429,9 +507,18 @@ export async function PATCH(request: Request) {
     await adjustStockDelta(oldQuantities, quantities)
   }
 
-  // แจ้ง LINE เมื่อมีการแก้ไขเนื้อหาใบจอง (quantities หรือ total_amount)
-  if (quantities !== undefined || total_amount !== undefined) {
-    const updated = rows[0]
+  // แจ้ง LINE
+  const updated = rows[0]
+  if (status === 'cancelled') {
+    // ยกเลิกใบจอง → แจ้งเฉพาะ cancel popup (ไม่มีปุ่มแก้ไข/ขึ้นของ)
+    notifyCancelBooking(
+      updated.branch_id ?? null,
+      updated.order_no,
+      parseFloat(updated.total_amount ?? '0'),
+      updated.branch_name ?? null,
+    ).catch(e => console.error('[PATCH notifyCancelBooking]', e))
+  } else if (quantities !== undefined || total_amount !== undefined) {
+    // แก้ไขเนื้อหาใบจอง
     notifyEditBooking(
       updated.branch_id ?? null,
       updated.order_no,
