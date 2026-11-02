@@ -19,113 +19,245 @@ async function pushLineMsg(to: string, messages: object[]) {
   return res
 }
 
-async function notifyNewBooking(
-  branch_id: number | null, order_no: string,
-  total_amount: number, branch_name: string | null
-) {
+// ── fetchOrderDetails — ดึงข้อมูลครบจาก DB สำหรับ LINE notification ────────────
+
+interface OrderDetails {
+  branch_id: number | null
+  branch_name: string
+  total_amount: number
+  nv_total: number | null
+  v_total: number | null
+  coupon_amount: number
+  coupon_col: string
+  vehicle_type: string
+  withdrawal_type_name: string
+  items: { name: string; qty: number; total: number }[]
+}
+
+async function fetchOrderDetails(order_no: string): Promise<OrderDetails | null> {
+  const { rows: [order] } = await pool.query(`
+    SELECT o.branch_id, o.branch_name,
+           o.total_amount::float, o.nv_total::float, o.v_total::float,
+           o.coupon_amount::float, o.coupon_col,
+           o.vehicle_type, wt.name AS withdrawal_type_name,
+           o.quantities, o.foy_item_quantities, o.foy_quantities
+    FROM booking_orders o
+    LEFT JOIN withdrawal_types wt ON wt.id = o.withdrawal_type_id
+    WHERE o.order_no = $1
+  `, [order_no])
+  if (!order) return null
+
+  const quantities: Record<string, number> = order.quantities ?? {}
+  const foyItems: Record<string, number>   = order.foy_item_quantities ?? {}
+  const foyQty: Record<string, { qty: number; amount: number }> = order.foy_quantities ?? {}
+
+  const items: { name: string; qty: number; total: number }[] = []
+
+  // Regular products
+  const productIds = Object.keys(quantities).map(Number).filter(id => quantities[String(id)] > 0)
+  if (productIds.length) {
+    const { rows } = await pool.query(
+      `SELECT id, product_name, price::float
+       FROM products_catalog WHERE id = ANY($1)
+       ORDER BY section_order, subgroup_order, id`,
+      [productIds]
+    )
+    for (const p of rows) {
+      const qty = quantities[String(p.id)] ?? 0
+      if (qty > 0) items.push({ name: p.product_name, qty, total: p.price * qty })
+    }
+  }
+  // FOY items (paper_stock)
+  const foyItemIds = Object.keys(foyItems).map(Number).filter(id => foyItems[String(id)] > 0)
+  if (foyItemIds.length) {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (model_name) id, model_name, warehouse_price::float
+       FROM paper_stock WHERE id = ANY($1) ORDER BY model_name, id`,
+      [foyItemIds]
+    )
+    for (const fp of rows) {
+      const qty = foyItems[String(fp.id)] ?? 0
+      if (qty > 0) items.push({ name: fp.model_name, qty, total: fp.warehouse_price * qty })
+    }
+  }
+  // Old FOY format
+  for (const [model, data] of Object.entries(foyQty)) {
+    if (data.qty > 0 && !items.find(x => x.name === model))
+      items.push({ name: model, qty: data.qty, total: data.amount })
+  }
+
+  return {
+    branch_id: order.branch_id ?? null,
+    branch_name: order.branch_name ?? '',
+    total_amount: order.total_amount ?? 0,
+    nv_total: order.nv_total ?? null,
+    v_total: order.v_total ?? null,
+    coupon_amount: order.coupon_amount ?? 0,
+    coupon_col: order.coupon_col ?? '',
+    vehicle_type: order.vehicle_type ?? '',
+    withdrawal_type_name: order.withdrawal_type_name ?? '',
+    items,
+  }
+}
+
+// ── buildBodyContents — body ของ Flex bubble พร้อมรายการสินค้า ───────────────
+
+function buildBodyContents(order_no: string, d: OrderDetails, includeThank: boolean): object[] {
+  const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
+  const label = d.branch_name || 'ไม่ระบุสาขา'
+  const contents: object[] = []
+
+  // สาขา + เลขใบจอง
+  contents.push({
+    type: 'box', layout: 'horizontal', spacing: 'xs',
+    contents: [
+      { type: 'text', text: label,         size: 'xs', color: '#555555', flex: 3, weight: 'bold', wrap: true },
+      { type: 'text', text: `#${order_no}`, size: 'xs', color: '#9b9484', flex: 2, align: 'end' },
+    ],
+  })
+
+  // เบิกของ / จัดส่ง
+  if (d.withdrawal_type_name || d.vehicle_type) {
+    contents.push({
+      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+      contents: [
+        ...(d.withdrawal_type_name ? [{ type: 'text', text: `เบิกของ: ${d.withdrawal_type_name}`, size: 'xxs', color: '#666666', flex: 1, wrap: true }] : []),
+        ...(d.vehicle_type         ? [{ type: 'text', text: `จัดส่ง: ${d.vehicle_type}`,           size: 'xxs', color: '#666666', flex: 1, wrap: true }] : []),
+      ],
+    })
+  }
+
+  // รายการสินค้า
+  if (d.items.length > 0) {
+    contents.push({ type: 'separator', margin: 'sm', color: '#cccccc' })
+    for (const item of d.items) {
+      contents.push({
+        type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+        contents: [
+          { type: 'text', text: item.name,         size: 'xxs', color: '#333333', flex: 4, wrap: true },
+          { type: 'text', text: `×${item.qty}`,    size: 'xxs', color: '#888888', flex: 1, align: 'end' },
+          { type: 'text', text: fmt(item.total),   size: 'xxs', color: '#1a5c29', flex: 2, align: 'end', weight: 'bold' },
+        ],
+      })
+    }
+  }
+
+  // ยอดรวม
+  contents.push({ type: 'separator', margin: 'sm', color: '#cccccc' })
+  if (d.nv_total != null && d.v_total != null) {
+    contents.push({
+      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+      contents: [
+        { type: 'text', text: 'ไม่มีใบกำกับ', size: 'xxs', color: '#c05000', flex: 3, wrap: true },
+        { type: 'text', text: fmt(d.nv_total), size: 'xxs', color: '#c05000', flex: 2, align: 'end', weight: 'bold' },
+      ],
+    })
+    contents.push({
+      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+      contents: [
+        { type: 'text', text: 'มีใบกำกับ', size: 'xxs', color: '#555555', flex: 3, wrap: true },
+        { type: 'text', text: fmt(d.v_total), size: 'xxs', color: '#555555', flex: 2, align: 'end', weight: 'bold' },
+      ],
+    })
+  }
+  if (d.coupon_amount > 0) {
+    contents.push({
+      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+      contents: [
+        { type: 'text', text: `ส่วนลด${d.coupon_col ? ` (${d.coupon_col})` : ''}`, size: 'xxs', color: '#c0004a', flex: 3, wrap: true },
+        { type: 'text', text: `- ${fmt(d.coupon_amount)}`, size: 'xxs', color: '#c0004a', flex: 2, align: 'end', weight: 'bold' },
+      ],
+    })
+  }
+  contents.push({
+    type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'sm',
+    contents: [
+      { type: 'text', text: 'ยอดรวม',           size: 'sm', color: '#27ae60', flex: 3, weight: 'bold' },
+      { type: 'text', text: `฿${fmt(d.total_amount)}`, size: 'sm', color: '#27ae60', flex: 2, align: 'end', weight: 'bold' },
+    ],
+  })
+
+  if (includeThank) {
+    contents.push({
+      type: 'text', text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
+      size: 'xxs', color: '#9b9484', align: 'center', wrap: true, margin: 'xs',
+    })
+  }
+  return contents
+}
+
+// ── notifyNewBooking ──────────────────────────────────────────────────────────
+
+async function notifyNewBooking(order_no: string) {
   if (!LINE_TOKEN) return
   try {
-    // ── ดึง group IDs พร้อมกัน ────────────────────────────────────────────────
+    const d = await fetchOrderDetails(order_no)
+    if (!d) return
+
     const [branchRow, settingRow] = await Promise.all([
-      branch_id ? pool.query(`SELECT line_group_id FROM branches WHERE id=$1`, [branch_id]) : null,
+      d.branch_id ? pool.query(`SELECT line_group_id FROM branches WHERE id=$1`, [d.branch_id]) : null,
       pool.query(`SELECT value FROM system_settings WHERE key='order_notify_group_id'`).catch(() => ({ rows: [] })),
     ])
     const branchGroupId  = branchRow?.rows[0]?.line_group_id ?? null
     const centralGroupId = settingRow?.rows[0]?.value ?? null
 
-    const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
-    const label = branch_name ?? (branch_id ? `สาขา #${branch_id}` : 'ไม่ระบุสาขา')
-    const baseUrl = BASE_URL ? `https://${BASE_URL}` : 'https://cf-production-6234.up.railway.app'
-    const editUrl   = `${baseUrl}/booking2?edit=${order_no}`
+    const fmt      = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
+    const baseUrl  = BASE_URL ? `https://${BASE_URL}` : 'https://cf-production-6234.up.railway.app'
+    const editUrl  = `${baseUrl}/booking2?edit=${order_no}`
     const ordersUrl = `${baseUrl}/orders`
 
-    const bodyContents = [
-      {
-        type: 'box', layout: 'horizontal', spacing: 'xs',
-        contents: [
-          { type: 'text', text: label,       size: 'xs', color: '#555555', flex: 3, weight: 'bold', wrap: true },
-          { type: 'text', text: `#${order_no}`, size: 'xs', color: '#9b9484', flex: 3, align: 'end', wrap: false },
-        ],
-      },
-      { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', color: '#27ae60', weight: 'bold', align: 'center', margin: 'xs' },
-    ]
-
-    const centralHeaderBox = {
-      type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '8px',
-      contents: [{ type: 'text', text: '✅ จองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs' }],
-    }
-
-    // header สาขา: ซ้ายชื่อ ขวาปุ่มรับออเดอร์
-    const branchHeaderBox = {
-      type: 'box', layout: 'horizontal', backgroundColor: '#9b9484', paddingAll: '8px',
-      alignItems: 'center', spacing: 'sm',
-      contents: [
-        { type: 'text', text: '✅ จองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs', flex: 1 },
-        {
-          type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 0,
-          action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl },
-        },
-      ],
-    }
-
-    // ── Flex สำหรับกลุ่มกลาง (แอดมิน) ──────────────────────────────────────────
     const centralFlexMsg: object = {
       type: 'flex',
-      altText: `✅ ใบจอง #${order_no} — ${label} — ฿${fmt(total_amount)}`,
+      altText: `✅ ใบจอง #${order_no} — ${d.branch_name || 'ไม่ระบุสาขา'} — ฿${fmt(d.total_amount)}`,
       contents: {
-        type: 'bubble', size: 'kilo',
-        header: centralHeaderBox,
+        type: 'bubble', size: 'mega',
+        header: {
+          type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '8px',
+          contents: [{ type: 'text', text: '✅ จองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs' }],
+        },
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
-          contents: bodyContents,
+          contents: buildBodyContents(order_no, d, false),
         },
         footer: {
           type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
           contents: [
-            {
-              type: 'button', style: 'primary', color: '#9b9484', height: 'sm', flex: 1,
-              action: { type: 'uri', label: '✏️ แก้ไข', uri: editUrl },
-            },
-            {
-              type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 1,
-              action: { type: 'uri', label: '📦 ขึ้นของ', uri: ordersUrl },
-            },
+            { type: 'button', style: 'primary', color: '#9b9484', height: 'sm', flex: 1,
+              action: { type: 'uri', label: '✏️ แก้ไข', uri: editUrl } },
+            { type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 1,
+              action: { type: 'uri', label: '📦 ขึ้นของ', uri: ordersUrl } },
           ],
         },
       },
     }
 
-    // ── Flex สำหรับกลุ่มสาขา — ปุ่มรับออเดอร์อยู่ header + ขอบคุณใน body ─────────
     const branchFlexMsg: object = {
       type: 'flex',
-      altText: `✅ จองสำเร็จ #${order_no} — ฿${fmt(total_amount)}`,
+      altText: `✅ จองสำเร็จ #${order_no} — ฿${fmt(d.total_amount)}`,
       contents: {
-        type: 'bubble', size: 'kilo',
-        header: branchHeaderBox,
+        type: 'bubble', size: 'mega',
+        header: {
+          type: 'box', layout: 'horizontal', backgroundColor: '#9b9484', paddingAll: '8px',
+          alignItems: 'center', spacing: 'sm',
+          contents: [
+            { type: 'text', text: '✅ จองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs', flex: 1 },
+            { type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 0,
+              action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl } },
+          ],
+        },
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
-          contents: [
-            ...bodyContents,
-            {
-              type: 'text', text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
-              size: 'xxs', color: '#9b9484', align: 'center', wrap: true, margin: 'xs',
-            },
-          ],
+          contents: buildBodyContents(order_no, d, true),
         },
       },
     }
 
-    // รูปใบจอง
-    const imageUrl = `${baseUrl}/api/orders/image?no=${order_no}`
-    const imageMsg: object = { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }
-
-    // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
     const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [imageMsg, centralFlexMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [imageMsg, branchFlexMsg]))
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralFlexMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchFlexMsg]))
     console.log('[notifyNewBooking] targets centralGroupId:', centralGroupId, 'branchGroupId:', branchGroupId, '| order:', order_no)
     if (!centralGroupId) console.warn('[notifyNewBooking] order_notify_group_id not set in system_settings!')
     await Promise.all(pushTasks)
@@ -134,42 +266,29 @@ async function notifyNewBooking(
 
 // ── notifyEditBooking ─────────────────────────────────────────────────────────
 
-async function notifyEditBooking(
-  branch_id: number | null, order_no: string,
-  total_amount: number, branch_name: string | null
-) {
+async function notifyEditBooking(order_no: string) {
   if (!LINE_TOKEN) return
   try {
+    const d = await fetchOrderDetails(order_no)
+    if (!d) return
+
     const [branchRow, settingRow] = await Promise.all([
-      branch_id ? pool.query(`SELECT line_group_id FROM branches WHERE id=$1`, [branch_id]) : null,
+      d.branch_id ? pool.query(`SELECT line_group_id FROM branches WHERE id=$1`, [d.branch_id]) : null,
       pool.query(`SELECT value FROM system_settings WHERE key='order_notify_group_id'`).catch(() => ({ rows: [] })),
     ])
     const branchGroupId  = branchRow?.rows[0]?.line_group_id ?? null
     const centralGroupId = settingRow?.rows[0]?.value ?? null
 
-    const fmt   = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
-    const label = branch_name ?? (branch_id ? `สาขา #${branch_id}` : 'ไม่ระบุสาขา')
-    const baseUrl   = BASE_URL ? `https://${BASE_URL}` : 'https://cf-production-6234.up.railway.app'
+    const fmt      = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 })
+    const baseUrl  = BASE_URL ? `https://${BASE_URL}` : 'https://cf-production-6234.up.railway.app'
+    const editUrl  = `${baseUrl}/booking2?edit=${order_no}`
     const ordersUrl = `${baseUrl}/orders`
-    const editUrl   = `${baseUrl}/booking2?edit=${order_no}`
 
-    const bodyContents = [
-      {
-        type: 'box', layout: 'horizontal', spacing: 'xs',
-        contents: [
-          { type: 'text', text: label,          size: 'xs', color: '#555555', flex: 3, weight: 'bold', wrap: true },
-          { type: 'text', text: `#${order_no}`, size: 'xs', color: '#9b9484', flex: 3, align: 'end', wrap: false },
-        ],
-      },
-      { type: 'text', text: `฿${fmt(total_amount)}`, size: 'sm', color: '#27ae60', weight: 'bold', align: 'center', margin: 'xs' },
-    ]
-
-    // ── กลุ่มกลาง (แอดมิน) ───────────────────────────────────────────────────
     const centralMsg: object = {
       type: 'flex',
-      altText: `✏️ แก้ไขใบจอง #${order_no} — ${label} — ฿${fmt(total_amount)}`,
+      altText: `✏️ แก้ไขใบจอง #${order_no} — ${d.branch_name || 'ไม่ระบุสาขา'} — ฿${fmt(d.total_amount)}`,
       contents: {
-        type: 'bubble', size: 'kilo',
+        type: 'bubble', size: 'mega',
         header: {
           type: 'box', layout: 'vertical', backgroundColor: '#9b9484', paddingAll: '8px',
           contents: [{ type: 'text', text: '✏️ แก้ไขใบจองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs' }],
@@ -177,63 +296,46 @@ async function notifyEditBooking(
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
-          contents: bodyContents,
+          contents: buildBodyContents(order_no, d, false),
         },
         footer: {
           type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
           contents: [
-            {
-              type: 'button', style: 'primary', color: '#9b9484', height: 'sm', flex: 1,
-              action: { type: 'uri', label: '✏️ แก้ไข', uri: editUrl },
-            },
-            {
-              type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 1,
-              action: { type: 'uri', label: '📦 ขึ้นของ', uri: ordersUrl },
-            },
+            { type: 'button', style: 'primary', color: '#9b9484', height: 'sm', flex: 1,
+              action: { type: 'uri', label: '✏️ แก้ไข', uri: editUrl } },
+            { type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 1,
+              action: { type: 'uri', label: '📦 ขึ้นของ', uri: ordersUrl } },
           ],
         },
       },
     }
 
-    // ── กลุ่มสาขา — header มีปุ่มรับออเดอร์ ──────────────────────────────────
     const branchMsg: object = {
       type: 'flex',
-      altText: `✏️ แก้ไขใบจอง #${order_no} — ฿${fmt(total_amount)}`,
+      altText: `✏️ แก้ไขใบจอง #${order_no} — ฿${fmt(d.total_amount)}`,
       contents: {
-        type: 'bubble', size: 'kilo',
+        type: 'bubble', size: 'mega',
         header: {
           type: 'box', layout: 'horizontal', backgroundColor: '#9b9484', paddingAll: '8px',
           alignItems: 'center', spacing: 'sm',
           contents: [
             { type: 'text', text: '✏️ แก้ไขใบจองสำเร็จ', weight: 'bold', color: '#ffffff', size: 'xs', flex: 1 },
-            {
-              type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 0,
-              action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl },
-            },
+            { type: 'button', style: 'primary', color: '#4ade80', height: 'sm', flex: 0,
+              action: { type: 'uri', label: 'รับออเดอร์', uri: ordersUrl } },
           ],
         },
         body: {
           type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
           backgroundColor: '#F5EED8',
-          contents: [
-            ...bodyContents,
-            {
-              type: 'text', text: 'ขอบคุณค่ะ รอแจ้งกำหนดส่ง/รับนะคะ',
-              size: 'xxs', color: '#9b9484', align: 'center', wrap: true, margin: 'xs',
-            },
-          ],
+          contents: buildBodyContents(order_no, d, true),
         },
       },
     }
 
-    // รูปใบจอง
-    const imageUrl = `${baseUrl}/api/orders/image?no=${order_no}`
-    const imageMsg: object = { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }
-
     const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [imageMsg, centralMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [imageMsg, branchMsg]))
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchMsg]))
     await Promise.all(pushTasks)
   } catch (e) { console.error('[notifyEditBooking] error:', e) }
 }
@@ -418,7 +520,7 @@ export async function POST(request: Request) {
        nv_total ?? null, v_total ?? null, coupon_amount ?? 0, coupon_col ?? null]
     )
     await deductStock(quantities ?? {})
-    notifyNewBooking(branch_id ?? null, rows[0].order_no, total_amount ?? 0, branch_name ?? null)
+    notifyNewBooking(rows[0].order_no)
     return NextResponse.json(rows[0], { status: 201 })
   } catch (e: unknown) {
     if ((e as { code?: string }).code === '23505') {
@@ -431,7 +533,7 @@ export async function POST(request: Request) {
          nv_total ?? null, v_total ?? null, coupon_amount ?? 0, coupon_col ?? null]
       )
       await deductStock(quantities ?? {})
-      notifyNewBooking(branch_id ?? null, rows[0].order_no, total_amount ?? 0, branch_name ?? null)
+      notifyNewBooking(rows[0].order_no)
       return NextResponse.json(rows[0], { status: 201 })
     }
     throw e
@@ -527,12 +629,7 @@ export async function PATCH(request: Request) {
     ).catch(e => console.error('[PATCH notifyCancelBooking]', e))
   } else if (quantities !== undefined || total_amount !== undefined) {
     // แก้ไขเนื้อหาใบจอง
-    notifyEditBooking(
-      updated.branch_id ?? null,
-      updated.order_no,
-      parseFloat(updated.total_amount ?? '0'),
-      updated.branch_name ?? null,
-    ).catch(e => console.error('[PATCH notifyEditBooking]', e))
+    notifyEditBooking(updated.order_no).catch(e => console.error('[PATCH notifyEditBooking]', e))
   }
 
   return NextResponse.json(rows[0])
