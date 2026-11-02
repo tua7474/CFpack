@@ -1851,7 +1851,8 @@ function Booking2Inner() {
                                     type="text"
                                     inputMode="numeric"
                                     pattern="[0-9]*"
-                                    defaultValue={qty || ''}
+                                    value={qty || ''}
+                                    onChange={() => {}}
                                     key={`qty-${p.id}-${resetKey}`}
                                     readOnly
                                     onFocus={() => setQtyPopup({ id: p.id, name: p.product_name, subgroupName: p.subgroup_name, stockQty: parseFloat(String(p.stock_qty ?? '0')) || 0, accent: sec.is_vat_included ? '#f0f9ff' : '#fff7ed' })}
