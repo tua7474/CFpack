@@ -23,11 +23,16 @@ async function reply(replyToken: string, messages: object[]) {
 }
 
 export async function push(to: string, messages: object[]) {
-  await fetch('https://api.line.me/v2/bot/message/push', {
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
     body: JSON.stringify({ to, messages }),
   })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error('[LINE push] HTTP', res.status, body)
+  }
+  return res
 }
 
 function verifySignature(body: string, sig: string) {
@@ -1912,16 +1917,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
     await ensureTable()
     await setSetting('order_notify_group_id', source.groupId)
-    // ส่งข้อความทดสอบไปยังกลุ่มนี้ทันที
-    const LINE_TOKEN_LOCAL = process.env.LINE_CHANNEL_ACCESS_TOKEN
-    if (LINE_TOKEN_LOCAL) {
-      await fetch('https://api.line.me/v2/bot/message/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN_LOCAL}` },
-        body: JSON.stringify({ to: source.groupId, messages: [{ type: 'text', text: `✅ ลงทะเบียนสำเร็จ!\nกลุ่มนี้จะได้รับแจ้งเตือนเมื่อมีใบจองใหม่\nGroup ID: ${source.groupId}` }] }),
-      }).catch(e => console.error('[test-push] error:', e))
-    }
-    return reply(replyToken, [{ type: 'text', text: `✅ บันทึก Group ID แล้ว\n${source.groupId}\n\nถ้าเห็นข้อความนี้ แสดงว่าการแจ้งเตือนจะทำงานได้ปกติครับ` }])
+    return reply(replyToken, [{ type: 'text', text: `✅ บันทึก Group ID แล้ว\n${source.groupId}\n\nกลุ่มนี้จะได้รับแจ้งเตือนเมื่อมีใบจองใหม่ครับ` }])
   }
 
   // ทดสอบแจ้งเตือนใบจอง

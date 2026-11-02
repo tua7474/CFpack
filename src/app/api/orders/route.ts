@@ -6,7 +6,8 @@ import pool from '@/lib/db'
 const LINE_TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN!
 const BASE_URL    = process.env.RAILWAY_PUBLIC_DOMAIN
 
-async function pushLineMsg(to: string, messages: object[]) {
+// คืน true = สำเร็จ, false = ล้มเหลว (หยุดส่งต่อถ้าเจอ 429)
+async function pushLineMsg(to: string, messages: object[]): Promise<boolean> {
   const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
@@ -15,8 +16,9 @@ async function pushLineMsg(to: string, messages: object[]) {
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     console.error('[pushLineMsg] failed', res.status, body, 'to:', to)
+    return false
   }
-  return res
+  return true
 }
 
 // ── fetchOrderDetails — ดึงข้อมูลครบจาก DB สำหรับ LINE notification ────────────
@@ -255,12 +257,12 @@ async function notifyNewBooking(order_no: string) {
       },
     }
 
-    const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralFlexMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchFlexMsg]))
     console.log('[notifyNewBooking] targets centralGroupId:', centralGroupId, 'branchGroupId:', branchGroupId, '| order:', order_no)
-    if (!centralGroupId) console.warn('[notifyNewBooking] order_notify_group_id not set in system_settings!')
-    await Promise.all(pushTasks)
+    if (!centralGroupId) { console.warn('[notifyNewBooking] order_notify_group_id not set in system_settings!'); return }
+    const ok = await pushLineMsg(centralGroupId, [centralFlexMsg])
+    if (!ok) return  // 429 หรือ error — หยุด ไม่ push ต่อ
+    if (branchGroupId && branchGroupId !== centralGroupId)
+      await pushLineMsg(branchGroupId, [branchFlexMsg])
   } catch (e) { console.error('[notifyNewBooking] error:', e) }
 }
 
@@ -411,10 +413,11 @@ async function notifyCancelBooking(
       },
     }
 
-    const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchMsg]))
-    await Promise.all(pushTasks)
+    if (!centralGroupId) return
+    const ok = await pushLineMsg(centralGroupId, [centralMsg])
+    if (!ok) return  // 429 หรือ error — หยุด
+    if (branchGroupId && branchGroupId !== centralGroupId)
+      await pushLineMsg(branchGroupId, [branchMsg])
   } catch (e) { console.error('[notifyCancelBooking] error:', e) }
 }
 
