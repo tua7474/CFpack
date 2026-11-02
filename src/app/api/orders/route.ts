@@ -118,10 +118,14 @@ async function notifyNewBooking(
       },
     }
 
+    // รูปใบจอง
+    const imageUrl = `${baseUrl}/api/orders/image?no=${order_no}`
+    const imageMsg: object = { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }
+
     // ส่งไปทั้งกลุ่ม "ออกใบจอง" และกลุ่มสาขา (ถ้ามี)
     const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralFlexMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchFlexMsg]))
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [imageMsg, centralFlexMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [imageMsg, branchFlexMsg]))
     console.log('[notifyNewBooking] targets centralGroupId:', centralGroupId, 'branchGroupId:', branchGroupId, '| order:', order_no)
     if (!centralGroupId) console.warn('[notifyNewBooking] order_notify_group_id not set in system_settings!')
     await Promise.all(pushTasks)
@@ -223,9 +227,13 @@ async function notifyEditBooking(
       },
     }
 
+    // รูปใบจอง
+    const imageUrl = `${baseUrl}/api/orders/image?no=${order_no}`
+    const imageMsg: object = { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }
+
     const pushTasks: Promise<unknown>[] = []
-    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [centralMsg]))
-    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [branchMsg]))
+    if (centralGroupId) pushTasks.push(pushLineMsg(centralGroupId, [imageMsg, centralMsg]))
+    if (branchGroupId && branchGroupId !== centralGroupId) pushTasks.push(pushLineMsg(branchGroupId, [imageMsg, branchMsg]))
     await Promise.all(pushTasks)
   } catch (e) { console.error('[notifyEditBooking] error:', e) }
 }
