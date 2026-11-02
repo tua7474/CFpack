@@ -284,6 +284,9 @@ function Booking2Inner() {
   const [autoCapEnabled, setAutoCapEnabled]     = useState(true)  // auto-add ฝาปิดกระบอก 2x when กระบอก qty changes
   const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
   const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
+  const [codeInput, setCodeInput]   = useState('')
+  const [codeError, setCodeError]   = useState<string | null>(null)
+  const [codeLoading, setCodeLoading] = useState(false)
 
   // Load foy result from booking-foy (new order mode only)
   useEffect(() => {
@@ -1152,6 +1155,51 @@ function Booking2Inner() {
     ? contentNaturalH * CONTENT_SCALE + A4_PAD_PX * 2
     : 0
 
+  // ── Branch code login ─────────────────────────────────────────────────────
+
+  async function handleCodeLogin(e: React.FormEvent) {
+    e.preventDefault()
+    const code = codeInput.trim()
+    if (!code) return
+    setCodeLoading(true)
+    setCodeError(null)
+    try {
+      const res = await fetch('/api/branches/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      if (!res.ok) {
+        setCodeError('รหัสไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง')
+        setCodeLoading(false)
+        return
+      }
+      const s = await res.json()
+      const hasAccess = s.is_admin || s.is_manager || (s.allowed_pages ?? []).includes('booking2')
+      if (!hasAccess) {
+        setCodeError('รหัสนี้ไม่มีสิทธิ์เข้าใบจองสินค้า')
+        setCodeLoading(false)
+        return
+      }
+      try {
+        localStorage.setItem('branch_session', JSON.stringify({
+          branch_id: s.branch_id,
+          branch_name: s.branch_name,
+          phone: s.phone,
+          is_admin: s.is_admin,
+          is_manager: s.is_manager,
+          allowed_pages: s.allowed_pages ?? [],
+        }))
+      } catch { /* ignore */ }
+      setBranchInfo({ name: s.branch_name, phone: s.phone ?? '' })
+      setIsAdmin(s.is_admin !== false)
+      setBranchReady(true)
+    } catch {
+      setCodeError('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง')
+    }
+    setCodeLoading(false)
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -1403,11 +1451,35 @@ function Booking2Inner() {
               <div className="text-6xl select-none">🔒</div>
               <div>
                 <div className="text-xl font-bold text-gray-500 mb-1">ใบจองสินค้า</div>
-                <div className="text-sm text-gray-400">ไม่สามารถเข้าใช้งานได้</div>
+                <div className="text-sm text-gray-400">กรุณาเข้าสู่ระบบ</div>
               </div>
+
+              {/* Code login form */}
+              <form onSubmit={handleCodeLogin} className="flex flex-col gap-3 w-full max-w-xs">
+                <input
+                  type="text"
+                  value={codeInput}
+                  onChange={e => { setCodeInput(e.target.value); setCodeError(null) }}
+                  placeholder="ใส่รหัสเข้าสู่ระบบสาขา"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-center text-base tracking-widest focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                  autoComplete="off"
+                  disabled={codeLoading}
+                />
+                {codeError && (
+                  <div className="text-sm text-red-500 text-center">{codeError}</div>
+                )}
+                <button
+                  type="submit"
+                  disabled={codeLoading || !codeInput.trim()}
+                  className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm disabled:opacity-40 transition-colors"
+                >
+                  {codeLoading ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}
+                </button>
+              </form>
+
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-6 py-4 max-w-xs text-sm text-yellow-800">
-                กรุณาเปิดหน้าจองผ่าน <strong>LINE กลุ่มสาขา</strong><br/>
-                เพื่อระบุตัวตนก่อนใช้งาน
+                สามารถเข้าจากกลุ่ม <strong>LINE สาขา</strong><br/>
+                เพื่อยืนยันตัวตน
               </div>
             </div>
           ) : branchReady === null && !editOrderNo ? (
