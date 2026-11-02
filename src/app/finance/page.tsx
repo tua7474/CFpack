@@ -254,10 +254,12 @@ function DetailModal({ modal, onClose, onSaved }: {
   const [cutSet,  setCutSet]  = useState<Set<number>>(() => new Set(paidSet))
   const [saving,  setSaving]  = useState(false)
 
-  const storeTotal = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
-  const cutTotal   = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
-  const remaining  = Math.max(0, storeTotal - cutTotal)
-  const showCut    = storeTotal > 0
+  const storeTotal      = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
+  const cutTotal        = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
+  const remaining       = Math.max(0, storeTotal - cutTotal)
+  const showStoreCredit = storeTotal > 0   // แสดงยอดหักค่าของ เฉพาะเมื่อมี store slips
+  // ตัดยอดแสดงเสมอ — ทุกสาขาสามารถตัดยอดได้ไม่ว่าจะมี store slips หรือไม่
+  const showCut    = sorted.some(e => e.order_no)
   // Only newly-cut entries (not pre-paid) need saving
   const newlyCut   = sorted.filter((e, i) => cutSet.has(i) && !paidSet.has(i) && e.order_no)
   const hasCut     = newlyCut.length > 0
@@ -300,7 +302,7 @@ function DetailModal({ modal, onClose, onSaved }: {
         </div>
 
         {/* Store credit balance */}
-        {showCut && (
+        {showStoreCredit && (
           <div className={`flex justify-between items-center px-4 py-2 border-b ${remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
             <span className={`text-xs font-semibold ${remaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
               ยอดหักค่าของคงเหลือ
@@ -356,7 +358,7 @@ function DetailModal({ modal, onClose, onSaved }: {
               {fmtAmt(modal.entries.reduce((s, e) => s + e.amount, 0))}
             </span>
           </div>
-          {showCut && (() => {
+          {showStoreCredit && (() => {
             const orderTotal = modal.entries.reduce((s, e) => s + e.amount, 0)
             const net = orderTotal - storeTotal
             const isOwed = net > 0
