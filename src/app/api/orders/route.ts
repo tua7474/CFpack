@@ -627,9 +627,6 @@ export async function PATCH(request: Request) {
       parseFloat(updated.total_amount ?? '0'),
       updated.branch_name ?? null,
     ).catch(e => console.error('[PATCH notifyCancelBooking]', e))
-  } else if (quantities !== undefined || total_amount !== undefined) {
-    // แก้ไขเนื้อหาใบจอง
-    notifyEditBooking(updated.order_no).catch(e => console.error('[PATCH notifyEditBooking]', e))
   }
 
   return NextResponse.json(rows[0])
