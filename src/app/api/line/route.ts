@@ -349,20 +349,25 @@ function getISOWeekInfo(): { year: number; week: number; dayOfWeek: number } {
   return { year: thu.getUTCFullYear(), week, dayOfWeek: dow }
 }
 
-// บล็อคเมื่อ: มียอดค้างชำระของสัปดาห์ที่แล้ว (W-1) AND วันนี้ถึงพุธแล้ว (พุธ=3 ขึ้นไป)
+// สัปดาห์ = อาทิตย์–เสาร์
+// SQL helper: วันอาทิตย์ต้นสัปดาห์ปัจจุบัน (Bangkok)
+// = date_trunc('week', now+1day) - 1day  (shift Sun→Mon ก่อน trunc แล้วลบกลับ)
+const SUN_WEEK_START_SQL = `(date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok' + INTERVAL '1 day') - INTERVAL '1 day')`
+
+// บล็อคเมื่อ: มียอดค้างชำระของสัปดาห์ที่แล้ว (อา.–ส.) AND วันนี้ถึงพุธ–เสาร์แล้ว
+// อา. จ. อ. = ไม่บล็อค (อา. = เริ่มสัปดาห์ใหม่)
 async function checkBlockedFromDB(branchId: number): Promise<boolean> {
   const { dayOfWeek } = getISOWeekInfo()
-  // จ. อ. (dow 1-2) ยังไม่บล็อค — รอถึงพุธก่อน
-  if (dayOfWeek < 3) return false
+  // ISO dow: จ.=1 อ.=2 พ.=3 พฤ.=4 ศ.=5 ส.=6 อา.=7
+  // บล็อคเฉพาะ พ.(3)–ส.(6); อา.(7)=เริ่มสัปดาห์ใหม่ ไม่บล็อค
+  if (dayOfWeek < 3 || dayOfWeek === 7) return false
   const { rows } = await pool.query(`
     SELECT EXISTS (
       SELECT 1 FROM booking_orders
       WHERE branch_id = $1
         AND payment_status != 'paid'
-        AND (created_at AT TIME ZONE 'Asia/Bangkok') >=
-            date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - INTERVAL '1 week'
-        AND (created_at AT TIME ZONE 'Asia/Bangkok') <
-            date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
+        AND (created_at AT TIME ZONE 'Asia/Bangkok') >= ${SUN_WEEK_START_SQL} - INTERVAL '1 week'
+        AND (created_at AT TIME ZONE 'Asia/Bangkok') <  ${SUN_WEEK_START_SQL}
     ) AS blocked
   `, [branchId])
   return rows[0]?.blocked === true
@@ -405,7 +410,7 @@ async function getWeeklySummary(branchId: number): Promise<WeekSummary[]> {
       OR
       -- หรือ 3 สัปดาห์ล่าสุดสำหรับบริบท (แม้ชำระครบแล้ว)
       MAX(created_at) AT TIME ZONE 'Asia/Bangkok' >=
-        date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - INTERVAL '2 weeks'
+        ${SUN_WEEK_START_SQL} - INTERVAL '2 weeks'
     ORDER BY yr DESC, wk DESC
     LIMIT 20
   `, [branchId])
@@ -435,13 +440,13 @@ async function getPendingOrders(branchId: number) {
   return rows
 }
 
-// คืนค่า YYYY-MM-DD ของวันจันทร์ต้นสัปดาห์ weeksAgo สัปดาห์ก่อน (Bangkok UTC+7)
+// คืนค่า YYYY-MM-DD ของวันอาทิตย์ต้นสัปดาห์ (อา.–ส.) weeksAgo สัปดาห์ก่อน (Bangkok UTC+7)
 function getWeekStartDate(weeksAgo: number): string {
   const now = new Date(Date.now() + 7 * 3600 * 1000)
-  const dow = now.getUTCDay() || 7 // 1=Mon … 7=Sun
-  const mon = new Date(now)
-  mon.setUTCDate(now.getUTCDate() - (dow - 1) - weeksAgo * 7)
-  return `${mon.getUTCFullYear()}-${String(mon.getUTCMonth() + 1).padStart(2, '0')}-${String(mon.getUTCDate()).padStart(2, '0')}`
+  const dow = now.getUTCDay() // 0=อา. 1=จ. … 6=ส.
+  const sun = new Date(now)
+  sun.setUTCDate(now.getUTCDate() - dow - weeksAgo * 7)
+  return `${sun.getUTCFullYear()}-${String(sun.getUTCMonth() + 1).padStart(2, '0')}-${String(sun.getUTCDate()).padStart(2, '0')}`
 }
 
 // ดึงทุกออเดอร์ของสาขา (ไม่จำกัดจำนวน ไม่กรองวันที่ ยกเว้น cancelled) — ตรงกับ finance page
@@ -461,8 +466,7 @@ async function getCurrentWeekOrders(branchId: number) {
     FROM booking_orders
     WHERE branch_id = $1
       AND status != 'cancelled'
-      AND created_at AT TIME ZONE 'Asia/Bangkok'
-          >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
+      AND created_at AT TIME ZONE 'Asia/Bangkok' >= ${SUN_WEEK_START_SQL}
     ORDER BY created_at ASC
   `, [branchId])
   return rows
@@ -474,10 +478,8 @@ async function getLastWeekOrders(branchId: number) {
     FROM booking_orders
     WHERE branch_id = $1
       AND status != 'cancelled'
-      AND created_at AT TIME ZONE 'Asia/Bangkok'
-          >= date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - interval '7 days'
-      AND created_at AT TIME ZONE 'Asia/Bangkok'
-          < date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
+      AND created_at AT TIME ZONE 'Asia/Bangkok' >= ${SUN_WEEK_START_SQL} - INTERVAL '7 days'
+      AND created_at AT TIME ZONE 'Asia/Bangkok' <  ${SUN_WEEK_START_SQL}
     ORDER BY created_at ASC
   `, [branchId])
   return rows
@@ -493,8 +495,8 @@ async function getWeekSlips(branchId: number, weeksAgo: number): Promise<WeekSli
     WHERE branch_id = $1
       AND status = 'confirmed'
       AND category NOT IN ('vat', 'fee')
-      AND slip_date >= (date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - ($2 * INTERVAL '1 week'))::date
-      AND ($2 = 0 OR slip_date < (date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - (($2 - 1) * INTERVAL '1 week'))::date)
+      AND slip_date >= (${SUN_WEEK_START_SQL} - ($2 * INTERVAL '1 week'))::date
+      AND ($2 = 0 OR slip_date < (${SUN_WEEK_START_SQL} - (($2 - 1) * INTERVAL '1 week'))::date)
   `, [branchId, weeksAgo])
   const pay   = rows.filter((r: { applied: boolean }) => r.applied)
   const store = rows.filter((r: { applied: boolean }) => !r.applied)
