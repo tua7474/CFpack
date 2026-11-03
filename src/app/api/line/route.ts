@@ -349,23 +349,22 @@ function getISOWeekInfo(): { year: number; week: number; dayOfWeek: number } {
   return { year: thu.getUTCFullYear(), week, dayOfWeek: dow }
 }
 
-// ตรวจสอบบล็อกจาก DB โดยตรง (ครอบคลุมทุกออเดอร์ ไม่จำกัด 3 สัปดาห์)
-// วันจันทร์: ยกเว้น W-1 (มี grace 1 สัปดาห์) → block ถ้ามีค้างก่อน W-1
-// วันอื่น:   ไม่มี grace → block ถ้ามีค้างก่อน W-ปัจจุบัน
+// บล็อคเมื่อ: มียอดค้างชำระของสัปดาห์ที่แล้ว (W-1) AND วันนี้ถึงพุธแล้ว (พุธ=3 ขึ้นไป)
 async function checkBlockedFromDB(branchId: number): Promise<boolean> {
   const { dayOfWeek } = getISOWeekInfo()
-  // Monday: weeksBack=1 → cutoff = start of last week (W-1 start)
-  // Tue-Sun: weeksBack=0 → cutoff = start of this week (W-0 start)
-  const weeksBack = dayOfWeek === 1 ? 1 : 0
+  // จ. อ. (dow 1-2) ยังไม่บล็อค — รอถึงพุธก่อน
+  if (dayOfWeek < 3) return false
   const { rows } = await pool.query(`
     SELECT EXISTS (
       SELECT 1 FROM booking_orders
       WHERE branch_id = $1
         AND payment_status != 'paid'
-        AND created_at AT TIME ZONE 'Asia/Bangkok' <
-            date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - ($2 * INTERVAL '1 week')
+        AND (created_at AT TIME ZONE 'Asia/Bangkok') >=
+            date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok') - INTERVAL '1 week'
+        AND (created_at AT TIME ZONE 'Asia/Bangkok') <
+            date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok')
     ) AS blocked
-  `, [branchId, weeksBack])
+  `, [branchId])
   return rows[0]?.blocked === true
 }
 
