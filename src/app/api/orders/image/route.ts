@@ -72,10 +72,13 @@ export async function GET(req: NextRequest) {
   try {
     // 1. Fetch order
     const { rows: orderRows } = await pool.query(
-      `SELECT order_no, branch_name, total_amount::float, nv_total::float, v_total::float,
-              coupon_amount::float, coupon_col,
-              quantities, foy_item_quantities, foy_quantities, created_at
-       FROM booking_orders WHERE order_no = $1`,
+      `SELECT o.order_no, o.branch_name, o.total_amount::float, o.nv_total::float, o.v_total::float,
+              o.coupon_amount::float, o.coupon_col,
+              o.quantities, o.foy_item_quantities, o.foy_quantities, o.created_at,
+              o.vehicle_type, wt.name AS withdrawal_type_name
+       FROM booking_orders o
+       LEFT JOIN withdrawal_types wt ON wt.id = o.withdrawal_type_id
+       WHERE o.order_no = $1`,
       [orderNo]
     )
     if (!orderRows.length) {

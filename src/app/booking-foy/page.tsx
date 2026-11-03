@@ -511,7 +511,7 @@ export default function BookingFoyPage() {
       <header className="no-print bg-[#9b9484] text-white px-6 py-3 shadow flex items-center gap-4">
         {!isBranchRole && (
           <Link href="/stock" className="text-orange-200 hover:text-white text-sm transition-colors">
-            ← สต็อคกระดาษฝอย
+            ← สต็อคฝอย
           </Link>
         )}
         <div>

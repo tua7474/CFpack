@@ -292,7 +292,7 @@ export default function Home() {
 
   // ── Build grouped entries ─────────────────────────────────────────────────────
 
-  // กระดาษฝอย groups ถูกจัดการที่หน้าสต็อคกระดาษฝอยแทน
+  // กระดาษฝอย groups ถูกจัดการที่หน้าสต็อคฝอยแทน
   const FOY_HIDDEN = new Set([
     'กระดาษฝอย', 'รุ่นสีอ่อน', 'รุ่นสีพิเศษ A', 'รุ่นสีพิเศษ B',
     'รุ่นหยัก', 'ฝอยนุ่น', 'ฝอยหยัก',
@@ -390,11 +390,11 @@ export default function Home() {
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">
-          📦 สต็อคสินค้า
+          📦 สต็อค
         </span>
         <Link href="/stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอย
+          🌿 สต็อคฝอย
         </Link>
         <Link href="/orders"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
@@ -430,11 +430,11 @@ export default function Home() {
         </Link>
         <Link href="/branch-stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🏬 สต็อคทุกสาขา
+          🏬 สต็อคสาขา
         </Link>
         <Link href="/branch-foy-stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอยทุกสาขา
+          🌿 สต็อคฝอยสาขา
         </Link>
         <Link href="/ocha-import" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📊 นำเข้า Ocha</Link>
       </div>
@@ -703,7 +703,7 @@ export default function Home() {
 
     {/* ── Print view (A4) ── */}
     <div className="hidden print:block p-10 font-sans text-black bg-white">
-      <h1 className="text-xl font-bold mb-0.5">รายงานสต็อคสินค้า</h1>
+      <h1 className="text-xl font-bold mb-0.5">รายงานสต็อค</h1>
       <p className="text-sm text-gray-500 mb-5">{dateStr}</p>
       <table className="w-full text-sm border-collapse">
         <thead>

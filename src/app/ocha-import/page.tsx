@@ -256,8 +256,8 @@ export default function OchaImportPage() {
 
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
-        <Link href="/"               className={tabCls}>📦 สต็อคสินค้า</Link>
-        <Link href="/stock"          className={tabCls}>🌿 สต็อคกระดาษฝอย</Link>
+        <Link href="/"               className={tabCls}>📦 สต็อค</Link>
+        <Link href="/stock"          className={tabCls}>🌿 สต็อคฝอย</Link>
         <Link href="/orders"         className={tabCls}>📋 ใบจอง</Link>
         <Link href="/branches"       className={tabCls}>🏪 สาขาและตัวแทน</Link>
         <Link href="/delivery"       className={tabCls}>🚚 จัดส่ง</Link>
@@ -265,8 +265,8 @@ export default function OchaImportPage() {
         <Link href="/restock"        className={tabCls}>📥 ใบPO</Link>
         <Link href="/foy-line"       className={tabCls}>🌀 ไลน์ผลิตกระดาษฝอย</Link>
         <Link href="/finance"        className={tabCls}>💰 การเงิน</Link>
-        <Link href="/branch-stock"   className={tabCls}>🏬 สต็อคทุกสาขา</Link>
-        <Link href="/branch-foy-stock" className={tabCls}>🌿 สต็อคกระดาษฝอยทุกสาขา</Link>
+        <Link href="/branch-stock"   className={tabCls}>🏬 สต็อคสาขา</Link>
+        <Link href="/branch-foy-stock" className={tabCls}>🌿 สต็อคฝอยสาขา</Link>
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">📊 นำเข้า Ocha</span>
       </div>
 

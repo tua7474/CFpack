@@ -101,11 +101,11 @@ export default function WithdrawalPage() {
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
         <Link href="/"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          📦 สต็อคสินค้า
+          📦 สต็อค
         </Link>
         <Link href="/stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอย
+          🌿 สต็อคฝอย
         </Link>
         <Link href="/orders"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
@@ -140,11 +140,11 @@ export default function WithdrawalPage() {
         </Link>
         <Link href="/branch-stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🏬 สต็อคทุกสาขา
+          🏬 สต็อคสาขา
         </Link>
         <Link href="/branch-foy-stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอยทุกสาขา
+          🌿 สต็อคฝอยสาขา
         </Link>
         <Link href="/ocha-import" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📊 นำเข้า Ocha</Link>
       </div>

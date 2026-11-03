@@ -118,7 +118,7 @@ export default function StockHistoryPage({
     <div className="min-h-screen bg-gray-100">
       <header className="bg-[#9b9484] text-white px-6 py-3 shadow flex items-center gap-3">
         <Link href="/stock" className="text-orange-200 hover:text-white text-sm transition-colors">
-          ← สต็อคกระดาษฝอย
+          ← สต็อคฝอย
         </Link>
         <h1 className="text-xl font-bold">{title}</h1>
       </header>

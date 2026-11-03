@@ -8,8 +8,8 @@ import { useRouter } from 'next/navigation'
 
 export const PAGE_LIST = [
   { key: 'booking2',    label: 'ใบจองสินค้า' },
-  { key: 'stock',       label: 'สต็อคสินค้า' },
-  { key: 'stock-paper', label: 'สต็อคกระดาษฝอย' },
+  { key: 'stock',       label: 'สต็อค' },
+  { key: 'stock-paper', label: 'สต็อคฝอย' },
 ] as const
 
 export type PageKey = typeof PAGE_LIST[number]['key']
@@ -791,11 +791,11 @@ export default function BranchesPage() {
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
         <Link href="/"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          📦 สต็อคสินค้า
+          📦 สต็อค
         </Link>
         <Link href="/stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอย
+          🌿 สต็อคฝอย
         </Link>
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">
           🏪 สาขาและตัวแทน
@@ -826,11 +826,11 @@ export default function BranchesPage() {
         </Link>
         <Link href="/branch-stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🏬 สต็อคทุกสาขา
+          🏬 สต็อคสาขา
         </Link>
         <Link href="/branch-foy-stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอยทุกสาขา
+          🌿 สต็อคฝอยสาขา
         </Link>
         <Link href="/ocha-import" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📊 นำเข้า Ocha</Link>
       </div>

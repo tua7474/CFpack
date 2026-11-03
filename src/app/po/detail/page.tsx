@@ -254,8 +254,8 @@ function PODetailInner() {
 
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
-        <Link href="/" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📦 สต็อคสินค้า</Link>
-        <Link href="/stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคกระดาษฝอย</Link>
+        <Link href="/" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📦 สต็อค</Link>
+        <Link href="/stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคฝอย</Link>
         <Link href="/orders" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📋 ใบจอง</Link>
         <Link href="/branches" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏪 สาขาและตัวแทน</Link>
         <Link href="/delivery" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🚚 จัดส่ง</Link>
@@ -264,8 +264,8 @@ function PODetailInner() {
         <Link href="/suppliers" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏭 ซัพพลายเออร์</Link>
         <Link href="/foy-line" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌀 ไลน์ผลิตกระดาษฝอย</Link>
         <Link href="/finance" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">💰 การเงิน</Link>
-        <Link href="/branch-stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏬 สต็อคทุกสาขา</Link>
-        <Link href="/branch-foy-stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคกระดาษฝอยทุกสาขา</Link>
+        <Link href="/branch-stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🏬 สต็อคสาขา</Link>
+        <Link href="/branch-foy-stock" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">🌿 สต็อคฝอยสาขา</Link>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-4">

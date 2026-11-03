@@ -25,7 +25,7 @@ function getBranchColor(name: string, colorGroup: string | null): ColorGroup {
 
 const COL_ORDER: ColorGroup[] = ['orange', 'yellow', 'red', 'green', 'black', 'editor']
 
-// ── Category order + colors (เหมือนหน้าสต็อคกระดาษฝอย) ──────────────────────
+// ── Category order + colors (เหมือนหน้าสต็อคฝอย) ──────────────────────
 const CAT_ORDER = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก']
 const CAT_HEADER_BG: Record<string, string> = {
   '2 มิล':   'bg-[#F7DC6F] text-gray-800',
@@ -190,11 +190,11 @@ export default function BranchFoyStockPage() {
       <div className="bg-white border-b border-gray-200 px-4 shadow-sm flex overflow-x-auto">
         <Link href="/"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          📦 สต็อคสินค้า
+          📦 สต็อค
         </Link>
         <Link href="/stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอย
+          🌿 สต็อคฝอย
         </Link>
         <Link href="/orders"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
@@ -230,17 +230,17 @@ export default function BranchFoyStockPage() {
         </Link>
         <Link href="/branch-stock"
           className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">
-          🏬 สต็อคทุกสาขา
+          🏬 สต็อคสาขา
         </Link>
         <span className="inline-block px-4 py-3 text-sm font-medium border-b-2 border-gray-500 text-green-400 bg-green-50 whitespace-nowrap">
-          🌿 สต็อคกระดาษฝอยทุกสาขา
+          🌿 สต็อคฝอยสาขา
         </span>
         <Link href="/ocha-import" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📊 นำเข้า Ocha</Link>
       </div>
 
       {/* Main */}
       <main className="p-4">
-        <h2 className="text-sm font-bold text-gray-600 mb-3">🌿 สต็อคกระดาษฝอยทุกสาขา</h2>
+        <h2 className="text-sm font-bold text-gray-600 mb-3">🌿 สต็อคฝอยสาขา</h2>
         {loading ? (
           <div className="flex items-center justify-center h-24 text-gray-400 text-sm">กำลังโหลด...</div>
         ) : (

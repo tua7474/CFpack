@@ -829,7 +829,7 @@ function Booking2Inner() {
           )
         )
       }
-      // อัพเดทสถานะเป็น cancelled + quantities={} เพื่อคืนสต็อคสินค้าปกติ
+      // อัพเดทสถานะเป็น cancelled + quantities={} เพื่อคืนสต็อคปกติ
       const res = await fetch('/api/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1321,7 +1321,7 @@ function Booking2Inner() {
                 {editOrderNo ? `แก้ไขใบจอง — ${editOrderNo}` : 'ใบจองสินค้า'}
               </h1>
               <p className="text-orange-200 text-xs mt-0.5 hidden sm:block">
-                {editOrderNo ? 'แก้ไขรายการแล้วกดบันทึกเพื่ออัพเดท' : 'ข้อมูลจากสต็อคสินค้า · Auto-save ใน browser'}
+                {editOrderNo ? 'แก้ไขรายการแล้วกดบันทึกเพื่ออัพเดท' : 'ข้อมูลจากสต็อค · Auto-save ใน browser'}
               </p>
             </div>
           </div>
