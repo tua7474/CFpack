@@ -1335,14 +1335,11 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     `, [branchId])
     const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
     const branchName = br[0]?.name ?? `สาขา #${branchId}`
-    const stillBlocked = await checkBlockedFromDB(branchId)
     const msgs: object[] = [{
       type: 'text',
       text: `✅ บันทึกชำระเงินสำเร็จ!\n${branchName}\nอัปเดต ${rowCount} ใบจองแล้วครับ`
     }]
-    if (!stillBlocked) {
-      msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${branchId}&branch_name=${encodeURIComponent(branchName)}&t=${Date.now()}`))
-    }
+    msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${branchId}&branch_name=${encodeURIComponent(branchName)}&t=${Date.now()}`))
     return reply(replyToken, msgs)
   }
 
@@ -1421,10 +1418,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       text: `🙏 ขอบคุณครับ\nบันทึก${slipTypeLabel} ฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} เรียบร้อย${branchName ? `\nสาขา: ${branchName}` : ''}`
     }]
     if (slipBranchId !== null) {
-      const stillBlocked = await checkBlockedFromDB(slipBranchId)
-      if (!stillBlocked) {
-        msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}`))
-      }
+      msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}`))
     }
     return reply(replyToken, msgs)
   }
@@ -1480,8 +1474,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
       text: `✅ บันทึกชำระยอดค้างเรียบร้อย\n฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${branchName ? `\nสาขา: ${branchName}` : ''}`
     }]
     if (slipBranchId !== null) {
-      const stillBlocked = await checkBlockedFromDB(slipBranchId)
-      if (!stillBlocked) msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}&t=${Date.now()}`))
+      msgs.push(buildBookingOpenCard(branchName, `${BASE_URL}/booking2?branch_id=${slipBranchId}&branch_name=${encodeURIComponent(branchName)}&t=${Date.now()}`))
     }
     return reply(replyToken, msgs)
   }
@@ -2003,22 +1996,20 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     // ── ดึงข้อมูล: ตรวจสอบบล็อก + ใบจองทั้งหมด (เหมือน finance page ยอดรวมใบจอง) ──
     type OrderRow = { order_no: string; total_amount: number; status: string; payment_status: string; created_at: string }
     let allOrders: OrderRow[] = []
-    let blocked = false
+    const blocked = false  // ยกเลิกระบบบล็อกค้างชำระ
     const emptySlips: WeekSlipData = { payCount: 0, payTotal: 0, storeCount: 0, storeTotal: 0 }
     let twoWeeksAgoSlips: WeekSlipData = emptySlips
     let lastWeekSlips:    WeekSlipData = emptySlips
     let thisWeekSlips:    WeekSlipData = emptySlips
 
     if (branchId !== null) {
-      const [allOrd, blockedResult, twoSlips, lastSlips, nowSlips] = await Promise.all([
+      const [allOrd, twoSlips, lastSlips, nowSlips] = await Promise.all([
         getAllBranchOrders(branchId),
-        checkBlockedFromDB(branchId),
         getWeekSlips(branchId, 2),
         getWeekSlips(branchId, 1),
         getWeekSlips(branchId, 0),
       ])
-      allOrders       = allOrd
-      blocked         = blockedResult
+      allOrders        = allOrd
       twoWeeksAgoSlips = twoSlips
       lastWeekSlips    = lastSlips
       thisWeekSlips    = nowSlips
@@ -2179,9 +2170,9 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       contents: [
         {
           type: 'box', layout: 'vertical', flex: 1,
-          backgroundColor: blocked ? '#9ca3af' : '#9b9484',
+          backgroundColor: '#9b9484',
           cornerRadius: '4px', paddingAll: '6px',
-          action: blocked ? { type: 'postback', data: 'NOOP', displayText: 'ค้างชำระอยู่' } : { type: 'uri', uri: bookingUrl },
+          action: { type: 'uri', uri: bookingUrl },
           contents: [{ type: 'text', text: 'ใบจอง', size: 'xs', color: '#ffffff', align: 'center', weight: 'bold' }],
         },
         {
@@ -2201,13 +2192,6 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
     // ── สร้าง body ────────────────────────────────────────────────────────────
     const bodyContents: object[] = [
-      ...(blocked ? [{
-        type: 'box', layout: 'vertical', backgroundColor: '#fef2f2',
-        cornerRadius: '6px', paddingAll: '6px', margin: 'none',
-        contents: [
-          { type: 'text', text: 'ค้างชำระ — จองสินค้าไม่ได้', weight: 'bold', size: 'xs', color: '#dc2626', align: 'center' },
-        ]
-      }, { type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
       ...orderRows,
       { type: 'separator', margin: 'sm', color: '#d1d5db' },
       threeButtons,
@@ -2217,16 +2201,16 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
     return reply(replyToken, [{
       type: 'flex',
-      altText: blocked ? 'ค้างชำระ — จองสินค้าไม่ได้' : 'ใบจองสินค้า',
+      altText: 'ใบจองสินค้า',
       contents: {
         type: 'bubble', size: 'kilo',
         header: {
           type: 'box', layout: 'horizontal', alignItems: 'center',
-          backgroundColor: blocked ? '#dc2626' : '#9b9484',
+          backgroundColor: '#9b9484',
           paddingAll: '10px', spacing: 'sm',
           contents: [
             { type: 'text', text: 'ใบจองสินค้า', color: '#ffffff', weight: 'bold', size: 'sm', flex: 3 },
-            { type: 'text', text: branchShort, color: blocked ? '#fecaca' : '#f5f5f4', size: 'xxs', flex: 3, align: 'end', wrap: false },
+            { type: 'text', text: branchShort, color: '#f5f5f4', size: 'xxs', flex: 3, align: 'end', wrap: false },
           ]
         },
         body: {
