@@ -33,7 +33,7 @@ async function ensureFeeTable() {
   `)
 }
 
-export interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string }
+export interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string; slip_id?: number }
 export interface BranchFinanceRow {
   id: number; name: string; color_group: string | null
   pay:   SlipEntry[]
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
 
   // Individual confirmed slips per branch — always return all (frontend groups by week)
   const { rows: slipRows } = await pool.query(`
-    SELECT s.branch_id, s.category, s.applied,
+    SELECT s.id, s.branch_id, s.category, s.applied,
            s.amount::float, s.slip_date::text
     FROM slips s
     WHERE s.status = 'confirmed' AND s.branch_id IS NOT NULL
@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
   const slipMap: Record<number, { pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[] }> = {}
   for (const s of slipRows) {
     if (!slipMap[s.branch_id]) slipMap[s.branch_id] = { pay: [], store: [], vat: [], fee: [] }
-    const entry: SlipEntry = { date: s.slip_date, amount: s.amount }
+    const entry: SlipEntry = { date: s.slip_date, amount: s.amount, slip_id: s.id }
     if (s.category === 'vat') {
       slipMap[s.branch_id].vat.push(entry)
     } else if (s.category === 'fee') {

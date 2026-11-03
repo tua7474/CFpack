@@ -48,7 +48,7 @@ const GROUP_LABEL: Record<ColorGroup, string> = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string }
+interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string; slip_id?: number }
 interface BranchFinance {
   id: number; name: string; color_group: string | null
   pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[]
@@ -253,6 +253,7 @@ function DetailModal({ modal, onClose, onSaved }: {
   const paidSet    = new Set(sorted.flatMap((e, i) => e.payment_status === 'paid' ? [i] : []))
   const [cutSet,  setCutSet]  = useState<Set<number>>(() => new Set(paidSet))
   const [saving,  setSaving]  = useState(false)
+  const [cancellingSlipId, setCancellingSlipId] = useState<number | null>(null)
 
   const storeTotal      = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
   const cutTotal        = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
@@ -271,6 +272,19 @@ function DetailModal({ modal, onClose, onSaved }: {
       if (next.has(i)) next.delete(i); else next.add(i)
       return next
     })
+  }
+
+  const handleCancelSlip = async (slip_id: number) => {
+    if (!confirm('ยืนยันยกเลิกสลิปนี้?')) return
+    setCancellingSlipId(slip_id)
+    await fetch('/api/slips', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: slip_id }),
+    })
+    setCancellingSlipId(null)
+    onSaved?.()
+    onClose()
   }
 
   const handleSave = async () => {
@@ -327,6 +341,15 @@ function DetailModal({ modal, onClose, onSaved }: {
                 <span className={`text-xs font-mono font-semibold flex-shrink-0 ${isCut ? 'text-green-600' : 'text-gray-800'}`}>
                   {fmtAmt(e.amount)}
                 </span>
+                {e.slip_id && (
+                  <button
+                    onClick={() => handleCancelSlip(e.slip_id!)}
+                    disabled={cancellingSlipId === e.slip_id}
+                    className="text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600 border border-gray-200 hover:border-red-300 transition-colors"
+                  >
+                    {cancellingSlipId === e.slip_id ? '...' : 'ยกเลิก'}
+                  </button>
+                )}
                 {showCut && (
                   isPaid ? (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-green-100 text-green-600 border border-green-300">
