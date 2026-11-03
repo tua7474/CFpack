@@ -41,15 +41,7 @@ export async function ensureTables() {
   await pool.query(`
     ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS branch_id INT REFERENCES branches(id)
   `)
-  // Seed initial branch
-  await pool.query(`
-    INSERT INTO branches (id, name) VALUES (1, 'CFpack สาย4')
-    ON CONFLICT (id) DO NOTHING
-  `)
-  await pool.query(`
-    INSERT INTO branch_phones (branch_id, phone, is_admin) VALUES (1, '0942399974', true)
-    ON CONFLICT (phone) DO NOTHING
-  `)
+  // (seed removed)
 }
 
 // ── GET — list all branches with phone numbers + pending count ────────────────
