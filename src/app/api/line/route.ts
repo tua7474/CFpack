@@ -1116,7 +1116,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
             type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
             contents: [
               { type: 'text', text: '🖨️ พิมพ์ฟอร์มสต็อค', weight: 'bold', size: 'md' },
-              { type: 'text', text: `รหัส: ${snap_no}`, size: 'xs', color: '#888' },
+              { type: 'text', text: `รหัส: ${snap_no}`, size: 'xs', color: '#888888' },
               { type: 'separator', margin: 'sm' },
               { type: 'text', text: '1. เปิดลิงก์ด้านล่างเพื่อพิมพ์ฟอร์ม (2 แผ่น)', size: 'sm', wrap: true },
               { type: 'text', text: '2. กรอกจำนวนในช่องสี่เหลี่ยม', size: 'sm', wrap: true },
@@ -1130,7 +1130,7 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
               type: 'box', layout: 'vertical',
               backgroundColor: '#1d4ed8', cornerRadius: '4px', paddingAll: '10px',
               action: { type: 'uri', label: 'เปิดฟอร์ม', uri: printUrl },
-              contents: [{ type: 'text', text: '🖨️ เปิดฟอร์มสำหรับพิมพ์', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+              contents: [{ type: 'text', text: '🖨️ เปิดฟอร์มสำหรับพิมพ์', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
             }],
           },
         },
@@ -2169,10 +2169,10 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         body: {
           type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
           contents: [
-            { type: 'text', text: branchName ? `สาขา: ${branchName}` : 'เลือกวิธีบันทึกสต็อค', size: 'sm', color: '#333' },
+            { type: 'text', text: branchName ? `สาขา: ${branchName}` : 'เลือกวิธีบันทึกสต็อค', size: 'sm', color: '#333333' },
             { type: 'separator', margin: 'sm' },
-            { type: 'text', text: '• บันทึกทันที — กรอกจำนวนในแอป', size: 'xs', color: '#555', wrap: true },
-            { type: 'text', text: '• ปริ้นฟอร์ม — พิมพ์ → เขียน → ถ่ายรูปส่งกลับ', size: 'xs', color: '#555', wrap: true },
+            { type: 'text', text: '• บันทึกทันที — กรอกจำนวนในแอป', size: 'xs', color: '#555555', wrap: true },
+            { type: 'text', text: '• ปริ้นฟอร์ม — พิมพ์ → เขียน → ถ่ายรูปส่งกลับ', size: 'xs', color: '#555555', wrap: true },
           ],
         },
         footer: {
@@ -2182,13 +2182,13 @@ async function handleText(text: string, userId: string, replyToken: string, sour
               type: 'box', layout: 'vertical', flex: 1,
               backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '10px',
               action: { type: 'uri', label: 'บันทึกทันที', uri: formUrl },
-              contents: [{ type: 'text', text: '✏️ บันทึก\nทันที', color: '#fff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
+              contents: [{ type: 'text', text: '✏️ บันทึก\nทันที', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
             },
             {
               type: 'box', layout: 'vertical', flex: 1,
               backgroundColor: '#1d4ed8', cornerRadius: '4px', paddingAll: '10px',
               action: { type: 'postback', label: 'ปริ้นฟอร์ม', data: `STOCK_PRINT:${snap_no}` },
-              contents: [{ type: 'text', text: '🖨️ ปริ้น\nฟอร์ม', color: '#fff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
+              contents: [{ type: 'text', text: '🖨️ ปริ้น\nฟอร์ม', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
             },
           ],
         },
@@ -2890,21 +2890,21 @@ ${itemList}
           type: 'box', layout: 'horizontal',
           backgroundColor: '#1a6b4a', paddingAll: '10px',
           contents: [
-            { type: 'text', text: '📸 อ่านฟอร์มเรียบร้อย', color: '#fff', weight: 'bold', size: 'sm', flex: 1 },
+            { type: 'text', text: '📸 อ่านฟอร์มเรียบร้อย', color: '#ffffff', weight: 'bold', size: 'sm', flex: 1 },
             { type: 'text', text: snap_no, color: '#a7f3d0', size: 'xxs', align: 'end', flex: 0 },
           ],
         },
         body: {
           type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
           contents: [
-            { type: 'text', text: `อ่านได้ ${totalItems} รายการ`, size: 'sm', color: '#111' },
+            { type: 'text', text: `อ่านได้ ${totalItems} รายการ`, size: 'sm', color: '#111111' },
             ...(warnCount > 0 ? [{
               type: 'text' as const,
               text: `⚠️ ไม่แน่ใจ ${warnCount} รายการ — กรุณาแก้ไขก่อนยืนยัน`,
               size: 'xs' as const, color: '#c05000', wrap: true,
             }] : []),
             { type: 'separator' as const, margin: 'sm' as const },
-            { type: 'text' as const, text: 'กรุณาตรวจสอบก่อนยืนยัน', size: 'xs' as const, color: '#666' },
+            { type: 'text' as const, text: 'กรุณาตรวจสอบก่อนยืนยัน', size: 'xs' as const, color: '#666666' },
           ],
         },
         footer: {
@@ -2916,19 +2916,19 @@ ${itemList}
                 type: 'box', layout: 'vertical', flex: 1,
                 backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '8px',
                 action: { type: 'postback', label: 'ยืนยัน', data: `STOCK_CONFIRM:${snap_no}` },
-                contents: [{ type: 'text', text: '✅ ยืนยัน', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+                contents: [{ type: 'text', text: '✅ ยืนยัน', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
               },
               {
                 type: 'box', layout: 'vertical', flex: 1,
                 backgroundColor: '#d97706', cornerRadius: '4px', paddingAll: '8px',
                 action: { type: 'uri', label: 'แก้ไข', uri: formUrl },
-                contents: [{ type: 'text', text: '✏️ แก้ไข', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+                contents: [{ type: 'text', text: '✏️ แก้ไข', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
               },
               {
                 type: 'box', layout: 'vertical', flex: 1,
                 backgroundColor: '#dc2626', cornerRadius: '4px', paddingAll: '8px',
                 action: { type: 'postback', label: 'ยกเลิก', data: `STOCK_CANCEL:${snap_no}` },
-                contents: [{ type: 'text', text: '❌ ยกเลิก', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+                contents: [{ type: 'text', text: '❌ ยกเลิก', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
               },
             ],
           }],
@@ -3109,7 +3109,11 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {
       console.error('[webhook] unhandled error for event', ev.type, e)
-      try { await reply(replyToken, [{ type: 'text', text: `⚠️ เกิดข้อผิดพลาด\n${String(e)}` }]) } catch {}
+      // replyToken อาจหมดอายุแล้ว — ใช้ push แทนเพื่อแจ้ง error
+      const pushTo = source?.groupId ?? source?.userId ?? userId
+      if (pushTo) {
+        try { await push(pushTo, [{ type: 'text', text: `⚠️ เกิดข้อผิดพลาด\n${String(e)}` }]) } catch {}
+      }
     }
   }))
 
