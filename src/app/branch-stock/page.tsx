@@ -77,9 +77,12 @@ export default function BranchStockPage() {
 
   const [products, setProducts] = useState<BSProduct[]>([])
   const [branches, setBranches] = useState<BSBranch[]>([])
-  const [stockMap, setStockMap] = useState<Record<string, number>>({})
-  const [loading, setLoading]   = useState(true)
-  const [session, setSession]   = useState<SessionInfo | null>(null)
+  const [stockMap,    setStockMap]    = useState<Record<string, number>>({})
+  const [lastUpdated, setLastUpdated] = useState<Record<number, string>>({})
+  const [loading,     setLoading]     = useState(true)
+  const [session,     setSession]     = useState<SessionInfo | null>(null)
+  const [snapBranchId,   setSnapBranchId]   = useState<number | ''>('')
+  const [snapLoading,    setSnapLoading]    = useState(false)
 
   useEffect(() => {
     try {
@@ -97,6 +100,23 @@ export default function BranchStockPage() {
     router.replace('/branches')
   }
 
+  const createSnap = async (mode: 'form' | 'print') => {
+    if (!snapBranchId) return
+    const branch = branches.find(b => b.id === snapBranchId)
+    if (!branch) return
+    setSnapLoading(true)
+    const res = await fetch('/api/stock-snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch_id: branch.id, branch_name: branch.name }),
+    })
+    setSnapLoading(false)
+    if (!res.ok) return
+    const data = await res.json()
+    const snap_no = data.snapshot_no
+    window.open(mode === 'form' ? `/stock-form?snap=${snap_no}` : `/stock-print?snap=${snap_no}`, '_blank')
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     const r = await fetch('/api/branch-stock')
@@ -107,6 +127,7 @@ export default function BranchStockPage() {
     const map: Record<string, number> = {}
     for (const s of data.stock) map[`${s.branch_id}_${s.product_id}`] = Number(s.quantity)
     setStockMap(map)
+    setLastUpdated(data.last_updated ?? {})
     setLoading(false)
   }, [])
 
@@ -147,6 +168,15 @@ export default function BranchStockPage() {
         <div>
           <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
           {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
+          {Object.keys(lastUpdated).length > 0 && (() => {
+            const latest = Object.values(lastUpdated).sort().at(-1)!
+            const d = new Date(latest)
+            return (
+              <p className="text-white/60 text-xs mt-0.5">
+                อัปเดตล่าสุด: {d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' })} {d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}
+              </p>
+            )
+          })()}
         </div>
         {session && (
           <button onClick={handleLogout}
@@ -210,7 +240,32 @@ export default function BranchStockPage() {
 
       {/* Main */}
       <main className="p-4">
-        <h2 className="text-sm font-bold text-gray-600 mb-3">🏬 สต็อคสาขา</h2>
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="text-sm font-bold text-gray-600">🏬 สต็อคสาขา</span>
+          <div className="flex items-center gap-1.5 ml-auto flex-wrap">
+            <select
+              value={snapBranchId}
+              onChange={e => setSnapBranchId(e.target.value ? Number(e.target.value) : '')}
+              className="px-2 py-1 text-xs rounded border border-gray-300 bg-white focus:outline-none focus:ring-1 focus:ring-orange-400">
+              <option value="">— เลือกสาขา —</option>
+              {sortedBranches.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => createSnap('form')}
+              disabled={!snapBranchId || snapLoading}
+              className="px-3 py-1 text-xs rounded bg-green-600 hover:bg-green-700 text-white font-semibold disabled:opacity-40 whitespace-nowrap transition-colors">
+              {snapLoading ? '...' : '✏️ บันทึกทันที'}
+            </button>
+            <button
+              onClick={() => createSnap('print')}
+              disabled={!snapBranchId || snapLoading}
+              className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-40 whitespace-nowrap transition-colors">
+              {snapLoading ? '...' : '🖨️ ปริ้นฟอร์ม'}
+            </button>
+          </div>
+        </div>
         {loading ? (
           <div className="flex items-center justify-center h-24 text-gray-400 text-sm">กำลังโหลด...</div>
         ) : (
