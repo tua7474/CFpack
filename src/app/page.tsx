@@ -76,6 +76,9 @@ export default function Home() {
   const [now, setNow] = useState<Date | null>(null)
   const [pageAllowed, setPageAllowed] = useState<boolean | null>(null)
   const [session, setSession] = useState<SessionInfo | null>(null)
+  const [codeInput, setCodeInput]   = useState('')
+  const [codeLoading, setCodeLoading] = useState(false)
+  const [codeError, setCodeError]   = useState<string | null>(null)
   const [dragId, setDragId]       = useState<number | null>(null)
   const [dragOverId, setDragOverId] = useState<number | null>(null)
 
@@ -93,6 +96,29 @@ export default function Home() {
   const handleLogout = () => {
     localStorage.removeItem('branch_session')
     router.replace('/branches')
+  }
+
+  const handleCodeLogin = async () => {
+    const code = codeInput.trim()
+    if (!code) return
+    setCodeLoading(true)
+    setCodeError(null)
+    try {
+      const res = await fetch('/api/branches/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCodeError(data.error ?? 'รหัสไม่ถูกต้อง'); setCodeLoading(false); return }
+      localStorage.setItem('branch_session', JSON.stringify(data))
+      setSession(data)
+      if (data.is_admin || data.is_manager) { setPageAllowed(true) }
+      else { setPageAllowed((data.allowed_pages ?? []).includes('stock')) }
+    } catch {
+      setCodeError('เกิดข้อผิดพลาด กรุณาลองใหม่')
+    }
+    setCodeLoading(false)
   }
 
 
@@ -343,8 +369,29 @@ export default function Home() {
   if (pageAllowed === false) return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 gap-4 text-center px-6">
       <div className="text-5xl select-none">🔒</div>
-      <div className="text-lg font-bold text-gray-500">ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-      <div className="text-sm text-gray-400">กรุณาติดต่อผู้ดูแลระบบ</div>
+      <div className="text-lg font-bold text-gray-700">CF ระบบจัดการข้อมูล</div>
+      <div className="text-sm text-gray-500">กรุณาใส่รหัสสาขาเพื่อเข้าสู่ระบบ</div>
+      <div className="flex flex-col gap-2 w-full max-w-xs">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="รหัสสาขา"
+          value={codeInput}
+          onChange={e => setCodeInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleCodeLogin() }}
+          className="w-full px-4 py-2 text-center text-lg rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+        />
+        {codeError && <div className="text-sm text-red-500">{codeError}</div>}
+        <button
+          onClick={handleCodeLogin}
+          disabled={codeLoading || !codeInput.trim()}
+          className="w-full px-4 py-2 rounded-lg bg-orange-400 hover:bg-orange-500 text-white font-semibold text-sm transition-colors disabled:opacity-50">
+          {codeLoading ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}
+        </button>
+      </div>
+      <div className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 max-w-xs">
+        หากไม่ทราบรหัส กรุณาติดต่อผู้ดูแลระบบ
+      </div>
     </div>
   )
 
