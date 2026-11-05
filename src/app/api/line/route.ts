@@ -1106,36 +1106,34 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     const snap_no  = data.slice('STOCK_PRINT:'.length)
     const printUrl = `${BASE_URL}/stock-print?snap=${snap_no}`
     await setInputState(userId, { type: 'stock_image_wait', snap_no, page: 1 })
-    return reply(replyToken, [
-      {
-        type: 'flex',
-        altText: `🖨️ ปริ้นฟอร์มสต็อค ${snap_no}`,
-        contents: {
-          type: 'bubble',
-          body: {
-            type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
-            contents: [
-              { type: 'text', text: '🖨️ พิมพ์ฟอร์มสต็อค', weight: 'bold', size: 'md' },
-              { type: 'text', text: `รหัส: ${snap_no}`, size: 'xs', color: '#888888' },
-              { type: 'separator', margin: 'sm' },
-              { type: 'text', text: '1. เปิดลิงก์ด้านล่างเพื่อพิมพ์ฟอร์ม (2 แผ่น)', size: 'sm', wrap: true },
-              { type: 'text', text: '2. กรอกจำนวนในช่องสี่เหลี่ยม', size: 'sm', wrap: true },
-              { type: 'text', text: '3. ถ่ายรูปแผ่น 1 (สินค้าทั่วไป) ส่งในแชทนี้', size: 'sm', wrap: true, color: '#1a6b4a', weight: 'bold' },
-              { type: 'text', text: '4. ถ่ายรูปแผ่น 2 (ฝอย) ส่งต่อในแชทนี้', size: 'sm', wrap: true, color: '#1a6b4a', weight: 'bold' },
-            ],
-          },
-          footer: {
-            type: 'box', layout: 'vertical', paddingAll: '8px',
-            contents: [{
-              type: 'box', layout: 'vertical',
-              backgroundColor: '#1d4ed8', cornerRadius: '4px', paddingAll: '10px',
-              action: { type: 'uri', label: 'เปิดฟอร์ม', uri: printUrl },
-              contents: [{ type: 'text', text: '🖨️ เปิดฟอร์มสำหรับพิมพ์', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
-            }],
-          },
+    return reply(replyToken, [{
+      type: 'flex',
+      altText: `🖨️ ปริ้นฟอร์มสต็อค ${snap_no}`,
+      contents: {
+        type: 'bubble', size: 'micro',
+        header: {
+          type: 'box', layout: 'horizontal', alignItems: 'center',
+          backgroundColor: '#9b9484', paddingAll: '8px',
+          contents: [
+            { type: 'text', text: '🖨️ ปริ้นฟอร์มสต็อค', color: '#ffffff', weight: 'bold', size: 'sm', flex: 1 },
+            { type: 'text', text: snap_no, color: '#f5f5f4', size: 'xxs', align: 'end', flex: 0 },
+          ],
+        },
+        body: {
+          type: 'box', layout: 'vertical', paddingAll: '6px', spacing: 'xs',
+          backgroundColor: '#F5EED8',
+          contents: [
+            { type: 'text', text: 'พิมพ์ → เขียน → ถ่ายรูปแผ่น 1 แล้วแผ่น 2 ส่งในแชทนี้', size: 'xxs', color: '#5a5248', wrap: true },
+            {
+              type: 'box', layout: 'vertical', marginTop: '6px',
+              backgroundColor: '#5a7a5a', cornerRadius: '4px', paddingAll: '6px',
+              action: { type: 'uri', uri: printUrl },
+              contents: [{ type: 'text', text: '🖨️ เปิดฟอร์มพิมพ์', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
+            },
+          ],
         },
       },
-    ])
+    }])
   }
 
   // ── STOCK_CONFIRM:{snap_no} — ยืนยันบันทึกสต็อค ───────────────────────────
@@ -2155,40 +2153,32 @@ async function handleText(text: string, userId: string, replyToken: string, sour
 
     return reply(replyToken, [{
       type: 'flex',
-      altText: `📦 บันทึกสต็อค ${snap_no}`,
+      altText: `📦 บันทึกสต็อค${branchName ? ` ${branchName}` : ''}`,
       contents: {
-        type: 'bubble',
+        type: 'bubble', size: 'micro',
         header: {
-          type: 'box', layout: 'horizontal',
-          backgroundColor: '#1a6b4a', paddingAll: '10px', alignItems: 'center',
+          type: 'box', layout: 'horizontal', alignItems: 'center',
+          backgroundColor: '#9b9484', paddingAll: '8px', spacing: 'none',
           contents: [
-            { type: 'text', text: '📦 บันทึกสต็อค', color: '#ffffff', weight: 'bold', size: 'md', flex: 1 },
-            { type: 'text', text: snap_no, color: '#a7f3d0', size: 'xxs', align: 'end', flex: 0 },
+            { type: 'text', text: '📦 บันทึกสต็อค', color: '#ffffff', weight: 'bold', size: 'sm', flex: 1 },
+            { type: 'text', text: branchName ?? snap_no, color: '#f5f5f4', size: 'xxs', align: 'end', flex: 0, wrap: false },
           ],
         },
         body: {
-          type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
-          contents: [
-            { type: 'text', text: branchName ? `สาขา: ${branchName}` : 'เลือกวิธีบันทึกสต็อค', size: 'sm', color: '#333333' },
-            { type: 'separator', margin: 'sm' },
-            { type: 'text', text: '• บันทึกทันที — กรอกจำนวนในแอป', size: 'xs', color: '#555555', wrap: true },
-            { type: 'text', text: '• ปริ้นฟอร์ม — พิมพ์ → เขียน → ถ่ายรูปส่งกลับ', size: 'xs', color: '#555555', wrap: true },
-          ],
-        },
-        footer: {
-          type: 'box', layout: 'horizontal', spacing: 'sm', paddingAll: '8px',
+          type: 'box', layout: 'horizontal', paddingAll: '6px', spacing: 'sm',
+          backgroundColor: '#F5EED8',
           contents: [
             {
               type: 'box', layout: 'vertical', flex: 1,
-              backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '10px',
-              action: { type: 'uri', label: 'บันทึกทันที', uri: formUrl },
-              contents: [{ type: 'text', text: '✏️ บันทึก\nทันที', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
+              backgroundColor: '#5a7a5a', cornerRadius: '4px', paddingAll: '6px',
+              action: { type: 'uri', uri: formUrl },
+              contents: [{ type: 'text', text: '✏️ บันทึกเลย', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
             },
             {
               type: 'box', layout: 'vertical', flex: 1,
-              backgroundColor: '#1d4ed8', cornerRadius: '4px', paddingAll: '10px',
-              action: { type: 'postback', label: 'ปริ้นฟอร์ม', data: `STOCK_PRINT:${snap_no}` },
-              contents: [{ type: 'text', text: '🖨️ ปริ้น\nฟอร์ม', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
+              backgroundColor: '#7a6a9b', cornerRadius: '4px', paddingAll: '6px',
+              action: { type: 'postback', data: `STOCK_PRINT:${snap_no}` },
+              contents: [{ type: 'text', text: '🖨️ ปริ้นฟอร์ม', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
             },
           ],
         },
@@ -2883,55 +2873,50 @@ ${itemList}
 
     return reply(replyToken, [{
       type: 'flex',
-      altText: `📸 อ่านฟอร์มสต็อคได้ ${totalItems} รายการ`,
+      altText: `📸 อ่านสต็อคได้ ${totalItems} รายการ${warnCount > 0 ? ` (⚠️ ${warnCount})` : ''}`,
       contents: {
-        type: 'bubble',
+        type: 'bubble', size: 'micro',
         header: {
-          type: 'box', layout: 'horizontal',
-          backgroundColor: '#1a6b4a', paddingAll: '10px',
+          type: 'box', layout: 'horizontal', alignItems: 'center',
+          backgroundColor: '#9b9484', paddingAll: '8px',
           contents: [
-            { type: 'text', text: '📸 อ่านฟอร์มเรียบร้อย', color: '#ffffff', weight: 'bold', size: 'sm', flex: 1 },
-            { type: 'text', text: snap_no, color: '#a7f3d0', size: 'xxs', align: 'end', flex: 0 },
+            { type: 'text', text: '📸 อ่านฟอร์มแล้ว', color: '#ffffff', weight: 'bold', size: 'sm', flex: 1 },
+            { type: 'text', text: snap_no, color: '#f5f5f4', size: 'xxs', align: 'end', flex: 0 },
           ],
         },
         body: {
-          type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+          type: 'box', layout: 'vertical', paddingAll: '6px', spacing: 'xs',
+          backgroundColor: '#F5EED8',
           contents: [
-            { type: 'text', text: `อ่านได้ ${totalItems} รายการ`, size: 'sm', color: '#111111' },
-            ...(warnCount > 0 ? [{
-              type: 'text' as const,
-              text: `⚠️ ไม่แน่ใจ ${warnCount} รายการ — กรุณาแก้ไขก่อนยืนยัน`,
-              size: 'xs' as const, color: '#c05000', wrap: true,
-            }] : []),
-            { type: 'separator' as const, margin: 'sm' as const },
-            { type: 'text' as const, text: 'กรุณาตรวจสอบก่อนยืนยัน', size: 'xs' as const, color: '#666666' },
+            {
+              type: 'text',
+              text: `อ่านได้ ${totalItems} รายการ` + (warnCount > 0 ? ` · ⚠️ ไม่แน่ใจ ${warnCount}` : ''),
+              size: 'xs', color: warnCount > 0 ? '#a05000' : '#333333', wrap: true,
+            },
+            {
+              type: 'box', layout: 'horizontal', spacing: 'xs', marginTop: '6px',
+              contents: [
+                {
+                  type: 'box', layout: 'vertical', flex: 2,
+                  backgroundColor: '#5a7a5a', cornerRadius: '4px', paddingAll: '5px',
+                  action: { type: 'postback', data: `STOCK_CONFIRM:${snap_no}` },
+                  contents: [{ type: 'text', text: '✅ ยืนยัน', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
+                },
+                {
+                  type: 'box', layout: 'vertical', flex: 2,
+                  backgroundColor: '#7a6a5a', cornerRadius: '4px', paddingAll: '5px',
+                  action: { type: 'uri', uri: formUrl },
+                  contents: [{ type: 'text', text: '✏️ แก้ไข', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
+                },
+                {
+                  type: 'box', layout: 'vertical', flex: 1,
+                  backgroundColor: '#8a6060', cornerRadius: '4px', paddingAll: '5px',
+                  action: { type: 'postback', data: `STOCK_CANCEL:${snap_no}` },
+                  contents: [{ type: 'text', text: '✕', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
+                },
+              ],
+            },
           ],
-        },
-        footer: {
-          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
-          contents: [{
-            type: 'box', layout: 'horizontal', spacing: 'sm',
-            contents: [
-              {
-                type: 'box', layout: 'vertical', flex: 1,
-                backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '8px',
-                action: { type: 'postback', label: 'ยืนยัน', data: `STOCK_CONFIRM:${snap_no}` },
-                contents: [{ type: 'text', text: '✅ ยืนยัน', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
-              },
-              {
-                type: 'box', layout: 'vertical', flex: 1,
-                backgroundColor: '#d97706', cornerRadius: '4px', paddingAll: '8px',
-                action: { type: 'uri', label: 'แก้ไข', uri: formUrl },
-                contents: [{ type: 'text', text: '✏️ แก้ไข', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
-              },
-              {
-                type: 'box', layout: 'vertical', flex: 1,
-                backgroundColor: '#dc2626', cornerRadius: '4px', paddingAll: '8px',
-                action: { type: 'postback', label: 'ยกเลิก', data: `STOCK_CANCEL:${snap_no}` },
-                contents: [{ type: 'text', text: '❌ ยกเลิก', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
-              },
-            ],
-          }],
         },
       },
     }])
