@@ -19,6 +19,7 @@ async function reply(replyToken: string, messages: object[]) {
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     console.error('[LINE reply] HTTP', res.status, body, '| messages:', JSON.stringify(messages).slice(0, 300))
+    throw new Error(`LINE reply ${res.status}: ${body.slice(0, 200)}`)
   }
 }
 
@@ -46,6 +47,7 @@ type InputState =
   | { type?: 'product_qty'; id: number; name: string; price: number; sec: number; sg: number; page: number }
   | { type: 'slip_edit'; slip_id: number; field: 'date' | 'account_name' | 'amount' }
   | { type: 'slip_purpose'; slip_id: number; purpose: 'PAY' | 'STORE'; matched_order_id?: number; matched_order_no?: string }
+  | { type: 'stock_image_wait'; snap_no: string; page: 1 | 2 }
 
 async function ensureTable() {
   await pool.query(`
@@ -81,6 +83,25 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0`).catch((e: unknown) => console.error('[ensureTable] paid_amount migration:', e))
   // System settings (key-value)
   await pool.query(`CREATE TABLE IF NOT EXISTS system_settings (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL)`).catch(() => {})
+  // stock_snapshots table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS stock_snapshots (
+      id              SERIAL PRIMARY KEY,
+      snapshot_no     VARCHAR(20) UNIQUE NOT NULL,
+      branch_id       INT REFERENCES branches(id) ON DELETE SET NULL,
+      branch_name     VARCHAR(200),
+      line_user_id    VARCHAR(100),
+      status          VARCHAR(20) NOT NULL DEFAULT 'draft',
+      quantities      JSONB NOT NULL DEFAULT '{}',
+      foy_quantities  JSONB NOT NULL DEFAULT '{}',
+      ocr_warnings    JSONB NOT NULL DEFAULT '[]',
+      source_image_id TEXT,
+      confirmed_at    TIMESTAMP,
+      created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {})
+  await pool.query(`ALTER TABLE catalog_stock_log ADD COLUMN IF NOT EXISTS snapshot_no VARCHAR(20)`).catch(() => {})
+  await pool.query(`ALTER TABLE paper_stock_log   ADD COLUMN IF NOT EXISTS snapshot_no VARCHAR(20)`).catch(() => {})
   // po_orders migration — received_at may not exist if table was created before this column was added
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`).catch(() => {})
 }
@@ -100,6 +121,16 @@ async function setSetting(key: string, value: string) {
      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`,
     [key, value]
   )
+}
+
+function genSnapNo(): string {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const y  = String(now.getFullYear()).slice(2)
+  const mo = String(now.getMonth() + 1).padStart(2, '0')
+  const d  = String(now.getDate()).padStart(2, '0')
+  const h  = String(now.getHours()).padStart(2, '0')
+  const mi = String(now.getMinutes()).padStart(2, '0')
+  return `SS${y}${mo}${d}${h}${mi}`
 }
 
 async function getOrder(userId: string): Promise<Record<number, number>> {
@@ -366,6 +397,7 @@ async function checkBlockedFromDB(branchId: number): Promise<boolean> {
       SELECT 1 FROM booking_orders
       WHERE branch_id = $1
         AND payment_status != 'paid'
+        AND status != 'cancelled'
         AND (created_at AT TIME ZONE 'Asia/Bangkok') >= ${SUN_WEEK_START_SQL} - INTERVAL '1 week'
         AND (created_at AT TIME ZONE 'Asia/Bangkok') <  ${SUN_WEEK_START_SQL}
     ) AS blocked
@@ -1069,6 +1101,121 @@ async function ensureSlipBranch(slipId: number, source?: Record<string, string>)
 // ── Postback handler ──────────────────────────────────────────────────────────
 
 async function handlePostback(data: string, userId: string, replyToken: string, source?: Record<string, string>) {
+  // ── STOCK_PRINT:{snap_no} — ส่งลิงก์พิมพ์ฟอร์ม + รอรูป ─────────────────────
+  if (data.startsWith('STOCK_PRINT:')) {
+    const snap_no  = data.slice('STOCK_PRINT:'.length)
+    const printUrl = `${BASE_URL}/stock-print?snap=${snap_no}`
+    await setInputState(userId, { type: 'stock_image_wait', snap_no, page: 1 })
+    return reply(replyToken, [
+      {
+        type: 'flex',
+        altText: `🖨️ ปริ้นฟอร์มสต็อค ${snap_no}`,
+        contents: {
+          type: 'bubble',
+          body: {
+            type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+            contents: [
+              { type: 'text', text: '🖨️ พิมพ์ฟอร์มสต็อค', weight: 'bold', size: 'md' },
+              { type: 'text', text: `รหัส: ${snap_no}`, size: 'xs', color: '#888' },
+              { type: 'separator', margin: 'sm' },
+              { type: 'text', text: '1. เปิดลิงก์ด้านล่างเพื่อพิมพ์ฟอร์ม (2 แผ่น)', size: 'sm', wrap: true },
+              { type: 'text', text: '2. กรอกจำนวนในช่องสี่เหลี่ยม', size: 'sm', wrap: true },
+              { type: 'text', text: '3. ถ่ายรูปแผ่น 1 (สินค้าทั่วไป) ส่งในแชทนี้', size: 'sm', wrap: true, color: '#1a6b4a', weight: 'bold' },
+              { type: 'text', text: '4. ถ่ายรูปแผ่น 2 (ฝอย) ส่งต่อในแชทนี้', size: 'sm', wrap: true, color: '#1a6b4a', weight: 'bold' },
+            ],
+          },
+          footer: {
+            type: 'box', layout: 'vertical', paddingAll: '8px',
+            contents: [{
+              type: 'box', layout: 'vertical',
+              backgroundColor: '#1d4ed8', cornerRadius: '4px', paddingAll: '10px',
+              action: { type: 'uri', label: 'เปิดฟอร์ม', uri: printUrl },
+              contents: [{ type: 'text', text: '🖨️ เปิดฟอร์มสำหรับพิมพ์', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+            }],
+          },
+        },
+      },
+    ])
+  }
+
+  // ── STOCK_CONFIRM:{snap_no} — ยืนยันบันทึกสต็อค ───────────────────────────
+  if (data.startsWith('STOCK_CONFIRM:')) {
+    const snap_no = data.slice('STOCK_CONFIRM:'.length)
+    await ensureTable()
+    const { rows: snapRows } = await pool.query(`SELECT * FROM stock_snapshots WHERE snapshot_no=$1`, [snap_no])
+    const snap = snapRows[0]
+    if (!snap) return reply(replyToken, [{ type: 'text', text: `❌ ไม่พบรายการ ${snap_no}` }])
+    if (snap.status === 'confirmed') {
+      return reply(replyToken, [{ type: 'text', text: `✅ ${snap_no}\nบันทึกสต็อคไปแล้วครับ` }])
+    }
+    if (snap.status === 'cancelled') {
+      return reply(replyToken, [{ type: 'text', text: `❌ ${snap_no} ถูกยกเลิกแล้ว` }])
+    }
+
+    if (!snap.branch_id) {
+      return reply(replyToken, [{ type: 'text', text: `❌ ${snap_no} ไม่มีข้อมูลสาขา ยืนยันไม่ได้` }])
+    }
+
+    const quantities:    Record<string, number> = snap.quantities    ?? {}
+    const foyQuantities: Record<string, number> = snap.foy_quantities ?? {}
+    let itemCount = 0
+
+    // สร้างตาราง branch_stock และ branch_foy_stock ถ้ายังไม่มี
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS branch_stock (
+        id SERIAL PRIMARY KEY,
+        branch_id INT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        product_id INT NOT NULL REFERENCES products_catalog(id) ON DELETE CASCADE,
+        quantity INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (branch_id, product_id)
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS branch_foy_stock (
+        id SERIAL PRIMARY KEY,
+        branch_id INT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        paper_stock_id INT NOT NULL REFERENCES paper_stock(id) ON DELETE CASCADE,
+        quantity INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (branch_id, paper_stock_id)
+      )
+    `)
+
+    for (const [idStr, qty] of Object.entries(quantities)) {
+      const q = Number(qty); if (isNaN(q)) continue
+      await pool.query(`
+        INSERT INTO branch_stock (branch_id, product_id, quantity)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (branch_id, product_id) DO UPDATE SET quantity=$3, updated_at=NOW()
+      `, [snap.branch_id, Number(idStr), q])
+      itemCount++
+    }
+    for (const [idStr, qty] of Object.entries(foyQuantities)) {
+      const q = Number(qty); if (isNaN(q)) continue
+      await pool.query(`
+        INSERT INTO branch_foy_stock (branch_id, paper_stock_id, quantity)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (branch_id, paper_stock_id) DO UPDATE SET quantity=$3, updated_at=NOW()
+      `, [snap.branch_id, Number(idStr), q])
+      itemCount++
+    }
+    await pool.query(`UPDATE stock_snapshots SET status='confirmed', confirmed_at=NOW() WHERE snapshot_no=$1`, [snap_no])
+
+    return reply(replyToken, [{
+      type: 'text',
+      text: `✅ บันทึกสต็อคเรียบร้อย!\nรหัส: ${snap_no}\nอัปเดต ${itemCount} รายการในระบบแล้วครับ`,
+    }])
+  }
+
+  // ── STOCK_CANCEL:{snap_no} — ยกเลิก ──────────────────────────────────────
+  if (data.startsWith('STOCK_CANCEL:')) {
+    const snap_no = data.slice('STOCK_CANCEL:'.length)
+    await pool.query(`UPDATE stock_snapshots SET status='cancelled' WHERE snapshot_no=$1`, [snap_no])
+    await setInputState(userId, null)
+    return reply(replyToken, [{ type: 'text', text: `❌ ยกเลิกการบันทึกสต็อค ${snap_no} แล้วครับ` }])
+  }
+
   // PO_RECEIVE:{id} — เติมสต็อคจาก LINE popup
   if (data.startsWith('PO_RECEIVE:')) {
     const id = parseInt(data.split(':')[1])
@@ -1964,6 +2111,91 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }])
   }
 
+  // ── สรุปยอดสต็อค ─────────────────────────────────────────────────────────────
+  // ใช้ original text และ strip zero-width chars เพื่อรองรับ keyboard ต่างๆ
+  const cleanText = text.replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, '').trim()
+  console.error('[handleText] received:', JSON.stringify(cleanText), 'source:', source?.type)
+  if (cleanText.includes('สรุปยอดสต็อค') || cleanText.includes('สรุปยอดสต้อค') ||
+      cleanText.includes('นับสต็อค') || cleanText.includes('นับสต้อค') ||
+      cleanText.includes('สต็อค') || cleanText.includes('สต้อค') ||
+      t.includes('stock')) {
+    await ensureTable()
+
+    // หาสาขา: ลองจาก group ก่อน (เหมือน booking flow) แล้ว fallback ไป user
+    let branchId:   number | null = null
+    let branchName: string | null = null
+    if (source?.type === 'group' && source.groupId) {
+      const { rows: grpB } = await pool.query(
+        `SELECT id, name FROM branches WHERE line_group_id=$1 LIMIT 1`, [source.groupId]
+      )
+      if (grpB[0]) { branchId = grpB[0].id; branchName = grpB[0].name }
+      else {
+        const gName = await getGroupName(source.groupId)
+        if (gName) {
+          const fb = await findBranchByGroupName(gName)
+          if (fb) { branchId = fb.id; branchName = fb.name }
+        }
+      }
+    }
+    if (!branchId) {
+      const ubInfo = await getBranchFromLineUser(userId)
+      if (ubInfo) { branchId = ubInfo.branch_id; branchName = ubInfo.branch_name }
+    }
+
+    // สร้าง snapshot draft (direct DB — ไม่ผ่าน self-HTTP)
+    let snap_no = genSnapNo()
+    const { rows: dupSnap } = await pool.query(`SELECT 1 FROM stock_snapshots WHERE snapshot_no=$1`, [snap_no])
+    if (dupSnap.length > 0) snap_no = snap_no + 'A'
+    await pool.query(`
+      INSERT INTO stock_snapshots (snapshot_no, branch_id, branch_name, line_user_id)
+      VALUES ($1, $2, $3, $4)
+    `, [snap_no, branchId, branchName, userId])
+    const formUrl  = `${BASE_URL}/stock-form?snap=${snap_no}`
+    const printUrl = `${BASE_URL}/stock-print?snap=${snap_no}`
+
+    return reply(replyToken, [{
+      type: 'flex',
+      altText: `📦 บันทึกสต็อค ${snap_no}`,
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box', layout: 'horizontal',
+          backgroundColor: '#1a6b4a', paddingAll: '10px', alignItems: 'center',
+          contents: [
+            { type: 'text', text: '📦 บันทึกสต็อค', color: '#ffffff', weight: 'bold', size: 'md', flex: 1 },
+            { type: 'text', text: snap_no, color: '#a7f3d0', size: 'xxs', align: 'end', flex: 0 },
+          ],
+        },
+        body: {
+          type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+          contents: [
+            { type: 'text', text: branchName ? `สาขา: ${branchName}` : 'เลือกวิธีบันทึกสต็อค', size: 'sm', color: '#333' },
+            { type: 'separator', margin: 'sm' },
+            { type: 'text', text: '• บันทึกทันที — กรอกจำนวนในแอป', size: 'xs', color: '#555', wrap: true },
+            { type: 'text', text: '• ปริ้นฟอร์ม — พิมพ์ → เขียน → ถ่ายรูปส่งกลับ', size: 'xs', color: '#555', wrap: true },
+          ],
+        },
+        footer: {
+          type: 'box', layout: 'horizontal', spacing: 'sm', paddingAll: '8px',
+          contents: [
+            {
+              type: 'box', layout: 'vertical', flex: 1,
+              backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '10px',
+              action: { type: 'uri', label: 'บันทึกทันที', uri: formUrl },
+              contents: [{ type: 'text', text: '✏️ บันทึก\nทันที', color: '#fff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
+            },
+            {
+              type: 'box', layout: 'vertical', flex: 1,
+              backgroundColor: '#1d4ed8', cornerRadius: '4px', paddingAll: '10px',
+              action: { type: 'postback', label: 'ปริ้นฟอร์ม', data: `STOCK_PRINT:${snap_no}` },
+              contents: [{ type: 'text', text: '🖨️ ปริ้น\nฟอร์ม', color: '#fff', align: 'center', size: 'sm', weight: 'bold', wrap: true }],
+            },
+          ],
+        },
+      },
+    }])
+  }
+
   if (['ใบจอง', 'จอง', 'สั่งสินค้า', 'order', 'booking', 'เมนู', 'menu'].includes(t)) {
     // ── หาสาขา ───────────────────────────────────────────────────────────────
     const ts = Date.now()  // cache-bust: บังคับ LINE browser โหลดหน้าใหม่ทุกครั้ง
@@ -2513,6 +2745,198 @@ const SLIP_LABEL: Record<string, string> = {
 async function handleImage(messageId: string, userId: string, replyToken: string, source?: Record<string, string>, eventTimestamp?: number) {
   try {
   await ensureTable()  // ensure paid_amount column exists before querying
+
+  // ── ตรวจสอบ stock_image_wait mode ────────────────────────────────────────
+  const imgInputState = await getInputState(userId)
+  if (imgInputState?.type === 'stock_image_wait') {
+    const { snap_no, page } = imgInputState
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return reply(replyToken, [{ type: 'text', text: '⚠️ ไม่สามารถอ่านฟอร์มได้ (ไม่มี ANTHROPIC_API_KEY)' }])
+    }
+
+    // ดาวน์โหลดรูป
+    const imgResStock = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    })
+    if (!imgResStock.ok) return reply(replyToken, [{ type: 'text', text: '⚠️ ดาวน์โหลดรูปไม่ได้ กรุณาลองใหม่' }])
+
+    const bufferStock   = await imgResStock.arrayBuffer()
+    const base64Stock   = Buffer.from(bufferStock).toString('base64')
+    const mimeTypeStock = (imgResStock.headers.get('content-type') || 'image/jpeg').split(';')[0]
+
+    // ── OCR prompt ต่างกันตาม page ─────────────────────────────────────────
+    type OcrResult = { quantities?: Record<string, number>; foy_quantities?: Record<string, number>; warnings?: { id: number; name: string; reason?: string }[] }
+    let ocrRaw: OcrResult = {}
+
+    try {
+      let itemList = ''
+      let ocrPrompt = ''
+
+      if (page === 1) {
+        // หน้า 1 — สินค้าทั่วไป
+        const { rows: catRows } = await pool.query(
+          `SELECT id, group_name, product_name FROM products_catalog WHERE show_in_booking=true AND group_name<>'กระดาษฝอย' ORDER BY group_name, sort_order, id`
+        )
+        itemList = catRows.map((r: { id: number; group_name: string; product_name: string }) =>
+          `[C${r.id}] ${r.group_name} > ${r.product_name}`).join('\n')
+        ocrPrompt = `นี่คือฟอร์มนับสต็อคสินค้าทั่วไป (แผ่นที่ 1) มีช่องสี่เหลี่ยมสำหรับเขียนจำนวน
+กรุณาอ่านตัวเลขในช่องสี่เหลี่ยมสำหรับแต่ละรายการ
+
+รายการสินค้า:
+${itemList}
+
+ตอบเป็น JSON เท่านั้น:
+{ "quantities": { "ID": จำนวน }, "warnings": [{ "id": ID, "name": "ชื่อ", "reason": "สาเหตุ" }] }
+
+กฎ: quantities ใช้ ID ตัวเลขจาก C เช่น "5": 10, ถ้าช่องว่างไม่ต้องใส่, ถ้าไม่แน่ใจใส่ warnings`
+      } else {
+        // หน้า 2 — กระดาษฝอย
+        const { rows: foyRows } = await pool.query(
+          `SELECT id, model_name, category, color_code, color_name FROM paper_stock WHERE show_in_booking=true ORDER BY category, model_name, color_name`
+        )
+        itemList = foyRows.map((r: { id: number; category: string; model_name: string; color_code: string; color_name: string }) =>
+          `[F${r.id}] ฝอย${r.category}·${r.model_name} ${r.color_code} ${r.color_name}`).join('\n')
+        ocrPrompt = `นี่คือฟอร์มนับสต็อคกระดาษฝอย (แผ่นที่ 2) มีช่องสี่เหลี่ยมสำหรับเขียนจำนวน
+กรุณาอ่านตัวเลขในช่องสี่เหลี่ยมสำหรับแต่ละรายการ
+
+รายการฝอย:
+${itemList}
+
+ตอบเป็น JSON เท่านั้น:
+{ "foy_quantities": { "ID": จำนวน }, "warnings": [{ "id": ID, "name": "ชื่อ", "reason": "สาเหตุ" }] }
+
+กฎ: foy_quantities ใช้ ID ตัวเลขจาก F เช่น "12": 50, ถ้าช่องว่างไม่ต้องใส่, ถ้าไม่แน่ใจใส่ warnings`
+      }
+
+      const ocrApiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 2000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mimeTypeStock, data: base64Stock } },
+              { type: 'text', text: ocrPrompt },
+            ],
+          }],
+        }),
+      })
+      const ocrData = await ocrApiRes.json()
+      if (ocrData?.type === 'error' || ocrData?.error) {
+        const errMsg = ocrData?.error?.message ?? JSON.stringify(ocrData)
+        return reply(replyToken, [{ type: 'text', text: `⚠️ Claude API error:\n${errMsg}` }])
+      }
+      const rawText = ocrData?.content?.[0]?.text ?? ''
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) ocrRaw = JSON.parse(jsonMatch[0])
+    } catch (e) {
+      console.error('[stock-ocr] error:', e)
+      return reply(replyToken, [{ type: 'text', text: `⚠️ เกิดข้อผิดพลาดในการอ่านฟอร์ม\n${String(e)}` }])
+    }
+
+    // ── Page 1: บันทึก quantities → รอรูปหน้า 2 ──────────────────────────────
+    if (page === 1) {
+      await pool.query(`
+        UPDATE stock_snapshots SET quantities=$1 WHERE snapshot_no=$2
+      `, [JSON.stringify(ocrRaw.quantities ?? {}), snap_no])
+
+      // เปลี่ยน state รอรูปหน้า 2
+      await setInputState(userId, { type: 'stock_image_wait', snap_no, page: 2 })
+
+      const count = Object.values(ocrRaw.quantities ?? {}).filter(v => v > 0).length
+      const warns = (ocrRaw.warnings ?? []).length
+      return reply(replyToken, [{
+        type: 'text',
+        text: `📸 อ่านแผ่น 1 ได้ ${count} รายการ${warns > 0 ? ` (⚠️ ไม่แน่ใจ ${warns} รายการ)` : ''}\n\nกรุณาส่งรูปแผ่น 2 (ฝอย) ต่อได้เลยครับ`,
+      }])
+    }
+
+    // ── Page 2: รวม foy_quantities + warnings จาก page 1 → แสดง Flex ────────
+    // ดึง quantities จาก page 1 ที่บันทึกไว้แล้ว
+    const { rows: snapRows2 } = await pool.query(`SELECT quantities, ocr_warnings FROM stock_snapshots WHERE snapshot_no=$1`, [snap_no])
+    const prevQuantities = snapRows2[0]?.quantities ?? {}
+    const prevWarnings:   { id: number; name: string; reason?: string }[] = snapRows2[0]?.ocr_warnings ?? []
+
+    const allWarnings = [...prevWarnings, ...(ocrRaw.warnings ?? [])]
+
+    await pool.query(`
+      UPDATE stock_snapshots
+      SET foy_quantities=$1, ocr_warnings=$2, source_image_id=$3
+      WHERE snapshot_no=$4
+    `, [
+      JSON.stringify(ocrRaw.foy_quantities ?? {}),
+      JSON.stringify(allWarnings),
+      messageId,
+      snap_no,
+    ])
+
+    await setInputState(userId, null)
+
+    const totalItems =
+      Object.values(prevQuantities as Record<string, number>).filter(v => v > 0).length +
+      Object.values(ocrRaw.foy_quantities ?? {}).filter(v => v > 0).length
+    const warnCount = allWarnings.length
+    const formUrl = `${BASE_URL}/stock-form?snap=${snap_no}`
+
+    return reply(replyToken, [{
+      type: 'flex',
+      altText: `📸 อ่านฟอร์มสต็อคได้ ${totalItems} รายการ`,
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box', layout: 'horizontal',
+          backgroundColor: '#1a6b4a', paddingAll: '10px',
+          contents: [
+            { type: 'text', text: '📸 อ่านฟอร์มเรียบร้อย', color: '#fff', weight: 'bold', size: 'sm', flex: 1 },
+            { type: 'text', text: snap_no, color: '#a7f3d0', size: 'xxs', align: 'end', flex: 0 },
+          ],
+        },
+        body: {
+          type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+          contents: [
+            { type: 'text', text: `อ่านได้ ${totalItems} รายการ`, size: 'sm', color: '#111' },
+            ...(warnCount > 0 ? [{
+              type: 'text' as const,
+              text: `⚠️ ไม่แน่ใจ ${warnCount} รายการ — กรุณาแก้ไขก่อนยืนยัน`,
+              size: 'xs' as const, color: '#c05000', wrap: true,
+            }] : []),
+            { type: 'separator' as const, margin: 'sm' as const },
+            { type: 'text' as const, text: 'กรุณาตรวจสอบก่อนยืนยัน', size: 'xs' as const, color: '#666' },
+          ],
+        },
+        footer: {
+          type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
+          contents: [{
+            type: 'box', layout: 'horizontal', spacing: 'sm',
+            contents: [
+              {
+                type: 'box', layout: 'vertical', flex: 1,
+                backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '8px',
+                action: { type: 'postback', label: 'ยืนยัน', data: `STOCK_CONFIRM:${snap_no}` },
+                contents: [{ type: 'text', text: '✅ ยืนยัน', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+              },
+              {
+                type: 'box', layout: 'vertical', flex: 1,
+                backgroundColor: '#d97706', cornerRadius: '4px', paddingAll: '8px',
+                action: { type: 'uri', label: 'แก้ไข', uri: formUrl },
+                contents: [{ type: 'text', text: '✏️ แก้ไข', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+              },
+              {
+                type: 'box', layout: 'vertical', flex: 1,
+                backgroundColor: '#dc2626', cornerRadius: '4px', paddingAll: '8px',
+                action: { type: 'postback', label: 'ยกเลิก', data: `STOCK_CANCEL:${snap_no}` },
+                contents: [{ type: 'text', text: '❌ ยกเลิก', color: '#fff', align: 'center', size: 'sm', weight: 'bold' }],
+              },
+            ],
+          }],
+        },
+      },
+    }])
+  }
+
   // Download image from LINE Content API
   const imgRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
     headers: { Authorization: `Bearer ${TOKEN}` },
@@ -2652,6 +3076,16 @@ export async function POST(req: NextRequest) {
     const source      = ev.source as Record<string, string>
     const userId      = source?.userId ?? ''
     const replyToken  = ev.replyToken as string
+
+    // ── DEBUG: log every incoming event ──────────────────────────────────────
+    const _msg = ev.message as Record<string, unknown> | undefined
+    console.log('[LINE event]', JSON.stringify({
+      type:    ev.type,
+      src:     source?.type,
+      groupId: source?.groupId ?? null,
+      userId:  userId.slice(0, 10),
+      text:    _msg?.type === 'text' ? String(_msg.text).slice(0, 80) : (_msg?.type ?? null),
+    }))
 
     // Auto-register กลุ่ม "ออกใบจอง" (รองรับมีเว้นวรรคหรือไม่ก็ได้)
     if (source?.type === 'group' && source.groupId) {
