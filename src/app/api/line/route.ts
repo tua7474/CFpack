@@ -2165,20 +2165,20 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           ],
         },
         body: {
-          type: 'box', layout: 'horizontal', paddingAll: '6px', spacing: 'sm',
+          type: 'box', layout: 'vertical', paddingAll: '6px', spacing: 'xs',
           backgroundColor: '#F5EED8',
           contents: [
             {
-              type: 'box', layout: 'vertical', flex: 1,
-              backgroundColor: '#5a7a5a', cornerRadius: '4px', paddingAll: '6px',
+              type: 'box', layout: 'vertical',
+              backgroundColor: '#5a7a5a', cornerRadius: '4px', paddingAll: '7px',
               action: { type: 'uri', uri: formUrl },
-              contents: [{ type: 'text', text: '✏️ บันทึกเลย', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
+              contents: [{ type: 'text', text: '✏️ บันทึกเลย', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
             },
             {
-              type: 'box', layout: 'vertical', flex: 1,
-              backgroundColor: '#7a6a9b', cornerRadius: '4px', paddingAll: '6px',
+              type: 'box', layout: 'vertical',
+              backgroundColor: '#7a6a9b', cornerRadius: '4px', paddingAll: '7px',
               action: { type: 'postback', data: `STOCK_PRINT:${snap_no}` },
-              contents: [{ type: 'text', text: '🖨️ ปริ้นฟอร์ม', color: '#ffffff', align: 'center', size: 'xs', weight: 'bold' }],
+              contents: [{ type: 'text', text: '🖨️ ปริ้นฟอร์ม', color: '#ffffff', align: 'center', size: 'sm', weight: 'bold' }],
             },
           ],
         },
