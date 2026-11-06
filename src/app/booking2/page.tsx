@@ -1533,15 +1533,13 @@ function Booking2Inner() {
                 {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รูปแบบการจัดส่ง</span>}
                 {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
-                {pendingCount === 0 && !hasFoyPending && (
-                  <button
-                    onClick={handleCancelOrder}
-                    disabled={saving}
-                    className="px-4 py-1.5 text-sm rounded bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors disabled:opacity-50"
-                  >
-                    {saving ? 'กำลังดำเนินการ...' : '🗑️ ยกเลิกใบจองนี้'}
-                  </button>
-                )}
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={saving}
+                  className="px-4 py-1.5 text-sm rounded bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'กำลังดำเนินการ...' : '🗑️ ยกเลิกใบจองนี้'}
+                </button>
               </>
             )}
           </div>
