@@ -297,9 +297,13 @@ function Booking2Inner() {
   const [editError, setEditError]     = useState<string | null>(null)
 
   // Load foy result from booking-foy (new order mode only)
+  // ต้องมี cf_foy_pending='1' เท่านั้น — ป้องกัน contamination จาก session เก่า
   useEffect(() => {
     if (editOrderNo) return
     try {
+      const pending = localStorage.getItem('cf_foy_pending')
+      if (pending !== '1') return  // ไม่ได้มาจาก booking-foy → อย่าโหลด
+      localStorage.removeItem('cf_foy_pending')
       const stored = localStorage.getItem('cf_foy_result')
       if (stored) setFoyPending(JSON.parse(stored))
       const storedItems = localStorage.getItem('cf_foy_items')
@@ -412,8 +416,11 @@ function Booking2Inner() {
         }
         setPending(qty)
         // Restore FOY data — prefer localStorage (set by booking-foy after edit) over DB value
-        const freshFoyResult = localStorage.getItem('cf_foy_result')
-        const freshFoyItems  = localStorage.getItem('cf_foy_items')
+        // ต้องมี cf_foy_pending='1' จึงจะใช้ localStorage (ป้องกัน contamination จาก session เก่า)
+        const foyHandoff = localStorage.getItem('cf_foy_pending') === '1'
+        if (foyHandoff) localStorage.removeItem('cf_foy_pending')
+        const freshFoyResult = foyHandoff ? localStorage.getItem('cf_foy_result') : null
+        const freshFoyItems  = foyHandoff ? localStorage.getItem('cf_foy_items')  : null
         if (freshFoyResult) {
           try { setFoyPending(JSON.parse(freshFoyResult)) } catch { /* ignore */ }
         } else if (order.foy_quantities && Object.keys(order.foy_quantities).length > 0) {

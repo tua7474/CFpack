@@ -301,6 +301,8 @@ export default function BookingFoyPage() {
         if (v) fooPrioToSave[`foy_${k}`] = v
       }
       localStorage.setItem('cf_foy_priorities', JSON.stringify(fooPrioToSave))
+      // Flag: บอก booking2 ว่า foy data ชุดนี้ส่งมาจาก booking-foy จริงๆ (ไม่ใช่ค้างจาก session เก่า)
+      localStorage.setItem('cf_foy_pending', '1')
 
       setSaveMsg(entries.length > 0 ? `จองสำเร็จ ${entries.length} รายการ` : 'ยกเลิกกระดาษฝอยสำเร็จ')
       setPending({})
