@@ -1061,23 +1061,13 @@ export default function OrdersPage() {
                                 </button>
                               )}
                               <button
-                                onClick={() => {
-                                  const branchParams = (!isAdmin && !isManager && branchName)
-                                    ? `&branch_name=${encodeURIComponent(branchName)}${branchId ? `&branch_id=${branchId}` : ''}`
-                                    : ''
-                                  router.push(`/booking2?edit=${order.order_no}${branchParams}&view=1`)
-                                }}
+                                onClick={() => setPreviewOrder(order)}
                                 className="px-2 py-1 text-xs rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 transition-colors whitespace-nowrap"
                               >
                                 👁 ดูใบจอง
                               </button>
                               <button
-                                onClick={() => {
-                                  const branchParams = (!isAdmin && !isManager && branchName)
-                                    ? `&branch_name=${encodeURIComponent(branchName)}${branchId ? `&branch_id=${branchId}` : ''}`
-                                    : ''
-                                  router.push(`/booking2?edit=${order.order_no}${branchParams}&view=1&print=1`)
-                                }}
+                                onClick={() => handlePrint(order)}
                                 className="px-2 py-1 text-xs rounded bg-green-50 hover:bg-green-100 text-green-700 border border-green-300 transition-colors whitespace-nowrap"
                               >
                                 🖨️ พิมพ์ใบจอง
