@@ -392,6 +392,11 @@ export default function Home() {
       <div className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 max-w-xs">
         หากไม่ทราบรหัส กรุณาติดต่อผู้ดูแลระบบ
       </div>
+      <button
+        onClick={() => { localStorage.removeItem('branch_session'); window.location.reload() }}
+        className="text-xs text-gray-400 underline hover:text-gray-600 mt-2">
+        ล้างข้อมูลเซสชัน / เข้าในฐานะแอดมิน
+      </button>
     </div>
   )
 

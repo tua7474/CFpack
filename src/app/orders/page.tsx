@@ -137,6 +137,8 @@ export default function OrdersPage() {
   const [branchName, setBranchName]     = useState<string | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [branchId, setBranchId]         = useState<number | null>(null)
+  const [allBranches, setAllBranches]           = useState<{ id: number; name: string; color_group: string | null }[]>([])
+  const [showBranchSwitch, setShowBranchSwitch] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -154,6 +156,7 @@ export default function OrdersPage() {
     fetch('/api/stock').then(r => r.json()).then((data: { items: StockItem[] }) => setStockItems(data.items ?? [])).catch(() => {})
     fetch('/api/delivery').then(r => r.json()).then((data: { name: string }[]) => setDeliveries(data.map(d => d.name))).catch(() => {})
     fetch('/api/withdrawal').then(r => r.json()).then(setWithdrawalTypes).catch(() => {})
+    fetch('/api/branches').then(r => r.json()).then((data: { id: number; name: string; color_group: string | null }[]) => setAllBranches(data)).catch(() => {})
   }, [])
 
   // Read role + branch from branch_session (or URL params)
@@ -306,6 +309,21 @@ export default function OrdersPage() {
     setShowPayModal(true)
   }
 
+  const handleSwitchBranch = (b: { id: number; name: string; color_group: string | null }) => {
+    setBranchName(b.name)
+    setBranchId(b.id)
+    setShowBranchSwitch(false)
+    try {
+      const bs = localStorage.getItem('branch_session')
+      const s = bs ? JSON.parse(bs) : {}
+      localStorage.setItem('branch_session', JSON.stringify({
+        ...s,
+        branch_id: b.id,
+        branch_name: b.name,
+      }))
+    } catch { /* ignore */ }
+  }
+
   const goToStep2 = async (remaining: number) => {
     // Mark selected slips as applied
     if (appliedSlipIds.size > 0) {
@@ -369,6 +387,14 @@ export default function OrdersPage() {
   function BookingPrint({ order }: { order: BookingOrder }) {
     type BookedItem = { product: CatalogProduct; qty: number; total: number }
 
+    // Price group adjustment (orange/null = base, yellow = ×1.09, red = ×1.09×1.07)
+    const colorGroup = allBranches.find(b => b.name === order.branch_name)?.color_group ?? null
+    const adjustPrice = (base: number): number => {
+      if (colorGroup === 'yellow') return Math.round(base * 1.09 * 100) / 100
+      if (colorGroup === 'red')    return Math.round(base * 1.09 * 1.07 * 100) / 100
+      return base
+    }
+
     // Switchable subgroup names → NV form; all others → V form
     // หมายเหตุ: ซองPPกันกระแทก = แถบสีเทา บังคับแวต → ต้องอยู่ฟอร์ม V
     const SWITCHABLE_SG = new Set(['ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก'])
@@ -383,7 +409,7 @@ export default function OrdersPage() {
       if (!qty) continue
       const p = productMap.get(Number(idStr))
       if (!p) continue
-      const price = parseFloat(p.price ?? '0') || 0
+      const price = adjustPrice(parseFloat(p.price ?? '0') || 0)
       const key = p.subgroup_name || p.section_name
       const targetMap = SWITCHABLE_SG.has(p.subgroup_name) ? nvSectionMap : vSectionMap
       if (!targetMap.has(key)) {
@@ -428,7 +454,7 @@ export default function OrdersPage() {
           if (!qtyVal) continue
           const s = foyStockMap.get(Number(idStr))
           if (!s) continue
-          const price = parseFloat(s.warehouse_price ?? '0') || 0
+          const price = adjustPrice(parseFloat(s.warehouse_price ?? '0') || 0)
           if (!foyModelMap.has(s.model_name)) foyModelMap.set(s.model_name, [])
           foyModelMap.get(s.model_name)!.push({ item: s, qty: qtyVal, total: price * qtyVal })
         }
@@ -889,6 +915,29 @@ export default function OrdersPage() {
                 </button>
               ) : null
             })()}
+            {(isAdmin || isManager) && (
+              <button
+                onClick={() => setShowBranchSwitch(true)}
+                className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 text-white border border-white/30 transition-colors">
+                🏢 {branchName ?? 'เลือกสาขา'}
+              </button>
+            )}
+            {!(isAdmin || isManager) && (
+              <button
+                onClick={() => { localStorage.removeItem('branch_session'); window.location.reload() }}
+                className="px-3 py-1.5 text-xs rounded bg-white/10 hover:bg-white/20 text-white/70 hover:text-white border border-white/20 transition-colors">
+                🔑 แอดมิน
+              </button>
+            )}
+            <button
+              onClick={() => {
+                localStorage.removeItem('branch_session')
+                router.push('/booking2')
+              }}
+              className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 text-white border border-white/30 transition-colors"
+            >
+              ออกจากระบบ
+            </button>
           </div>
         </header>
 
@@ -899,17 +948,17 @@ export default function OrdersPage() {
           ) : orders.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400">ยังไม่มีใบจอง</div>
           ) : (
-            <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden min-w-max">
-              <table className="min-w-full text-sm">
+            <div className="rounded-lg border border-gray-200 shadow-sm overflow-x-auto">
+              <table className="w-auto text-sm border-collapse">
                 <thead>
                   <tr className="bg-[#9b9484] text-white text-left text-xs">
-                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">เลขที่ใบจอง</th>
-                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 text-right">ยอดเงินรวม (฿)</th>
-                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">วันเวลาอัพเดทล่าสุด</th>
-                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">สถานะใบจอง</th>
-                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">แจ้งชื่อตัวแทนสาขา</th>
-                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500">สถานะการชำระเงิน</th>
-                    <th className="px-4 py-2 whitespace-nowrap text-center">ขึ้นของ / พิมพ์</th>
+                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 w-px">เลขที่ใบจอง</th>
+                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 text-right w-px">ยอดเงินรวม (฿)</th>
+                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 w-px">วันเวลาอัพเดทล่าสุด</th>
+                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 w-px">สถานะใบจอง</th>
+                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 w-px">แจ้งชื่อตัวแทนสาขา</th>
+                    <th className="px-4 py-2 whitespace-nowrap border-r border-gray-500 w-px">สถานะการชำระเงิน</th>
+                    <th className="px-4 py-2 whitespace-nowrap text-center w-px">ขึ้นของ / พิมพ์</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -941,7 +990,7 @@ export default function OrdersPage() {
                       <tr key={`${order.id}-${vatTag ?? 'x'}`} className={cancelled ? 'bg-red-50 opacity-60' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
 
                         {/* 1. เลขที่ใบจอง */}
-                        <td className="px-4 py-3 border-r border-gray-200 font-mono font-bold text-base">
+                        <td className="px-4 py-3 border-r border-gray-200 font-mono font-bold text-base w-px whitespace-nowrap">
                           <span className={vatTag === 'NV' ? 'text-orange-500' : vatTag === 'V' ? 'text-green-500' : 'text-green-400'}>
                             {displayNo}
                           </span>
@@ -958,7 +1007,7 @@ export default function OrdersPage() {
                             (vatTag === 'V'  && couponCol === 'vat')
                           )
                           return (
-                            <td className="px-4 py-3 border-r border-gray-200 text-right font-semibold">
+                            <td className="px-4 py-3 border-r border-gray-200 text-right font-semibold w-px whitespace-nowrap">
                               {showCoupon ? (
                                 <div className="flex flex-col items-end gap-0">
                                   <span className="text-xs text-gray-400 line-through font-normal">{fmtMoney(displayAmount)}</span>
@@ -974,12 +1023,12 @@ export default function OrdersPage() {
                         })()}
 
                         {/* 3. วันเวลาอัพเดท */}
-                        <td className="px-4 py-3 border-r border-gray-200 text-gray-500 whitespace-nowrap text-xs">
+                        <td className="px-4 py-3 border-r border-gray-200 text-gray-500 whitespace-nowrap text-xs w-px">
                           {fmtDate(order.updated_at)}
                         </td>
 
                         {/* 4. สถานะใบจอง */}
-                        <td className="px-4 py-3 border-r border-gray-200">
+                        <td className="px-4 py-3 border-r border-gray-200 w-px">
                           <div className="flex flex-col gap-1.5">
                             <div className="flex justify-between items-center gap-2 text-[11px]">
                               <span className={order.vehicle_type ? (order.vehicle_type === 'จองรถ60000' ? 'text-blue-700 font-medium' : 'text-green-400 font-medium') : 'text-gray-300'}>
@@ -989,37 +1038,61 @@ export default function OrdersPage() {
                                 {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}
                               </span>
                             </div>
-                            {cancelled ? (
-                              <span className="inline-block px-2 py-1 text-xs rounded border border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed select-none w-fit">
-                                ✕ ยกเลิกแล้ว
-                              </span>
-                            ) : pickedUp ? (
-                              <span className="inline-block px-2 py-1 text-xs rounded border border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed select-none w-fit">
-                                ✎ แก้ไขไม่ได้
-                              </span>
-                            ) : (
+                            <div className="flex flex-nowrap gap-1">
+                              {cancelled ? (
+                                <span className="inline-block px-2 py-1 text-xs rounded border border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed select-none w-fit">
+                                  ✕ ยกเลิกแล้ว
+                                </span>
+                              ) : pickedUp ? (
+                                <span className="inline-block px-2 py-1 text-xs rounded border border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed select-none w-fit">
+                                  ✎ แก้ไขไม่ได้
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    const branchParams = (!isAdmin && !isManager && branchName)
+                                      ? `&branch_name=${encodeURIComponent(branchName)}${branchId ? `&branch_id=${branchId}` : ''}`
+                                      : ''
+                                    router.push(`/booking2?edit=${order.order_no}${branchParams}`)
+                                  }}
+                                  className="px-2 py-1 text-xs rounded bg-yellow-50 hover:bg-yellow-100 text-yellow-800 border border-yellow-300 transition-colors whitespace-nowrap"
+                                >
+                                  ✎ แก้ไข
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   const branchParams = (!isAdmin && !isManager && branchName)
                                     ? `&branch_name=${encodeURIComponent(branchName)}${branchId ? `&branch_id=${branchId}` : ''}`
                                     : ''
-                                  router.push(`/booking2?edit=${order.order_no}${branchParams}`)
+                                  router.push(`/booking2?edit=${order.order_no}${branchParams}&view=1`)
                                 }}
-                                className="px-2 py-1 text-xs rounded bg-yellow-50 hover:bg-yellow-100 text-yellow-800 border border-yellow-300 transition-colors w-fit"
+                                className="px-2 py-1 text-xs rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 transition-colors whitespace-nowrap"
                               >
-                                ✎ แก้ไข
+                                👁 ดูใบจอง
                               </button>
-                            )}
+                              <button
+                                onClick={() => {
+                                  const branchParams = (!isAdmin && !isManager && branchName)
+                                    ? `&branch_name=${encodeURIComponent(branchName)}${branchId ? `&branch_id=${branchId}` : ''}`
+                                    : ''
+                                  router.push(`/booking2?edit=${order.order_no}${branchParams}&view=1&print=1`)
+                                }}
+                                className="px-2 py-1 text-xs rounded bg-green-50 hover:bg-green-100 text-green-700 border border-green-300 transition-colors whitespace-nowrap"
+                              >
+                                🖨️ พิมพ์ใบจอง
+                              </button>
+                            </div>
                           </div>
                         </td>
 
                         {/* 5. แจ้งชื่อตัวแทนสาขา */}
-                        <td className="px-4 py-3 border-r border-gray-200 text-sm text-gray-500 whitespace-nowrap">
+                        <td className="px-4 py-3 border-r border-gray-200 text-sm text-gray-500 whitespace-nowrap w-px">
                           {order.branch_name ?? <span className="text-gray-300 text-xs">—</span>}
                         </td>
 
                         {/* 6. สถานะการชำระเงิน */}
-                        <td className="px-4 py-3 border-r border-gray-200">
+                        <td className="px-4 py-3 border-r border-gray-200 w-px">
                           {cancelled ? (
                             <span className="text-gray-300 text-xs">—</span>
                           ) : paid ? (
@@ -1081,7 +1154,7 @@ export default function OrdersPage() {
                         </td>
 
                         {/* 7. ขึ้นของ / พิมพ์ (combined) */}
-                        <td className="px-3 py-3 text-center min-w-[140px]">
+                        <td className="px-3 py-3 text-center w-px whitespace-nowrap">
                           {cancelled ? (
                             <span className="text-gray-300 text-xs">—</span>
                           ) : pickedUp ? (
@@ -1090,21 +1163,17 @@ export default function OrdersPage() {
                               <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-600">
                                 ✅ ขึ้นของแล้ว
                               </span>
-                              {order.vehicle_type && (
-                                <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{order.vehicle_type}</span>
-                              )}
-                              <div className="flex gap-1 mt-0.5">
-                                <button onClick={() => handlePrint(order)}
-                                  className="px-2 py-0.5 text-[10px] rounded bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors whitespace-nowrap">
-                                  🖨️ ใบจอง
-                                </button>
+                              <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                                {order.vehicle_type && (
+                                  <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{order.vehicle_type}</span>
+                                )}
+                                {(isAdmin || isManager) && (
+                                  <button onClick={() => handleResetPickup(order)}
+                                    className="text-[10px] text-gray-400 hover:text-red-500 hover:underline transition-colors">
+                                    รีเซ็ต
+                                  </button>
+                                )}
                               </div>
-                              {(isAdmin || isManager) && (
-                                <button onClick={() => handleResetPickup(order)}
-                                  className="text-[10px] text-gray-400 hover:text-red-500 hover:underline transition-colors">
-                                  รีเซ็ต
-                                </button>
-                              )}
                             </div>
                           ) : (isAdmin || isManager) ? (
                             /* ── ก่อนขึ้นของ (admin/manager): ปุ่มรวม + dropdown จัดส่ง ── */
@@ -1168,6 +1237,32 @@ export default function OrdersPage() {
             </div>
           )}
         </main>
+
+      {/* Branch switch modal */}
+      {showBranchSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowBranchSwitch(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#9b9484] text-white px-5 py-3 rounded-t-2xl flex items-center justify-between">
+              <span className="font-bold">เปลี่ยนสาขา</span>
+              <button onClick={() => setShowBranchSwitch(false)} className="text-white/70 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <div className="p-3 flex flex-col gap-1">
+              {allBranches.map(b => {
+                const isSelected = branchName === b.name
+                const groupLabel = b.color_group === 'yellow' ? 'กลุ่ม B' : b.color_group === 'red' ? 'กลุ่ม C' : 'กลุ่ม A'
+                const groupColor = b.color_group === 'yellow' ? 'bg-yellow-100 text-yellow-800' : b.color_group === 'red' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                return (
+                  <button key={b.id} onClick={() => handleSwitchBranch(b)}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl flex items-center justify-between gap-2 transition-colors ${isSelected ? 'bg-[#9b9484] text-white' : 'hover:bg-gray-100'}`}>
+                    <span className="font-medium">{b.name}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${isSelected ? 'bg-white/20 text-white' : groupColor}`}>{groupLabel}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </>
   )

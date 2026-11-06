@@ -248,6 +248,8 @@ function Booking2Inner() {
   const searchParams  = useSearchParams()
   const router        = useRouter()
   const editOrderNo    = searchParams.get('edit')         // null = new order, string = edit mode
+  const viewMode       = searchParams.get('view') === '1' // view-only hint (ดูใบจอง)
+  const autoPrint      = searchParams.get('print') === '1' // auto-trigger print on load
   const branchIdParam  = searchParams.get('branch_id')    // from LINE group auto-detect
   const branchNameParam = searchParams.get('branch_name') // from LINE group auto-detect
 
@@ -256,8 +258,9 @@ function Booking2Inner() {
   const [saving, setSaving]         = useState(false)
   const [saveMsg, setSaveMsg]       = useState<string | null>(null)
   const [resetKey, setResetKey]     = useState(0)
-  const [cancelModal, setCancelModal] = useState<'confirm' | 'success' | null>(null)
-  const [qtyPopup, setQtyPopup]     = useState<{ id: number; name: string; subgroupName: string; stockQty: number; accent: string } | null>(null)
+  const [cancelModal, setCancelModal]   = useState<'confirm' | 'success' | null>(null)
+  const [showPrintPopup, setShowPrintPopup] = useState(false)
+  const [qtyPopup, setQtyPopup]         = useState<{ id: number; name: string; subgroupName: string; stockQty: number; accent: string } | null>(null)
   const [popupVal, setPopupVal]     = useState('')
   const popupInputRef               = useRef<HTMLInputElement>(null)
   const [pending, setPending]       = useState<Record<number, number>>({})
@@ -284,9 +287,14 @@ function Booking2Inner() {
   const [autoCapEnabled, setAutoCapEnabled]     = useState(true)  // auto-add ฝาปิดกระบอก 2x when กระบอก qty changes
   const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
   const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
+  const [isManager, setIsManager]           = useState(false)
+  const [allBranches, setAllBranches]       = useState<{ id: number; name: string; color_group: string | null }[]>([])
+  const [showBranchSwitch, setShowBranchSwitch] = useState(false)
   const [codeInput, setCodeInput]   = useState('')
   const [codeError, setCodeError]   = useState<string | null>(null)
   const [codeLoading, setCodeLoading] = useState(false)
+  const [editLoading, setEditLoading] = useState(!!editOrderNo)
+  const [editError, setEditError]     = useState<string | null>(null)
 
   // Load foy result from booking-foy (new order mode only)
   useEffect(() => {
@@ -332,6 +340,7 @@ function Booking2Inner() {
             branch_name: branchNameParam,
             phone: '',
             is_admin: false,
+            allowed_pages: ['booking2'],
           }))
         } catch { /* ignore */ }
       }
@@ -345,6 +354,7 @@ function Booking2Inner() {
             const hasAccess = s?.is_admin || s?.is_manager || (s?.allowed_pages ?? []).includes('booking2')
             setBranchInfo({ name: s.branch_name, phone: s.phone ?? '' })
             setIsAdmin(s?.is_admin !== false)
+            setIsManager(s?.is_manager === true)
             setBranchReady(hasAccess ? true : false)
           } else {
             setBranchReady(false)
@@ -361,8 +371,13 @@ function Booking2Inner() {
   // When editing — load existing order quantities + FOY data + selections
   useEffect(() => {
     if (!editOrderNo) return
+    setEditLoading(true)
+    setEditError(null)
     fetch(`/api/orders?no=${editOrderNo}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status}`)
+        return r.json()
+      })
       .then((order: {
         quantities: Record<string, number>;
         total_amount: string;
@@ -375,9 +390,26 @@ function Booking2Inner() {
         coupon_amount?: number;
         coupon_col?: string | null;
       } | null) => {
-        if (!order) return
+        if (!order) { setEditError('ไม่พบใบจอง'); return }
+        const quantities = order.quantities ?? {}
         const qty: Record<number, number> = {}
-        for (const [k, v] of Object.entries(order.quantities)) qty[Number(k)] = v
+        for (const [k, v] of Object.entries(quantities)) {
+          const n = Number(k); const q = Number(v)
+          if (n > 0 && q > 0) qty[n] = q
+        }
+        // Check for in-session changes saved before navigating to foy
+        const editTempKey = `cf_edit_temp_${editOrderNo}`
+        const tempRaw = localStorage.getItem(editTempKey)
+        if (tempRaw) {
+          try {
+            const parsed = JSON.parse(tempRaw) as Record<string, number>
+            for (const [k, v] of Object.entries(parsed)) {
+              const n = Number(k); const q = Number(v)
+              if (n > 0) { if (q > 0) qty[n] = q; else delete qty[n] }
+            }
+          } catch { /* ignore */ }
+          localStorage.removeItem(editTempKey)
+        }
         setPending(qty)
         // Restore FOY data — prefer localStorage (set by booking-foy after edit) over DB value
         const freshFoyResult = localStorage.getItem('cf_foy_result')
@@ -417,8 +449,20 @@ function Booking2Inner() {
           }
         }
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        console.error('[edit fetch]', err)
+        setEditError('โหลดข้อมูลไม่สำเร็จ')
+      })
+      .finally(() => setEditLoading(false))
   }, [editOrderNo])
+
+  // Auto-print when ?print=1 and edit order loaded
+  useEffect(() => {
+    if (!autoPrint || !editOrderNo) return
+    if (editLoading) return
+    const t = setTimeout(() => handleCompactPrint(), 300)
+    return () => clearTimeout(t)
+  }, [autoPrint, editOrderNo, editLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch withdrawal types
   useEffect(() => {
@@ -481,6 +525,14 @@ function Booking2Inner() {
         }
       }
     } catch { /* ignore */ }
+  }, [])
+
+  // Fetch all branches for branch-switch (admin/manager only)
+  useEffect(() => {
+    fetch('/api/branches')
+      .then(r => r.json())
+      .then((data: { id: number; name: string; color_group: string | null }[]) => setAllBranches(data))
+      .catch(() => {})
   }, [])
 
   // Load persisted source/vehicle from localStorage (new order only; edit mode uses order values)
@@ -660,6 +712,38 @@ function Booking2Inner() {
     })
   }, [products, editOrderNo, applyAutoCap])
 
+  // ── Navigate to booking-foy (save state first) ───────────────────────────
+  const handleFoyNavigate = useCallback(() => {
+    try {
+      if (editOrderNo) {
+        // Edit mode: save current pending so we can restore after edit fetch on return
+        localStorage.setItem(`cf_edit_temp_${editOrderNo}`, JSON.stringify(pending))
+      } else {
+        // New order mode: ensure draft is up to date before leaving
+        saveDraft(pending)
+      }
+    } catch { /* ignore */ }
+    router.push(editOrderNo
+      ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}`
+      : '/booking-foy?from=booking')
+  }, [editOrderNo, pending, router])
+
+  const handleSwitchBranch = useCallback((b: { id: number; name: string; color_group: string | null }) => {
+    setBranchInfo({ name: b.name, phone: '' })
+    setBranchColorGroup(b.color_group as 'orange' | 'yellow' | 'red' | null)
+    setBranchReady(true)
+    setShowBranchSwitch(false)
+    try {
+      const bs = localStorage.getItem('branch_session')
+      const s = bs ? JSON.parse(bs) : {}
+      localStorage.setItem('branch_session', JSON.stringify({
+        ...s,
+        branch_id: b.id,
+        branch_name: b.name,
+      }))
+    } catch { /* ignore */ }
+  }, [])
+
   // ── Qty popup (auto-focus + confirm) ─────────────────────────────────────
   useEffect(() => {
     if (qtyPopup) {
@@ -795,6 +879,7 @@ function Booking2Inner() {
         const totalItems = pendingCount + Object.keys(foyPending).length
         setSaveMsg(`บันทึกสำเร็จ ${totalItems} รายการ`)
         clearAllPriorities()
+        setShowPrintPopup(true)
       }
     } catch {
       setSaveMsg('เกิดข้อผิดพลาด กรุณาลองใหม่')
@@ -1318,10 +1403,10 @@ function Booking2Inner() {
             )}
             <div className="min-w-0">
               <h1 className="text-xl font-bold leading-tight">
-                {editOrderNo ? `แก้ไขใบจอง — ${editOrderNo}` : 'ใบจองสินค้า'}
+                {viewMode ? `ดูใบจอง — ${editOrderNo}` : editOrderNo ? `แก้ไขใบจอง — ${editOrderNo}` : 'ใบจองสินค้า'}
               </h1>
               <p className="text-orange-200 text-xs mt-0.5 hidden sm:block">
-                {editOrderNo ? 'แก้ไขรายการแล้วกดบันทึกเพื่ออัพเดท' : 'ข้อมูลจากสต็อค · Auto-save ใน browser'}
+                {viewMode ? 'ตรวจสอบรายการ แล้วกดพิมพ์ใบจองหรือขึ้นของได้เลย' : editOrderNo ? 'แก้ไขรายการแล้วกดบันทึกเพื่ออัพเดท' : 'ข้อมูลจากสต็อค · Auto-save ใน browser'}
               </p>
             </div>
           </div>
@@ -1332,12 +1417,27 @@ function Booking2Inner() {
               📋 <span className="text-xs">ประวัติใบจอง</span>
             </Link>
 
-            {!isAdmin && (
+            {(isAdmin || isManager) && (
               <button
-                onClick={() => { localStorage.removeItem('branch_session'); window.location.replace('/branches') }}
+                onClick={() => setShowBranchSwitch(true)}
                 className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
-                ออกจากระบบ
+                🏢 {branchInfo?.name ?? 'เลือกสาขา'}
               </button>
+            )}
+
+            {!isAdmin && (
+              <>
+                <button
+                  onClick={() => { localStorage.removeItem('branch_session'); window.location.reload() }}
+                  className="px-3 py-1.5 text-xs rounded bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors border border-white/20">
+                  🔑 แอดมิน
+                </button>
+                <button
+                  onClick={() => { localStorage.removeItem('branch_session'); window.location.replace('/branches') }}
+                  className="px-3 py-1.5 text-sm rounded bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30">
+                  ออกจากระบบ
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1407,7 +1507,7 @@ function Booking2Inner() {
             )}
 
             {/* ── Edit mode: save always visible + cancel order when empty ── */}
-            {editOrderNo && (
+            {editOrderNo && !viewMode && (
               <>
                 {pendingCount > 0 && (
                   <span className="text-yellow-300 text-sm">✎ แก้ไขค้างอยู่ {pendingCount} รายการ</span>
@@ -1446,7 +1546,14 @@ function Booking2Inner() {
         <div className="py-3 px-2 flex justify-center">
 
           {/* ── ยังไม่ได้ระบุสาขา → lock screen (ยกเว้น edit mode — ผ่าน orders page มาแล้ว) ── */}
-          {branchReady === false && !editOrderNo ? (
+          {editLoading ? (
+            <div className="flex items-center justify-center h-40 text-gray-400 w-screen">กำลังโหลดใบจอง...</div>
+          ) : editError ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3 w-screen">
+              <div className="text-red-500 text-sm">{editError}</div>
+              <button onClick={() => window.history.back()} className="text-xs text-gray-500 underline">ย้อนกลับ</button>
+            </div>
+          ) : branchReady === false && !editOrderNo ? (
             <div className="flex flex-col items-center justify-center min-h-[70vh] gap-5 text-center px-6 w-screen">
               <div className="text-6xl select-none">🔒</div>
               <div>
@@ -1811,10 +1918,9 @@ function Booking2Inner() {
                               return [<td key={`${si}-fc`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />]
                             }
                             const catBg = vatMode === 'no-vat' ? '#f97316' : (FOY_CAT_BG[cell.category] ?? '#9b9484')
-                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             return [
                               <td key={`${si}-fc`} colSpan={4}
-                                onClick={foyClick}
+                                onClick={handleFoyNavigate}
                                 style={{ backgroundColor: catBg }}
                                 className="border px-2 py-px text-[10px] font-bold text-white cursor-pointer print-sg">
                                 <div className="flex items-center justify-between gap-1 w-full">
@@ -1827,7 +1933,6 @@ function Booking2Inner() {
 
                           if (cell.type === 'foy_item') {
                             const itemBg = FOY_ITEM_BG[cell.category] ?? '#fefce8'
-                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             const foyPrice = getFoyModelPrice(cell.category, cell.model_name)
                             const foyStock = getFoyModelStock(cell.category, cell.model_name)
                             const foyWp    = getFoyModelWp(cell.category, cell.model_name)
@@ -1835,19 +1940,19 @@ function Booking2Inner() {
                             const displayPrice  = stockPrintMode ? foyWp : foyPrice
                             const displayAmount = stockPrintMode ? foyStock * foyWp : cell.amount
                             return [
-                              <td key={`${si}-fin`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
+                              <td key={`${si}-fin`} onClick={handleFoyNavigate} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-gray-700 overflow-hidden cursor-pointer">
                                 <div className="flex items-center justify-between gap-0.5">
                                   <span className="truncate">{cell.model_name}</span>
                                   {foyStock > 0 && <span className="text-[8px] text-blue-400 font-semibold shrink-0 whitespace-nowrap">{foyStock.toLocaleString('th-TH')}</span>}
                                 </div>
                               </td>,
-                              <td key={`${si}-fip`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer price-col">
+                              <td key={`${si}-fip`} onClick={handleFoyNavigate} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-400 cursor-pointer price-col">
                                 {displayPrice > 0 ? displayPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : ''}
                               </td>,
-                              <td key={`${si}-fiq`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right font-semibold text-gray-700 cursor-pointer">
+                              <td key={`${si}-fiq`} onClick={handleFoyNavigate} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right font-semibold text-gray-700 cursor-pointer">
                                 {displayQty > 0 ? displayQty : ''}
                               </td>,
-                              <td key={`${si}-fit`} onClick={foyClick} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer price-col">
+                              <td key={`${si}-fit`} onClick={handleFoyNavigate} style={{ backgroundColor: itemBg }} className="border border-gray-300 px-1 py-px text-right text-gray-700 cursor-pointer price-col">
                                 {fmt2(displayAmount)}
                               </td>,
                             ]
@@ -1864,9 +1969,8 @@ function Booking2Inner() {
                             // Catalog FOY rows are replaced by foy_cat/foy_item via injectFoyRows.
                             // This branch only fires when foyPending is empty (no rows injected).
                             const bg = sec.is_vat_included ? 'bg-gray-200 text-gray-500' : 'bg-orange-50 text-gray-500'
-                            const foyClick = () => router.push(editOrderNo ? `/booking-foy?from=booking&edit_foy=1&order_no=${editOrderNo}` : '/booking-foy?from=booking')
                             return [
-                              <td key={`${si}-pn`} onClick={foyClick} colSpan={4} className={`border border-gray-300 px-1 py-px ${bg} overflow-hidden cursor-pointer`}>
+                              <td key={`${si}-pn`} onClick={handleFoyNavigate} colSpan={4} className={`border border-gray-300 px-1 py-px ${bg} overflow-hidden cursor-pointer`}>
                                 <div className="flex items-center gap-1">
                                   <span className="truncate">{p.product_name}</span>
                                   <span className="text-[9px] text-teal-700 ml-2 shrink-0">→</span>
@@ -2278,6 +2382,33 @@ function Booking2Inner() {
         </div>
       </main>
 
+      {/* ── Print popup (after save) ──────────────────────────────────────── */}
+      {showPrintPopup && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4"
+          onClick={() => setShowPrintPopup(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs flex flex-col items-center gap-4"
+            onClick={e => e.stopPropagation()}>
+            <div className="text-2xl">✅</div>
+            <div className="text-base font-bold text-gray-800 text-center">บันทึกใบจองสำเร็จ</div>
+            <button
+              onClick={() => { setShowPrintPopup(false); handleCompactPrint() }}
+              className="w-full py-3 rounded-xl bg-[#1a6b4a] text-white font-bold text-base hover:bg-[#155a3e] transition-colors"
+            >
+              🖨️ พิมพ์ใบจอง
+            </button>
+            <p className="text-xs text-gray-500 text-center leading-relaxed">
+              กดแล้วตรวจสอบก่อนแคปหน้าจอส่งเข้ากลุ่ม<br/>เพื่อ จัดของ/จัดคิว ส่งให้ค่ะ
+            </p>
+            <button
+              onClick={() => setShowPrintPopup(false)}
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              ปิด
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Qty popup ─────────────────────────────────────────────────────── */}
       {qtyPopup && (() => {
         const entered        = parseInt(popupVal) || 0
@@ -2437,6 +2568,32 @@ function Booking2Inner() {
                 <div className="text-sm text-gray-400 text-center">กำลังกลับไปหน้ารายการ...</div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Branch switch modal */}
+      {showBranchSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowBranchSwitch(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#9b9484] text-white px-5 py-3 rounded-t-2xl flex items-center justify-between">
+              <span className="font-bold">เปลี่ยนสาขา</span>
+              <button onClick={() => setShowBranchSwitch(false)} className="text-white/70 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <div className="p-3 flex flex-col gap-1">
+              {allBranches.map(b => {
+                const isSelected = branchInfo?.name === b.name
+                const groupLabel = b.color_group === 'yellow' ? 'กลุ่ม B' : b.color_group === 'red' ? 'กลุ่ม C' : 'กลุ่ม A'
+                const groupColor = b.color_group === 'yellow' ? 'bg-yellow-100 text-yellow-800' : b.color_group === 'red' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                return (
+                  <button key={b.id} onClick={() => handleSwitchBranch(b)}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl flex items-center justify-between gap-2 transition-colors ${isSelected ? 'bg-[#9b9484] text-white' : 'hover:bg-gray-100'}`}>
+                    <span className="font-medium">{b.name}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${isSelected ? 'bg-white/20 text-white' : groupColor}`}>{groupLabel}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
