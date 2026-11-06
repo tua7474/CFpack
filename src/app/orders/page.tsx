@@ -1038,13 +1038,13 @@ export default function OrdersPage() {
                                 {withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? order.source_type ?? '—'}
                               </span>
                             </div>
-                            <div className="flex flex-nowrap gap-1">
+                            <div className="flex flex-nowrap gap-1 items-center">
                               {cancelled ? (
-                                <span className="inline-block px-2 py-1 text-xs rounded border border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed select-none w-fit">
+                                <span className="inline-block px-2 py-1 text-xs rounded border border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed select-none whitespace-nowrap">
                                   ✕ ยกเลิกแล้ว
                                 </span>
                               ) : pickedUp ? (
-                                <span className="inline-block px-2 py-1 text-xs rounded border border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed select-none w-fit">
+                                <span className="inline-block px-2 py-1 text-xs rounded border border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed select-none whitespace-nowrap">
                                   ✎ แก้ไขไม่ได้
                                 </span>
                               ) : (
