@@ -178,7 +178,7 @@ export default function SuppliersPage() {
             <h3 className="text-sm font-bold text-gray-700 mb-3">{editId ? 'แก้ไขซัพพลายเออร์' : 'เพิ่มซัพพลายเออร์ใหม่'}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">ชื่อ *</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">ชื่อโรงงาน *</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="ชื่อบริษัท / ร้านค้า"
                   className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-green-400" />
@@ -226,7 +226,7 @@ export default function SuppliersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#4e7a5e] text-white">
-                  <th className="px-4 py-2.5 text-left font-semibold">ชื่อ</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">ชื่อโรงงาน</th>
                   <th className="px-4 py-2.5 text-left font-semibold">เบอร์โทร</th>
                   <th className="px-4 py-2.5 text-left font-semibold">หมายเหตุ</th>
                   <th className="px-4 py-2.5 text-left font-semibold">ที่อยู่</th>
