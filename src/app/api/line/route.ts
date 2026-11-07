@@ -403,10 +403,7 @@ async function checkBlockedFromDB(branchId: number): Promise<boolean> {
         AND is_on_hold = false
         AND COALESCE(billing_start_date,
               (created_at AT TIME ZONE 'Asia/Bangkok')::date
-            ) >= (${SUN_WEEK_START_SQL})::date - INTERVAL '1 week'
-        AND COALESCE(billing_start_date,
-              (created_at AT TIME ZONE 'Asia/Bangkok')::date
-            ) <  (${SUN_WEEK_START_SQL})::date
+            ) < (${SUN_WEEK_START_SQL})::date
     ) AS blocked
   `, [branchId])
   return rows[0]?.blocked === true
