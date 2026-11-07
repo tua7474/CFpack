@@ -2333,19 +2333,22 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     let lastWeekSlips:    WeekSlipData = emptySlips
     let thisWeekSlips:    WeekSlipData = emptySlips
 
+    let heldOrders: { order_no: string; total_amount: number; created_at: string; hold_reason: string | null; hold_at: string | null }[] = []
     if (branchId !== null) {
-      const [allOrd, blockedResult, twoSlips, lastSlips, nowSlips] = await Promise.all([
+      const [allOrd, blockedResult, twoSlips, lastSlips, nowSlips, heldOrd] = await Promise.all([
         getAllBranchOrders(branchId),
         checkBlockedFromDB(branchId),
         getWeekSlips(branchId, 2),
         getWeekSlips(branchId, 1),
         getWeekSlips(branchId, 0),
+        getHeldOrders(branchId),
       ])
       allOrders        = allOrd
       blocked          = blockedResult
       twoWeeksAgoSlips = twoSlips
       lastWeekSlips    = lastSlips
       thisWeekSlips    = nowSlips
+      heldOrders       = heldOrd
     }
 
     // ── แบ่งออเดอร์เป็น 3 สัปดาห์ (เหมือน finance WeeklyCompactCell) ─────────
@@ -2523,6 +2526,42 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       ],
     }
 
+    // ── held orders section ──────────────────────────────────────────────────
+    const heldSection: object[] = heldOrders.length > 0 ? [
+      { type: 'separator', margin: 'sm', color: '#d1d5db' },
+      {
+        type: 'box', layout: 'vertical', spacing: 'xs',
+        paddingTop: '4px', paddingBottom: '2px',
+        contents: [
+          {
+            type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm',
+            contents: [
+              { type: 'text', text: '⏸ พักบิล', size: 'xxs', color: '#6366f1', weight: 'bold', flex: 0 },
+              { type: 'text', text: `${heldOrders.length} รายการ`, size: 'xxs', color: '#888888', flex: 1 },
+            ],
+          },
+          ...heldOrders.map(h => ({
+            type: 'box', layout: 'horizontal', spacing: 'sm',
+            contents: [
+              {
+                type: 'box', flex: 5, layout: 'vertical',
+                contents: [
+                  { type: 'text', text: `#${h.order_no}`, size: 'xxs', color: '#374151', weight: 'bold' },
+                  ...(h.hold_reason ? [{ type: 'text', text: h.hold_reason, size: 'xxs', color: '#888888', wrap: true }] : []),
+                ],
+              },
+              {
+                type: 'box', flex: 3, layout: 'vertical', alignItems: 'flex-end',
+                contents: [
+                  { type: 'text', text: `฿${fmtAmt(Number(h.total_amount))}`, size: 'xxs', color: '#6366f1', weight: 'bold', align: 'end' },
+                ],
+              },
+            ],
+          })),
+        ],
+      },
+    ] : []
+
     // ── สร้าง body ────────────────────────────────────────────────────────────
     const bodyContents: object[] = [
       ...(blocked ? [{
@@ -2533,6 +2572,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         ]
       }, { type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
       ...orderRows,
+      ...heldSection,
       { type: 'separator', margin: 'sm', color: '#d1d5db' },
       threeButtons,
     ]
