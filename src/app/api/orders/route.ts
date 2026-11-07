@@ -466,7 +466,24 @@ export async function GET(request: Request) {
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS v_total            DECIMAL(12,2)`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS paid_amount        DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS coupon_amount      DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {})
-  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS coupon_col         VARCHAR(10)`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS coupon_col              VARCHAR(10)`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS is_on_hold             BOOLEAN NOT NULL DEFAULT false`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS hold_reason            TEXT`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS hold_at               TIMESTAMPTZ`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS hold_by               TEXT`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS billing_start_date    DATE`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS expected_delivery_date DATE`).catch(() => {})
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS booking_order_hold_log (
+      id               SERIAL PRIMARY KEY,
+      order_no         TEXT NOT NULL,
+      action           TEXT NOT NULL,
+      reason           TEXT,
+      acted_by         TEXT,
+      billing_start_date DATE,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {})
   const { searchParams } = new URL(request.url)
   const no = searchParams.get('no')
 
@@ -576,7 +593,50 @@ async function adjustStockDelta(
 // ── PATCH — update order (status / payment / quantities) ─────────────────────
 
 export async function PATCH(request: Request) {
-  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col } = await request.json()
+  const body = await request.json()
+  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col } = body
+  const { action: holdAction, reason: holdReason, acted_by: holdActedBy, expected_delivery_date } = body
+
+  // ── พักบิล / ส่งของแล้ว ───────────────────────────────────────────────────
+  if (holdAction === 'hold') {
+    if (!holdReason?.trim()) return NextResponse.json({ error: 'กรุณาระบุเหตุผลการพักบิล' }, { status: 400 })
+    await pool.query(`
+      UPDATE booking_orders
+      SET is_on_hold = true,
+          hold_reason = $1,
+          hold_at = NOW(),
+          hold_by = $2,
+          expected_delivery_date = $3,
+          updated_at = NOW()
+      WHERE order_no = $4
+    `, [holdReason.trim(), holdActedBy ?? 'admin', expected_delivery_date ?? null, order_no])
+    await pool.query(`
+      INSERT INTO booking_order_hold_log (order_no, action, reason, acted_by)
+      VALUES ($1, 'hold', $2, $3)
+    `, [order_no, holdReason.trim(), holdActedBy ?? 'admin'])
+    const { rows } = await pool.query('SELECT * FROM booking_orders WHERE order_no = $1', [order_no])
+    return NextResponse.json(rows[0])
+  }
+
+  if (holdAction === 'resume') {
+    const today = new Date(Date.now() + 7 * 3600 * 1000)
+    const billingStart = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`
+    await pool.query(`
+      UPDATE booking_orders
+      SET is_on_hold = false,
+          hold_reason = NULL,
+          billing_start_date = $1,
+          expected_delivery_date = NULL,
+          updated_at = NOW()
+      WHERE order_no = $2
+    `, [billingStart, order_no])
+    await pool.query(`
+      INSERT INTO booking_order_hold_log (order_no, action, reason, acted_by, billing_start_date)
+      VALUES ($1, 'resume', $2, $3, $4)
+    `, [order_no, holdReason ?? null, holdActedBy ?? 'admin', billingStart])
+    const { rows } = await pool.query('SELECT * FROM booking_orders WHERE order_no = $1', [order_no])
+    return NextResponse.json(rows[0])
+  }
 
   // If quantities are being updated, load old quantities first to compute delta
   let oldQuantities: Record<string, number> = {}

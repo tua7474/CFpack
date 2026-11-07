@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
       o.branch_id,
       COALESCE(SUM(o.total_amount), 0)::float AS order_total,
       COALESCE(SUM(o.total_amount) FILTER (WHERE o.payment_status = 'paid'), 0)::float AS order_paid,
-      COALESCE(SUM(o.total_amount) FILTER (WHERE o.payment_status != 'paid' AND o.status != 'cancelled'), 0)::float AS order_pending
+      COALESCE(SUM(o.total_amount) FILTER (WHERE o.payment_status != 'paid' AND o.status != 'cancelled' AND o.is_on_hold = false), 0)::float AS order_pending
     FROM booking_orders o
     WHERE o.branch_id IS NOT NULL AND o.status != 'cancelled' ${orderFilter}
     GROUP BY o.branch_id

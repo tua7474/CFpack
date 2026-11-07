@@ -47,6 +47,13 @@ interface BookingOrder {
   coupon_col: string | null
   created_at: string
   updated_at: string
+  // พักบิล
+  is_on_hold: boolean
+  hold_reason: string | null
+  hold_at: string | null
+  hold_by: string | null
+  billing_start_date: string | null
+  expected_delivery_date: string | null
 }
 
 // Display row = 1 order may split into NV + V rows
@@ -115,6 +122,12 @@ export default function OrdersPage() {
   const [qrAmount, setQrAmount]             = useState(0)
   const [qrLoading, setQrLoading]           = useState(false)
   const [qrSaving, setQrSaving]             = useState(false)
+
+  // Hold state
+  const [holdModal, setHoldModal]           = useState<{ order: BookingOrder; mode: 'hold' | 'resume' } | null>(null)
+  const [holdReason, setHoldReason]         = useState('')
+  const [holdExpected, setHoldExpected]     = useState('')
+  const [holdSaving, setHoldSaving]         = useState(false)
 
   // Print state
   const [products, setProducts]     = useState<CatalogProduct[]>([])
@@ -225,6 +238,28 @@ export default function OrdersPage() {
     load()
   }
 
+  const handleHoldSubmit = async () => {
+    if (!holdModal) return
+    setHoldSaving(true)
+    const { order, mode } = holdModal
+    const body: Record<string, unknown> = { order_no: order.order_no, action: mode }
+    if (mode === 'hold') {
+      if (!holdReason.trim()) { setHoldSaving(false); return }
+      body.reason = holdReason.trim()
+      body.acted_by = isAdmin ? 'admin' : (isManager ? 'manager' : branchName ?? 'user')
+      if (holdExpected) body.expected_delivery_date = holdExpected
+    }
+    const res = await fetch('/api/orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    setHoldSaving(false)
+    if (!res.ok) { setMsg('เกิดข้อผิดพลาด'); return }
+    setHoldModal(null); setHoldReason(''); setHoldExpected('')
+    load()
+  }
+
   const handlePickup = async (order: BookingOrder) => {
     if (!confirm(`ยืนยัน "ขึ้นของแล้ว" สำหรับใบจอง ${order.order_no}?`)) return
     await patch(order.order_no, { pickup_status: 'picked_up' })
@@ -271,11 +306,12 @@ export default function OrdersPage() {
           ? fetch(`/api/slips?branch_name=${encodeURIComponent(activeBranch)}`).then(r => r.json()).catch(() => [])
           : Promise.resolve([]),
       ])
-      const allOrders: { order_no: string; total_amount: string; nv_total: string | null; v_total: string | null; coupon_amount: string | null; coupon_col: string | null; branch_name: string | null; payment_status: string; status: string }[] =
+      const allOrders: { order_no: string; total_amount: string; nv_total: string | null; v_total: string | null; coupon_amount: string | null; coupon_col: string | null; branch_name: string | null; payment_status: string; status: string; is_on_hold?: boolean }[] =
         Array.isArray(ordersRes) ? ordersRes : []
       const unpaid = allOrders.filter(o =>
         o.payment_status !== 'paid' &&
         o.status !== 'cancelled' &&
+        !o.is_on_hold &&
         (activeBranch ? o.branch_name === activeBranch : true)
       )
       // Expand into NV/V entries for independent payment selection
@@ -674,6 +710,72 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* ── Hold Modal */}
+      {holdModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 no-print">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className={`px-5 py-4 rounded-t-2xl text-white ${holdModal.mode === 'hold' ? 'bg-indigo-600' : 'bg-green-600'}`}>
+              <div className="text-lg font-bold">
+                {holdModal.mode === 'hold' ? '⏸ พักบิล' : '▶️ ส่งของแล้ว'}
+              </div>
+              <div className="text-xs opacity-80 mt-0.5">#{holdModal.order.order_no} · {holdModal.order.branch_name}</div>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              {holdModal.mode === 'hold' ? (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">เหตุผลการพัก <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={holdReason}
+                      onChange={e => setHoldReason(e.target.value)}
+                      placeholder="เช่น รอนัดส่ง, รอลูกค้ายืนยัน"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">วันที่คาดว่าจะส่ง (ไม่บังคับ)</label>
+                    <input
+                      type="date"
+                      value={holdExpected}
+                      onChange={e => setHoldExpected(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <div className="bg-indigo-50 rounded-lg px-3 py-2 text-xs text-indigo-700">
+                    บิลที่พักจะ<strong>ไม่นับ</strong>ในยอดค้างชำระ และ<strong>ไม่ระงับ</strong>การจองสินค้า
+                  </div>
+                </>
+              ) : (
+                <div className="bg-green-50 rounded-lg px-3 py-3 text-sm text-green-800">
+                  <p className="font-semibold mb-1">ยืนยันส่งของแล้วสำหรับใบจองนี้?</p>
+                  <p className="text-xs text-green-600">ระบบจะเริ่มนับกติกาวันพุธจาก<strong>วันนี้</strong>แทนวันจองเดิม</p>
+                  {holdModal.order.hold_reason && (
+                    <p className="text-xs text-gray-500 mt-1">เหตุผลที่พัก: {holdModal.order.hold_reason}</p>
+                  )}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleHoldSubmit}
+                  disabled={holdSaving || (holdModal.mode === 'hold' && !holdReason.trim())}
+                  className={`flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-40 ${holdModal.mode === 'hold' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700'}`}
+                >
+                  {holdSaving ? 'กำลังบันทึก...' : holdModal.mode === 'hold' ? '⏸ พักบิล' : '▶️ ยืนยันส่งของแล้ว'}
+                </button>
+                <button
+                  onClick={() => { setHoldModal(null); setHoldReason(''); setHoldExpected('') }}
+                  className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm border border-gray-200"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Payment Modal */}
       {showPayModal && (() => {
         const selectedTotal = payModalOrders
@@ -895,7 +997,7 @@ export default function OrdersPage() {
             {msg && <span className="text-sm px-3 py-1 rounded-full bg-red-500 text-white">{msg}</span>}
             {(() => {
               const unpaidOrders = orders.filter(o =>
-                o.payment_status !== 'paid' && o.status !== 'cancelled' &&
+                o.payment_status !== 'paid' && o.status !== 'cancelled' && !o.is_on_hold &&
                 ((isAdmin || isManager) ? true : o.branch_name === branchName)
               )
               const unpaidCount = unpaidOrders.length
@@ -985,15 +1087,23 @@ export default function OrdersPage() {
                     const cancelled = order.status === 'cancelled'
                     const pickedUp  = order.pickup_status === 'picked_up'
                     const paid      = order.payment_status === 'paid'
+                    const onHold    = order.is_on_hold === true
                     const isPaying  = payingOrderNo === order.order_no
                     return (
-                      <tr key={`${order.id}-${vatTag ?? 'x'}`} className={cancelled ? 'bg-red-50 opacity-60' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <tr key={`${order.id}-${vatTag ?? 'x'}`} className={cancelled ? 'bg-red-50 opacity-60' : onHold ? 'bg-indigo-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
 
                         {/* 1. เลขที่ใบจอง */}
                         <td className="px-4 py-3 border-r border-gray-200 font-mono font-bold text-base w-px whitespace-nowrap">
-                          <span className={vatTag === 'NV' ? 'text-orange-500' : vatTag === 'V' ? 'text-green-500' : 'text-green-400'}>
-                            {displayNo}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className={vatTag === 'NV' ? 'text-orange-500' : vatTag === 'V' ? 'text-green-500' : 'text-green-400'}>
+                              {displayNo}
+                            </span>
+                            {onHold && (
+                              <span className="text-[10px] font-normal text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded whitespace-nowrap w-fit">
+                                ⏸ พักบิล
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* 2. ยอดเงินรวม */}
@@ -1072,6 +1182,24 @@ export default function OrdersPage() {
                               >
                                 🖨️ พิมพ์ใบจอง
                               </button>
+                              {/* ⏸ พักบิล / ▶️ ส่งของแล้ว — เฉพาะ admin */}
+                              {isAdmin && !cancelled && (
+                                onHold ? (
+                                  <button
+                                    onClick={() => setHoldModal({ order, mode: 'resume' })}
+                                    className="px-2 py-1 text-xs rounded bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 transition-colors whitespace-nowrap"
+                                  >
+                                    ▶️ ส่งของแล้ว
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => { setHoldModal({ order, mode: 'hold' }); setHoldReason(''); setHoldExpected('') }}
+                                    className="px-2 py-1 text-xs rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 transition-colors whitespace-nowrap"
+                                  >
+                                    ⏸ พักบิล
+                                  </button>
+                                )
+                              )}
                             </div>
                           </div>
                         </td>

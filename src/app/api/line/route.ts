@@ -315,8 +315,8 @@ async function getMonthlySummary(branchId: number, year: number): Promise<Record
   const { rows } = await pool.query(`
     SELECT
       EXTRACT(MONTH FROM created_at AT TIME ZONE 'Asia/Bangkok')::int AS month,
-      COUNT(*) FILTER (WHERE payment_status = 'paid')::int   AS paid,
-      COUNT(*) FILTER (WHERE payment_status != 'paid')::int  AS pending
+      COUNT(*) FILTER (WHERE payment_status = 'paid')::int                        AS paid,
+      COUNT(*) FILTER (WHERE payment_status != 'paid' AND is_on_hold = false)::int AS pending
     FROM booking_orders
     WHERE branch_id = $1 AND EXTRACT(YEAR FROM created_at AT TIME ZONE 'Asia/Bangkok') = $2
     GROUP BY month ORDER BY month
@@ -387,6 +387,8 @@ const SUN_WEEK_START_SQL = `(date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok
 
 // บล็อคเมื่อ: มียอดค้างชำระของสัปดาห์ที่แล้ว (อา.–ส.) AND วันนี้ถึงพุธ–เสาร์แล้ว
 // อา. จ. อ. = ไม่บล็อค (อา. = เริ่มสัปดาห์ใหม่)
+// บิลที่พักอยู่ (is_on_hold=true) ไม่นับ
+// billing_start_date ใช้แทน created_at สำหรับบิลที่เคยพักแล้วกด "ส่งของแล้ว"
 async function checkBlockedFromDB(branchId: number): Promise<boolean> {
   const { dayOfWeek } = getISOWeekInfo()
   // ISO dow: จ.=1 อ.=2 พ.=3 พฤ.=4 ศ.=5 ส.=6 อา.=7
@@ -398,8 +400,13 @@ async function checkBlockedFromDB(branchId: number): Promise<boolean> {
       WHERE branch_id = $1
         AND payment_status != 'paid'
         AND status != 'cancelled'
-        AND (created_at AT TIME ZONE 'Asia/Bangkok') >= ${SUN_WEEK_START_SQL} - INTERVAL '1 week'
-        AND (created_at AT TIME ZONE 'Asia/Bangkok') <  ${SUN_WEEK_START_SQL}
+        AND is_on_hold = false
+        AND COALESCE(billing_start_date,
+              (created_at AT TIME ZONE 'Asia/Bangkok')::date
+            ) >= (${SUN_WEEK_START_SQL})::date - INTERVAL '1 week'
+        AND COALESCE(billing_start_date,
+              (created_at AT TIME ZONE 'Asia/Bangkok')::date
+            ) <  (${SUN_WEEK_START_SQL})::date
     ) AS blocked
   `, [branchId])
   return rows[0]?.blocked === true
@@ -432,13 +439,13 @@ async function getWeeklySummary(branchId: number): Promise<WeekSummary[]> {
       SUM(total_amount)::float AS total_amount,
       COUNT(*) FILTER (WHERE payment_status = 'paid')::int AS paid_count,
       SUM(CASE WHEN payment_status = 'paid'  THEN total_amount ELSE 0 END)::float AS paid_amount,
-      SUM(CASE WHEN payment_status != 'paid' THEN total_amount ELSE 0 END)::float AS pending_amount
+      SUM(CASE WHEN payment_status != 'paid' AND is_on_hold = false THEN total_amount ELSE 0 END)::float AS pending_amount
     FROM booking_orders
     WHERE branch_id = $1
     GROUP BY yr, wk
     HAVING
-      -- แสดงทุกสัปดาห์ที่มียอดค้างชำระ (ไม่จำกัดช่วงเวลา)
-      SUM(CASE WHEN payment_status != 'paid' THEN 1 ELSE 0 END) > 0
+      -- แสดงทุกสัปดาห์ที่มียอดค้างชำระ (ไม่นับบิลพัก)
+      SUM(CASE WHEN payment_status != 'paid' AND is_on_hold = false THEN 1 ELSE 0 END) > 0
       OR
       -- หรือ 3 สัปดาห์ล่าสุดสำหรับบริบท (แม้ชำระครบแล้ว)
       MAX(created_at) AT TIME ZONE 'Asia/Bangkok' >=
@@ -466,8 +473,18 @@ async function getPendingOrders(branchId: number) {
   const { rows } = await pool.query(`
     SELECT id, order_no, total_amount::float AS total_amount, created_at
     FROM booking_orders
-    WHERE branch_id = $1 AND payment_status != 'paid'
+    WHERE branch_id = $1 AND payment_status != 'paid' AND is_on_hold = false
     ORDER BY created_at ASC
+  `, [branchId])
+  return rows
+}
+
+async function getHeldOrders(branchId: number) {
+  const { rows } = await pool.query(`
+    SELECT id, order_no, total_amount::float AS total_amount, created_at, hold_reason, hold_at
+    FROM booking_orders
+    WHERE branch_id = $1 AND is_on_hold = true AND status != 'cancelled'
+    ORDER BY hold_at ASC
   `, [branchId])
   return rows
 }
@@ -897,7 +914,7 @@ async function historyView(branchId: number, branchName: string): Promise<object
 }
 
 async function paymentView(branchId: number, branchName: string, userId: string): Promise<object> {
-  const [pending, rawSel, storeSlips] = await Promise.all([
+  const [pending, rawSel, storeSlips, held] = await Promise.all([
     getPendingOrders(branchId),
     getPaySelection(userId),
     // สลิปหักค่าของ: applied=false, category != 'vat'
@@ -907,9 +924,16 @@ async function paymentView(branchId: number, branchName: string, userId: string)
       WHERE branch_id=$1 AND status='confirmed' AND applied=false AND category != 'vat'
       ORDER BY created_at ASC
     `, [branchId]).then(r => r.rows),
+    getHeldOrders(branchId),
   ])
 
-  if (!pending.length) {
+  // Helper: จำนวนวันที่พักมาแล้ว
+  const daysSince = (dt: string | Date) => {
+    const ms = Date.now() + 7 * 3600 * 1000 - new Date(dt).getTime()
+    return Math.floor(ms / 86400000)
+  }
+
+  if (!pending.length && !held.length) {
     return {
       type: 'flex', altText: '✅ ไม่มียอดค้างชำระ',
       contents: {
@@ -1025,6 +1049,33 @@ async function paymentView(branchId: number, branchName: string, userId: string)
             },
             { type: 'separator', margin: 'sm' },
           ] : []),
+          // ⏸ หมวดบิลพักรอรับ/ส่ง
+          ...(held.length > 0 ? [
+            { type: 'separator', margin: 'sm' },
+            {
+              type: 'box', layout: 'vertical', backgroundColor: '#f0f4ff',
+              cornerRadius: '8px', paddingAll: '8px', margin: 'sm',
+              contents: [
+                { type: 'text', text: `⏸ รอรับ/ส่ง (${held.length} ใบ — ไม่นับยอดค้าง)`, size: 'xs', weight: 'bold', color: '#4f46e5' },
+                ...held.map((o: Record<string, string | number>) => {
+                  const days = daysSince(String(o.hold_at ?? o.created_at))
+                  const overdue = days > 30
+                  return {
+                    type: 'box', layout: 'horizontal', margin: 'xs', paddingAll: '6px',
+                    backgroundColor: overdue ? '#fff1f2' : '#ffffff', cornerRadius: '4px',
+                    contents: [
+                      { type: 'box', flex: 1, layout: 'vertical', contents: [
+                        { type: 'text', text: `#${o.order_no}`, size: 'xs', weight: 'bold', color: overdue ? '#dc2626' : '#4f46e5' },
+                        { type: 'text', text: `พักมา ${days} วัน${overdue ? ' ⚠️' : ''}`, size: 'xxs', color: overdue ? '#dc2626' : '#888888' },
+                      ]},
+                      { type: 'text', text: `฿${fmt(Number(o.total_amount))}`, size: 'xs', flex: 0, align: 'end', color: '#4f46e5', weight: 'bold' }
+                    ]
+                  }
+                }),
+              ]
+            },
+          ] : []),
+          { type: 'separator', margin: 'sm' },
           { type: 'text', text: 'กด ○ เพื่อเลือก · กด ✔ เพื่อยกเลิกการเลือก', size: 'xs', color: '#888888' },
           { type: 'separator', margin: 'sm' },
           ...orderRows,
@@ -1345,6 +1396,40 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     }])
   }
 
+  // HOLD_ORDER:{orderNo}:{reason} — admin พักบิล
+  if (data.startsWith('HOLD_ORDER:')) {
+    const parts   = data.split(':')
+    const orderNo = parts[1]
+    const reason  = parts.slice(2).join(':') || 'รอนัดส่ง'
+    const { rows: br } = await pool.query(
+      `SELECT b.id, b.name FROM booking_orders o JOIN branches b ON b.id=o.branch_id WHERE o.order_no=$1`, [orderNo]
+    )
+    await pool.query(`
+      UPDATE booking_orders SET is_on_hold=true, hold_reason=$1, hold_at=NOW(), hold_by='LINE admin', updated_at=NOW()
+      WHERE order_no=$2
+    `, [reason, orderNo])
+    await pool.query(`INSERT INTO booking_order_hold_log (order_no,action,reason,acted_by) VALUES ($1,'hold',$2,'LINE admin')`, [orderNo, reason])
+    const branchName = br[0]?.name ?? 'สาขา'
+    return reply(replyToken, [{ type: 'text', text: `⏸ พักบิล #${orderNo} แล้ว\n${branchName}\nเหตุผล: ${reason}\n\nบิลนี้จะไม่นับในยอดค้างและจะไม่ระงับการจอง` }])
+  }
+
+  // RESUME_ORDER:{orderNo} — admin ยืนยันส่งของแล้ว → ยกเลิกพักบิล
+  if (data.startsWith('RESUME_ORDER:')) {
+    const orderNo = data.split(':')[1]
+    const today = new Date(Date.now() + 7 * 3600 * 1000)
+    const billingStart = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`
+    const { rows: br } = await pool.query(
+      `SELECT b.name FROM booking_orders o JOIN branches b ON b.id=o.branch_id WHERE o.order_no=$1`, [orderNo]
+    )
+    await pool.query(`
+      UPDATE booking_orders SET is_on_hold=false, hold_reason=NULL, billing_start_date=$1, expected_delivery_date=NULL, updated_at=NOW()
+      WHERE order_no=$2
+    `, [billingStart, orderNo])
+    await pool.query(`INSERT INTO booking_order_hold_log (order_no,action,acted_by,billing_start_date) VALUES ($1,'resume','LINE admin',$2)`, [orderNo, billingStart])
+    const branchName = br[0]?.name ?? 'สาขา'
+    return reply(replyToken, [{ type: 'text', text: `▶️ ส่งของแล้ว #${orderNo}\n${branchName}\n\nเริ่มนับกติกาวันพุธจาก ${billingStart} ครับ` }])
+  }
+
   // HIST: monthly history for a branch
   if (data.startsWith('HIST:')) {
     const branchId = parseInt(data.split(':')[1])
@@ -1356,7 +1441,26 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
   if (data.startsWith('PAYVIEW:')) {
     const branchId = parseInt(data.split(':')[1])
     const { rows: br } = await pool.query('SELECT name FROM branches WHERE id=$1', [branchId])
-    return reply(replyToken, [await paymentView(branchId, br[0]?.name ?? `สาขา #${branchId}`, userId)])
+    const branchName = br[0]?.name ?? `สาขา #${branchId}`
+    // เช็ค 30-day alert สำหรับบิลที่พักนานเกินไป
+    const { rows: longHeld } = await pool.query(`
+      SELECT order_no, hold_at,
+             EXTRACT(DAY FROM (NOW() AT TIME ZONE 'Asia/Bangkok') - hold_at)::int AS hold_days
+      FROM booking_orders
+      WHERE branch_id=$1 AND is_on_hold=true AND status!='cancelled'
+        AND hold_at < NOW() - INTERVAL '30 days'
+    `, [branchId])
+    const msgs: object[] = [await paymentView(branchId, branchName, userId)]
+    if (longHeld.length > 0) {
+      msgs.unshift({
+        type: 'text',
+        text: `⚠️ แจ้งเตือน: ${branchName} มีบิลพักนานเกิน 30 วัน\n` +
+          longHeld.map((r: Record<string, string | number>) =>
+            `• #${r.order_no} (${r.hold_days} วัน)`
+          ).join('\n')
+      })
+    }
+    return reply(replyToken, msgs.slice(0, 5))
   }
 
   // PAY_TOGGLE:{branchId}:{orderNo} — อัปเดต DB แล้ว re-render payment view

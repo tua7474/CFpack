@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
             FROM booking_orders
             WHERE payment_status != 'paid'
               AND status != 'cancelled'
+              AND is_on_hold = false
               AND branch_id IS NOT NULL AND withdrawal_type_id IS NOT NULL
             ORDER BY created_at DESC
           `),
