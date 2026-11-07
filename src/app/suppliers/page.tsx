@@ -5,12 +5,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 interface Supplier {
-  id:         number
-  name:       string
-  phone:      string | null
-  address:    string | null
-  notes:      string | null
-  created_at: string
+  id:          number
+  name:        string
+  phone:       string | null
+  address:     string | null
+  notes:       string | null
+  created_at:  string
+  week_total:  number
+  month_total: number
 }
 
 interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
@@ -183,25 +185,6 @@ export default function SuppliersPage() {
                   placeholder="ชื่อบริษัท / ร้านค้า"
                   className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-green-400" />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">เบอร์โทร</label>
-                <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                  placeholder="0XX-XXXXXXX"
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-green-400" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">หมายเหตุ</label>
-                <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="หมายเหตุ"
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-green-400" />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">ที่อยู่</label>
-                <textarea value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                  placeholder="ที่อยู่"
-                  rows={2}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 resize-none" />
-              </div>
             </div>
             <div className="flex gap-2 mt-3 justify-end">
               <button onClick={resetForm}
@@ -227,9 +210,8 @@ export default function SuppliersPage() {
               <thead>
                 <tr className="bg-[#4e7a5e] text-white">
                   <th className="px-4 py-2.5 text-left font-semibold">ชื่อโรงงาน</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">เบอร์โทร</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">หมายเหตุ</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">ที่อยู่</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">สัปดาห์นี้</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">เดือนนี้</th>
                   <th className="px-4 py-2.5 w-20"></th>
                 </tr>
               </thead>
@@ -237,9 +219,12 @@ export default function SuppliersPage() {
                 {suppliers.map((s, idx) => (
                   <tr key={s.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="px-4 py-2.5 font-medium text-gray-800">{s.name}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{s.phone ?? '-'}</td>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs">{s.notes ?? ''}</td>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs max-w-[200px] truncate">{s.address ?? ''}</td>
+                    <td className="px-4 py-2.5 text-right text-sm text-gray-700">
+                      {s.week_total > 0 ? s.week_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-sm text-gray-700">
+                      {s.month_total > 0 ? s.month_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <button onClick={() => startEdit(s)}

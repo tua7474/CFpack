@@ -18,7 +18,29 @@ async function ensureTable() {
 
 export async function GET() {
   await ensureTable()
-  const { rows } = await pool.query(`SELECT * FROM suppliers ORDER BY name`)
+  const { rows } = await pool.query(`
+    SELECT
+      s.*,
+      COALESCE(po.week_total,  0)::float AS week_total,
+      COALESCE(po.month_total, 0)::float AS month_total
+    FROM suppliers s
+    LEFT JOIN (
+      SELECT
+        supplier,
+        SUM(total_amount) FILTER (
+          WHERE created_at AT TIME ZONE 'Asia/Bangkok' >=
+                date_trunc('week', (NOW() AT TIME ZONE 'Asia/Bangkok') + INTERVAL '1 day') - INTERVAL '1 day'
+        )::float AS week_total,
+        SUM(total_amount) FILTER (
+          WHERE created_at AT TIME ZONE 'Asia/Bangkok' >=
+                date_trunc('month', NOW() AT TIME ZONE 'Asia/Bangkok')
+        )::float AS month_total
+      FROM po_orders
+      WHERE supplier IS NOT NULL AND status != 'cancelled'
+      GROUP BY supplier
+    ) po ON po.supplier = s.name
+    ORDER BY s.name
+  `)
   return NextResponse.json(rows)
 }
 
