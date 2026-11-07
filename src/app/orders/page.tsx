@@ -1182,8 +1182,8 @@ export default function OrdersPage() {
                               >
                                 🖨️ พิมพ์ใบจอง
                               </button>
-                              {/* ⏸ พักบิล / ▶️ ส่งของแล้ว — เฉพาะ admin */}
-                              {isAdmin && !cancelled && (
+                              {/* ⏸ พักบิล / ▶️ ส่งของแล้ว — เฉพาะ admin, ก่อนขึ้นของ */}
+                              {isAdmin && !cancelled && !pickedUp && (
                                 onHold ? (
                                   <button
                                     onClick={() => setHoldModal({ order, mode: 'resume' })}
