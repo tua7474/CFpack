@@ -2571,8 +2571,9 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           { type: 'text', text: 'ค้างชำระ — จองสินค้าไม่ได้', weight: 'bold', size: 'xs', color: '#dc2626', align: 'center' },
         ]
       }, { type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
-      ...orderRows,
       ...heldSection,
+      ...(heldSection.length > 0 ? [{ type: 'separator', margin: 'sm', color: '#e5e7eb' }] : []),
+      ...orderRows,
       { type: 'separator', margin: 'sm', color: '#d1d5db' },
       threeButtons,
     ]
