@@ -18,26 +18,39 @@ async function ensureTable() {
 
 export async function GET() {
   await ensureTable()
+  // week start (Sunday) = date_trunc('week', bkk + 1 day) - 1 day
   const { rows } = await pool.query(`
+    WITH week_start AS (
+      SELECT (date_trunc('week', (NOW() AT TIME ZONE 'Asia/Bangkok') + INTERVAL '1 day') - INTERVAL '1 day')::date AS w0
+    )
     SELECT
       s.*,
-      COALESCE(po.week_total,  0)::float AS week_total,
+      COALESCE(po.week0_total, 0)::float AS week_total,
+      COALESCE(po.week1_total, 0)::float AS week1_total,
+      COALESCE(po.week2_total, 0)::float AS week2_total,
       COALESCE(po.month_total, 0)::float AS month_total
     FROM suppliers s
     LEFT JOIN (
       SELECT
-        supplier,
-        SUM(total_amount) FILTER (
-          WHERE created_at AT TIME ZONE 'Asia/Bangkok' >=
-                date_trunc('week', (NOW() AT TIME ZONE 'Asia/Bangkok') + INTERVAL '1 day') - INTERVAL '1 day'
-        )::float AS week_total,
-        SUM(total_amount) FILTER (
-          WHERE created_at AT TIME ZONE 'Asia/Bangkok' >=
-                date_trunc('month', NOW() AT TIME ZONE 'Asia/Bangkok')
+        p.supplier,
+        SUM(p.total_amount) FILTER (
+          WHERE (p.created_at AT TIME ZONE 'Asia/Bangkok')::date >= w.w0
+        )::float AS week0_total,
+        SUM(p.total_amount) FILTER (
+          WHERE (p.created_at AT TIME ZONE 'Asia/Bangkok')::date >= w.w0 - 7
+            AND (p.created_at AT TIME ZONE 'Asia/Bangkok')::date <  w.w0
+        )::float AS week1_total,
+        SUM(p.total_amount) FILTER (
+          WHERE (p.created_at AT TIME ZONE 'Asia/Bangkok')::date >= w.w0 - 14
+            AND (p.created_at AT TIME ZONE 'Asia/Bangkok')::date <  w.w0 - 7
+        )::float AS week2_total,
+        SUM(p.total_amount) FILTER (
+          WHERE (p.created_at AT TIME ZONE 'Asia/Bangkok')::date >=
+                date_trunc('month', NOW() AT TIME ZONE 'Asia/Bangkok')::date
         )::float AS month_total
-      FROM po_orders
-      WHERE supplier IS NOT NULL AND status != 'cancelled'
-      GROUP BY supplier
+      FROM po_orders p, week_start w
+      WHERE p.supplier IS NOT NULL AND p.status != 'cancelled'
+      GROUP BY p.supplier
     ) po ON po.supplier = s.name
     ORDER BY s.name
   `)

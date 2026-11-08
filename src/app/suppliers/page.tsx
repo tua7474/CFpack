@@ -12,6 +12,8 @@ interface Supplier {
   notes:       string | null
   created_at:  string
   week_total:  number
+  week1_total: number
+  week2_total: number
   month_total: number
 }
 
@@ -210,20 +212,28 @@ export default function SuppliersPage() {
               <thead>
                 <tr className="bg-[#4e7a5e] text-white">
                   <th className="px-4 py-2.5 text-left font-semibold">ชื่อโรงงาน</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">สัปดาห์นี้</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">เดือนนี้</th>
-                  <th className="px-4 py-2.5 w-20"></th>
+                  <th className="px-3 py-2.5 text-right font-semibold text-xs">สัปดาห์ก่อน</th>
+                  <th className="px-3 py-2.5 text-right font-semibold text-xs">สัปดาห์ที่แล้ว</th>
+                  <th className="px-3 py-2.5 text-right font-semibold text-xs">สัปดาห์นี้</th>
+                  <th className="px-3 py-2.5 text-right font-semibold text-xs">เดือนนี้</th>
+                  <th className="px-4 py-2.5 w-16"></th>
                 </tr>
               </thead>
               <tbody>
                 {suppliers.map((s, idx) => (
                   <tr key={s.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="px-4 py-2.5 font-medium text-gray-800">{s.name}</td>
-                    <td className="px-4 py-2.5 text-right text-sm text-gray-700">
-                      {s.week_total > 0 ? s.week_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2.5 text-right text-xs text-gray-500">
+                      {s.week2_total > 0 ? s.week2_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-sm text-gray-700">
-                      {s.month_total > 0 ? s.month_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2.5 text-right text-xs text-gray-600">
+                      {s.week1_total > 0 ? s.week1_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-sm font-semibold text-green-700">
+                      {s.week_total > 0 ? s.week_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300 font-normal">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-sm font-semibold text-blue-700">
+                      {s.month_total > 0 ? s.month_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300 font-normal">—</span>}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
