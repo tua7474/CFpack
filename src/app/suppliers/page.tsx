@@ -107,6 +107,23 @@ export default function SuppliersPage() {
     }
   }
 
+  // ── คำนวณช่วงวันที่ (Bangkok) ────────────────────────────────────────────
+  function getWeekRange(weeksAgo: number): string {
+    const now = new Date(Date.now() + 7 * 3600 * 1000) // UTC+7
+    const dow = now.getUTCDay() // 0=อา.
+    const sun = new Date(now)
+    sun.setUTCDate(now.getUTCDate() - dow - weeksAgo * 7)
+    const sat = new Date(sun); sat.setUTCDate(sun.getUTCDate() + 6)
+    const fmt = (d: Date) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`
+    return `${fmt(sun)}–${fmt(sat)}`
+  }
+  function getMonthRange(): string {
+    const now = new Date(Date.now() + 7 * 3600 * 1000)
+    const yr = now.getUTCFullYear(); const mo = now.getUTCMonth()
+    const last = new Date(Date.UTC(yr, mo + 1, 0))
+    return `1/${mo + 1}–${last.getUTCDate()}/${mo + 1}`
+  }
+
   return (
     <div className="min-h-screen bg-green-50">
       {/* Header */}
@@ -212,10 +229,22 @@ export default function SuppliersPage() {
               <thead>
                 <tr className="bg-[#4e7a5e] text-white">
                   <th className="px-4 py-2.5 text-left font-semibold">ชื่อโรงงาน</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-xs">สัปดาห์ก่อน</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-xs">สัปดาห์ที่แล้ว</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-xs">สัปดาห์นี้</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-xs">เดือนนี้</th>
+                  <th className="px-3 py-2 text-right">
+                    <div className="text-xs font-semibold">สัปดาห์นี้</div>
+                    <div className="text-[10px] font-normal opacity-80">{getWeekRange(0)}</div>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <div className="text-xs font-semibold">สัปดาห์ที่แล้ว</div>
+                    <div className="text-[10px] font-normal opacity-80">{getWeekRange(1)}</div>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <div className="text-xs font-semibold">สัปดาห์ก่อน</div>
+                    <div className="text-[10px] font-normal opacity-80">{getWeekRange(2)}</div>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <div className="text-xs font-semibold">เดือนนี้</div>
+                    <div className="text-[10px] font-normal opacity-80">{getMonthRange()}</div>
+                  </th>
                   <th className="px-4 py-2.5 w-16"></th>
                 </tr>
               </thead>
@@ -223,14 +252,14 @@ export default function SuppliersPage() {
                 {suppliers.map((s, idx) => (
                   <tr key={s.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="px-4 py-2.5 font-medium text-gray-800">{s.name}</td>
-                    <td className="px-3 py-2.5 text-right text-xs text-gray-500">
-                      {s.week2_total > 0 ? s.week2_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2.5 text-right text-sm font-semibold text-green-700">
+                      {s.week_total > 0 ? s.week_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300 font-normal">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs text-gray-600">
                       {s.week1_total > 0 ? s.week1_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-sm font-semibold text-green-700">
-                      {s.week_total > 0 ? s.week_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300 font-normal">—</span>}
+                    <td className="px-3 py-2.5 text-right text-xs text-gray-500">
+                      {s.week2_total > 0 ? s.week2_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right text-sm font-semibold text-blue-700">
                       {s.month_total > 0 ? s.month_total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : <span className="text-gray-300 font-normal">—</span>}
