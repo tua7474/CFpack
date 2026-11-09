@@ -539,7 +539,7 @@ export async function POST(request: Request) {
        JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {}),
        nv_total ?? null, v_total ?? null, coupon_amount ?? 0, coupon_col ?? null]
     )
-    await deductStock(quantities ?? {})
+    if (source_type === 'โกดัง') await deductStock(quantities ?? {})
     notifyNewBooking(rows[0].order_no)
     return NextResponse.json(rows[0], { status: 201 })
   } catch (e: unknown) {
@@ -552,7 +552,7 @@ export async function POST(request: Request) {
          JSON.stringify(foy_quantities ?? {}), JSON.stringify(foy_item_quantities ?? {}), withdrawal_type_id ?? null, JSON.stringify(priorities ?? {}),
          nv_total ?? null, v_total ?? null, coupon_amount ?? 0, coupon_col ?? null]
       )
-      await deductStock(quantities ?? {})
+      if (source_type === 'โกดัง') await deductStock(quantities ?? {})
       notifyNewBooking(rows[0].order_no)
       return NextResponse.json(rows[0], { status: 201 })
     }
@@ -638,13 +638,17 @@ export async function PATCH(request: Request) {
     return NextResponse.json(rows[0])
   }
 
-  // If quantities are being updated, load old quantities first to compute delta
+  // Load old quantities + source_type for stock adjustment logic
   let oldQuantities: Record<string, number> = {}
-  if (quantities !== undefined) {
+  let oldSourceType: string | null = null
+  if (quantities !== undefined || source_type !== undefined) {
     const { rows: old } = await pool.query(
-      `SELECT quantities FROM booking_orders WHERE order_no = $1`, [order_no]
+      `SELECT quantities, source_type FROM booking_orders WHERE order_no = $1`, [order_no]
     )
-    if (old.length > 0) oldQuantities = old[0].quantities ?? {}
+    if (old.length > 0) {
+      oldQuantities = old[0].quantities ?? {}
+      oldSourceType = old[0].source_type ?? null
+    }
   }
 
   const sets: string[] = ['updated_at = NOW()']
@@ -677,7 +681,19 @@ export async function PATCH(request: Request) {
   )
 
   if (quantities !== undefined) {
-    await adjustStockDelta(oldQuantities, quantities)
+    const wasWarehouse = oldSourceType === 'โกดัง'
+    const isWarehouse  = (source_type !== undefined ? source_type : oldSourceType) === 'โกดัง'
+    if (wasWarehouse && isWarehouse) {
+      // เดิม+ใหม่ = โกดัง → ปรับ delta ตามปกติ
+      await adjustStockDelta(oldQuantities, quantities)
+    } else if (wasWarehouse && !isWarehouse) {
+      // เปลี่ยนจาก โกดัง → อื่น: คืนสต็อคเดิมทั้งหมด
+      await adjustStockDelta(oldQuantities, {})
+    } else if (!wasWarehouse && isWarehouse) {
+      // เปลี่ยนจาก อื่น → โกดัง: ตัดสต็อคใหม่ทั้งหมด
+      await adjustStockDelta({}, quantities)
+    }
+    // ทั้งสอง ≠ โกดัง: ไม่ตัดสต็อค
   }
 
   // แจ้ง LINE
