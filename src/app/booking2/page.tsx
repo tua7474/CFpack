@@ -573,13 +573,11 @@ function Booking2Inner() {
     if (total < 25000) setVehicleType('')
   }, [pending, manualTotal, vehicleType, products])
 
-  // Auto-force เบิกของ + รถ ตามเงื่อนไขยอด (ข้ามทั้งหมดถ้าเลือกรับเอง)
+  // Auto-force เบิกของ + รถ ตามเงื่อนไขยอด
   useEffect(() => {
     if (!products.length) return
-    if (vehicleType.includes('รับเอง')) return
     const BOX_GROUPS = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
-    let bt = 0, otherTotal = 0
-    let hasOther = false
+    let bt = 0, otherTotal = 0, hasOther = false
     for (const p of products) {
       const qty = pending[p.id] ?? 0
       const price = getProductPrice(p.price)
@@ -591,48 +589,53 @@ function Booking2Inner() {
     if (foyAmt > 0) hasOther = true
     const total = bt + otherTotal + foyAmt
 
-    // ตรวจบับเบิลล้วน + ยอดเงิน
-    let hasBubble = false, hasNonBubble = false, bubbleAmt = 0
+    // ตรวจบับเบิลล้วน + units
+    let hasBubble = false, hasNonBubble = false, bubbleUnits = 0
     for (const p of products) {
       const qty = pending[p.id] ?? 0
-      const price = getProductPrice(p.price)
       if (BUBBLE_GROUPS_SET.has(p.group_name)) {
-        if (qty > 0) { hasBubble = true; bubbleAmt += qty * price }
+        if (qty > 0) { hasBubble = true; bubbleUnits += qty * getBubbleUnits(p.product_name) }
       } else if (qty > 0) hasNonBubble = true
     }
     if (foyAmt > 0) hasNonBubble = true
 
-    if (hasBubble && !hasNonBubble && bubbleAmt >= 15000) {
-      // บับเบิลล้วน ยอดเกิน 15k → auto-force โรงBB + โรงBBส่งตรง
+    if (hasBubble && !hasNonBubble && bubbleUnits > 20) {
+      // บับเบิลล้วน > 20 units → auto-force โรงBB + BBส่งตรง/รับเอง + โนแวต
       const bbWT = withdrawalTypes.find(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
       if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
       if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
-      const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
-      if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
-    } else if (hasBubble && !hasNonBubble && bubbleAmt > 0) {
-      // บับเบิลล้วน ยอดต่ำกว่า 15k — reset ค่าที่ไม่อนุญาต
-      const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
-      if (curWT?.name.includes('โรงกล่อง')) setWithdrawalTypeId(null)
-      if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
-    } else if (hasOther && total >= 25000) {
-      setSourceType('โกดัง')
-      setVehicleType('จองรถ60000')
-    } else if (!hasOther && bt >= 20000) {
-      // กล่องล้วน ยอดเกิน 20k → auto-force โรงกล่อง + โรงกล่องส่งตรง
-      const boxWT = withdrawalTypes.find(w => w.name.includes('โรงกล่อง'))
-      if (boxWT && withdrawalTypeId !== boxWT.id) setWithdrawalTypeId(boxWT.id)
-      if (sourceType !== 'โรงกล่อง') setSourceType('โรงกล่อง')
-      const boxDelivery = deliveryMethods.find(d => d.name.includes('กล่องส่งตรง'))
-      if (boxDelivery && vehicleType !== boxDelivery.name) setVehicleType(boxDelivery.name)
-    } else if (!hasOther && bt > 0 && bt < 20000) {
-      // กล่องล้วน ยอดต่ำกว่า 20k — reset ค่าที่ไม่อนุญาต
-      const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
-      if (curWT?.name.includes('BB')) setWithdrawalTypeId(null)
-      if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
-    } else if (hasOther) {
-      // มิกซ์ แต่ยอด < 25,000 — reset ตัวเลือกที่ไม่รองรับในโหมดมิกซ์
-      if (sourceType === 'โรงกล่อง' || sourceType === 'โรงบับเบิล') setSourceType('')
-      if (vehicleType === 'จองรถ60000' || vehicleType === 'รถโรงงาน') setVehicleType('')
+      if (!vehicleType.includes('รับเอง')) {
+        const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
+        if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
+      }
+      setVatMode('no-vat')
+    } else if (hasBubble && !hasNonBubble && bubbleUnits <= 20 && bubbleUnits > 0) {
+      // บับเบิลล้วน ≤ 20 units — reset ค่าที่ไม่อนุญาต (ข้ามถ้ารับเอง)
+      if (!vehicleType.includes('รับเอง')) {
+        const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+        if (curWT?.name.includes('โรงกล่อง')) setWithdrawalTypeId(null)
+        if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
+      }
+    } else if (!vehicleType.includes('รับเอง')) {
+      // กล่อง / มิกซ์ (ข้ามถ้ารับเอง)
+      if (hasOther && total >= 25000) {
+        setSourceType('โกดัง')
+        setVehicleType('จองรถ60000')
+      } else if (!hasOther && bt >= 20000) {
+        // กล่องล้วน ยอดเกิน 20k → auto-force โรงกล่อง + โรงกล่องส่งตรง
+        const boxWT = withdrawalTypes.find(w => w.name.includes('โรงกล่อง'))
+        if (boxWT && withdrawalTypeId !== boxWT.id) setWithdrawalTypeId(boxWT.id)
+        if (sourceType !== 'โรงกล่อง') setSourceType('โรงกล่อง')
+        const boxDelivery = deliveryMethods.find(d => d.name.includes('กล่องส่งตรง'))
+        if (boxDelivery && vehicleType !== boxDelivery.name) setVehicleType(boxDelivery.name)
+      } else if (!hasOther && bt > 0 && bt < 20000) {
+        const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+        if (curWT?.name.includes('BB')) setWithdrawalTypeId(null)
+        if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
+      } else if (hasOther) {
+        if (sourceType === 'โรงกล่อง' || sourceType === 'โรงบับเบิล') setSourceType('')
+        if (vehicleType === 'จองรถ60000' || vehicleType === 'รถโรงงาน') setVehicleType('')
+      }
     }
   }, [pending, foyPending, products, sourceType, vehicleType, withdrawalTypes, deliveryMethods, withdrawalTypeId])
 
@@ -1181,23 +1184,28 @@ function Booking2Inner() {
   }
   if (foyTotal > 0) hasNonBubbleInOrder = true
 
-  const isBubbleOnly    = hasBubbleItems && !hasNonBubbleInOrder
-  const isBubbleOnlyLow = isBubbleOnly && bubbleTotalAmt > 0 && bubbleTotalAmt < 15000
-  const autoForceBubble = isBubbleOnly && bubbleTotalAmt >= 15000
-  const isBoxOnlyLow    = !hasNonBoxItems && boxTotal > 0 && boxTotal < 20000
-  const isAutoForced    = autoForceFactory || autoForceWarehouse || autoForceBubble
+  const isBubbleOnly        = hasBubbleItems && !hasNonBubbleInOrder
+  const isBubbleForcedMode  = isBubbleOnly && totalBubbleUnits > 20   // บับเบิลล้วน > 20 units → lock โรงBB + BBส่งตรง/รับเอง
+  const isBubbleOnlyLow     = isBubbleOnly && !isBubbleForcedMode && bubbleTotalAmt > 0
+  const autoForceBubble     = isBubbleForcedMode
+  const isBoxOnlyLow        = !hasNonBoxItems && boxTotal > 0 && boxTotal < 20000
+  const isAutoForced        = autoForceFactory || autoForceWarehouse || autoForceBubble
 
-  // กรองตัวเลือกตามเงื่อนไข (รับเอง = ยกเว้นทุก filter)
+  // กรองตัวเลือกตามเงื่อนไข
   const allowedWithdrawalTypes = isPickup
     ? withdrawalTypes
-    : isBubbleOnlyLow
-      ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
-      : isBoxOnlyLow
-        ? withdrawalTypes.filter(w => !w.name.includes('BB'))
-        : withdrawalTypes
-  const allowedDeliveryMethods = (!isPickup && (isBubbleOnlyLow || isBoxOnlyLow))
-    ? deliveryMethods.filter(d => !d.name.includes('BBส่งตรง') && !d.name.includes('กล่องส่งตรง'))
-    : deliveryMethods
+    : isBubbleForcedMode
+      ? withdrawalTypes.filter(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
+      : isBubbleOnlyLow
+        ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
+        : isBoxOnlyLow
+          ? withdrawalTypes.filter(w => !w.name.includes('BB'))
+          : withdrawalTypes
+  const allowedDeliveryMethods = isBubbleForcedMode
+    ? deliveryMethods.filter(d => d.name.includes('BBส่งตรง') || d.name.includes('รับเอง'))
+    : (!isPickup && (isBubbleOnlyLow || isBoxOnlyLow))
+      ? deliveryMethods.filter(d => !d.name.includes('BBส่งตรง') && !d.name.includes('กล่องส่งตรง'))
+      : deliveryMethods
 
   let bubbleWarning: string | null = null
   let bubbleBlocking = false
