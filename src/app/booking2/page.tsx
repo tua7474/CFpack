@@ -1017,8 +1017,17 @@ function Booking2Inner() {
 
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
-  // Pre-scan: ตรวจว่าเป็นบับเบิลล้วน ≥ 15k หรือไม่ (ใช้ก่อน totals loop)
-  // ถ้าใช่ → bubble switchable (โนแวตได้) | ถ้าไม่ใช่ → bubble ล็อคฝั่งแวต
+  // เบิกของ โรงBB + จัดส่ง BBส่งตรง หรือ รับเอง
+  const isBBDirectMode = (() => {
+    if (!withdrawalTypeId) return false
+    const wt = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+    if (!wt) return false
+    return (wt.name.includes('BB') || wt.name.includes('โรงบับเบิล')) &&
+           (vehicleType.includes('BBส่งตรง') || vehicleType.includes('รับเอง'))
+  })()
+
+  // Pre-scan: ตรวจว่าเป็นบับเบิลล้วนหรือไม่ (ใช้ก่อน totals loop)
+  // โนแวตได้ เมื่อ bubble-only + isBBDirectMode
   let _bbAmt = 0, _hasBB = false, _hasNonBB = false
   for (const sec of sections) {
     for (const row of sec.rows) {
@@ -1030,7 +1039,7 @@ function Booking2Inner() {
     }
   }
   if (Object.values(foyPending).some(d => d.amount > 0)) _hasNonBB = true
-  const canBubbleNoVat = _hasBB && !_hasNonBB && _bbAmt >= 15000
+  const canBubbleNoVat = _hasBB && !_hasNonBB && isBBDirectMode
 
   // Precompute print gray index for each subgroup (cycles through 0→1→2)
   const subgroupPrintGray = new Map<string, number>()
@@ -1194,16 +1203,22 @@ function Booking2Inner() {
   let bubbleBlocking = false
   if (hasBubbleItems && !isPickup) {
     if (hasNonBubbleInOrder) {
+      // มิกซ์: ห้ามเกิน 20 units (เหมือนเดิม)
       if (totalBubbleUnits > 20) {
         const over = totalBubbleUnits - 20
         bubbleBlocking = true
         bubbleWarning = `⛔ บับเบิลเกิน (ลด ${over} ลูก 32.5)`
       }
     } else {
+      // บับเบิลล้วน full truck (120–128 units)
       if (totalBubbleUnits < 120) {
         const need = 120 - totalBubbleUnits
         bubbleBlocking = true
         bubbleWarning = `⛔ เทียบเท่า 32.5x100 ขาด ${need} ลูก`
+      } else if (!isBBDirectMode) {
+        // ครบ 120+ units แล้ว แต่ยังไม่ได้เลือก โรงBB + BBส่งตรง/รับเอง
+        bubbleBlocking = true
+        bubbleWarning = `⛔ บับเบิลล้วนเต็มคัน ต้องเลือก โรงBB + BBส่งตรง/รับเอง`
       } else if (totalBubbleUnits > 128) {
         const over = totalBubbleUnits - 128
         bubbleBlocking = true
