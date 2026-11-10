@@ -17,15 +17,19 @@ async function ensureTable() {
 // GET — return paper_stock items, branches (with color_group), and all stock entries
 export async function GET() {
   await ensureTable()
-  const [itemRows, branchRows, stockRows] = await Promise.all([
+  const [itemRows, branchRows, stockRows, lastUpdRows] = await Promise.all([
     pool.query(`SELECT id, category, model_name, color_name FROM paper_stock ORDER BY category, model_name, color_name`),
     pool.query(`SELECT id, name, color_group FROM branches ORDER BY name`),
     pool.query(`SELECT branch_id, paper_stock_id, quantity::float AS quantity FROM branch_foy_stock`),
+    pool.query(`SELECT branch_id, MAX(updated_at) AS last_updated FROM branch_foy_stock GROUP BY branch_id`),
   ])
+  const lastUpdated: Record<number, string> = {}
+  for (const r of lastUpdRows.rows) lastUpdated[r.branch_id] = r.last_updated
   return NextResponse.json({
-    items:    itemRows.rows,
-    branches: branchRows.rows,
-    stock:    stockRows.rows,
+    items:        itemRows.rows,
+    branches:     branchRows.rows,
+    stock:        stockRows.rows,
+    last_updated: lastUpdated,
   })
 }
 

@@ -316,7 +316,7 @@ function MapCell({ branchId, currentUrl, onSave }: {
 
 function BranchRow({
   branch, session, onManage, colorGroup,
-  withdrawalTypes, unpaidOrders, orderEntries, onMapSave,
+  withdrawalTypes, unpaidOrders, orderEntries, slipEntries, onMapSave,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -325,6 +325,7 @@ function BranchRow({
   withdrawalTypes: WithdrawalType[]
   unpaidOrders: Record<number, UnpaidOrder[]>
   orderEntries: FinanceEntry[]
+  slipEntries: FinanceEntry[]
   onMapSave: (branchId: number, url: string) => void
 }) {
   return (
@@ -360,17 +361,18 @@ function BranchRow({
           const isoDow = bkk.getDay() === 0 ? 7 : bkk.getDay()
           const fmt    = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
           const groups = [
-            { label: '2wk', items: orderEntries.filter(e => e.date >= twoW.start && e.date < lastW.start), pastWed: true },
-            { label: 'last', items: orderEntries.filter(e => e.date >= lastW.start && e.date < thisW.start), pastWed: isoDow >= 3 },
-            { label: 'this', items: orderEntries.filter(e => e.date >= thisW.start), pastWed: false },
+            { label: '2wk', items: orderEntries.filter(e => e.date >= twoW.start && e.date < lastW.start), stores: slipEntries.filter(e => e.date >= twoW.start && e.date < lastW.start), pastWed: true },
+            { label: 'last', items: orderEntries.filter(e => e.date >= lastW.start && e.date < thisW.start), stores: slipEntries.filter(e => e.date >= lastW.start && e.date < thisW.start), pastWed: isoDow >= 3 },
+            { label: 'this', items: orderEntries.filter(e => e.date >= thisW.start), stores: slipEntries.filter(e => e.date >= thisW.start), pastWed: false },
           ].filter(g => g.items.length > 0)
           if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
           return (
             <div className="flex flex-col gap-0.5">
-              {groups.map(({ label, items, pastWed }) => {
+              {groups.map(({ label, items, stores, pastWed }) => {
                 const total     = items.reduce((s, e) => s + e.amount, 0)
                 const allPaid   = items.every(e => e.payment_status === 'paid')
-                const suspended = !allPaid && pastWed
+                const noSlips   = stores.length === 0
+                const suspended = !allPaid && noSlips && pastWed
                 const color     = allPaid ? 'text-green-600' : 'text-red-500'
                 return (
                   <div key={label} className={`text-[11px] font-mono font-semibold ${color} leading-tight flex items-center gap-1`}>
@@ -644,6 +646,7 @@ export default function BranchesPage() {
 
   // Finance order entries by branch
   const [orderEntriesByBranch, setOrderEntriesByBranch] = useState<Record<number, FinanceEntry[]>>({})
+  const [slipEntriesByBranch,  setSlipEntriesByBranch]  = useState<Record<number, FinanceEntry[]>>({})
 
   // Unpaid orders by withdrawal type
   const [withdrawalTypes,  setWithdrawalTypes]  = useState<WithdrawalType[]>([])
@@ -694,10 +697,15 @@ export default function BranchesPage() {
 
   const loadFinanceOrders = useCallback(async () => {
     const r = await fetch('/api/finance')
-    const data: { id: number; order_entries: FinanceEntry[] }[] = await r.json()
-    const map: Record<number, FinanceEntry[]> = {}
-    for (const b of data) map[b.id] = b.order_entries ?? []
-    setOrderEntriesByBranch(map)
+    const data: { id: number; order_entries: FinanceEntry[]; pay: FinanceEntry[]; store: FinanceEntry[] }[] = await r.json()
+    const orderMap: Record<number, FinanceEntry[]> = {}
+    const slipMap:  Record<number, FinanceEntry[]> = {}
+    for (const b of data) {
+      orderMap[b.id] = b.order_entries ?? []
+      slipMap[b.id]  = [...(b.pay ?? []), ...(b.store ?? [])]
+    }
+    setOrderEntriesByBranch(orderMap)
+    setSlipEntriesByBranch(slipMap)
   }, [])
 
   useEffect(() => { loadBranches() }, [loadBranches])
@@ -987,6 +995,7 @@ export default function BranchesPage() {
                         withdrawalTypes={withdrawalTypes}
                         unpaidOrders={unpaidByBranch[b.id] ?? {}}
                         orderEntries={orderEntriesByBranch[b.id] ?? []}
+                        slipEntries={slipEntriesByBranch[b.id] ?? []}
                         onMapSave={handleMapSave} />
                     ))}
                   </>

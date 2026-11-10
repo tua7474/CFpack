@@ -97,9 +97,10 @@ export default function BranchFoyStockPage() {
 
   const [items,    setItems]    = useState<FoyItem[]>([])
   const [branches, setBranches] = useState<BSBranch[]>([])
-  const [stockMap, setStockMap] = useState<Record<string, number>>({})
-  const [loading,  setLoading]  = useState(true)
-  const [session,  setSession]  = useState<SessionInfo | null>(null)
+  const [stockMap,    setStockMap]    = useState<Record<string, number>>({})
+  const [lastUpdated, setLastUpdated] = useState<Record<number, string>>({})
+  const [loading,     setLoading]     = useState(true)
+  const [session,     setSession]     = useState<SessionInfo | null>(null)
 
   useEffect(() => {
     try {
@@ -127,6 +128,7 @@ export default function BranchFoyStockPage() {
     const map: Record<string, number> = {}
     for (const s of data.stock) map[`${s.branch_id}_${s.paper_stock_id}`] = Number(s.quantity)
     setStockMap(map)
+    setLastUpdated(data.last_updated ?? {})
     setLoading(false)
   }, [])
 
@@ -177,6 +179,15 @@ export default function BranchFoyStockPage() {
         <div>
           <h1 className="text-xl font-bold">CF ระบบจัดการข้อมูล</h1>
           {session && <p className="text-orange-200 text-xs mt-0.5">เข้าสู่ระบบ: {session.branch_name} · {session.phone}</p>}
+          {Object.keys(lastUpdated).length > 0 && (() => {
+            const latest = Object.values(lastUpdated).sort().at(-1)!
+            const d = new Date(latest)
+            return (
+              <p className="text-white/60 text-xs mt-0.5">
+                อัปเดตล่าสุด: {d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' })} {d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}
+              </p>
+            )
+          })()}
         </div>
         {session && (
           <button onClick={handleLogout}
