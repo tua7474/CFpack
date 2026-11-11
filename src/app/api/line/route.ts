@@ -385,25 +385,55 @@ function getISOWeekInfo(): { year: number; week: number; dayOfWeek: number } {
 // = date_trunc('week', now+1day) - 1day  (shift Sun→Mon ก่อน trunc แล้วลบกลับ)
 const SUN_WEEK_START_SQL = `(date_trunc('week', NOW() AT TIME ZONE 'Asia/Bangkok' + INTERVAL '1 day') - INTERVAL '1 day')`
 
-// บล็อคเมื่อ: มียอดค้างชำระของสัปดาห์ที่แล้ว (อา.–ส.) AND วันนี้ถึงพุธ–เสาร์แล้ว
-// อา. จ. อ. = ไม่บล็อค (อา. = เริ่มสัปดาห์ใหม่)
-// บิลที่พักอยู่ (is_on_hold=true) ไม่นับ
-// billing_start_date ใช้แทน created_at สำหรับบิลที่เคยพักแล้วกด "ส่งของแล้ว"
+// บล็อคเมื่อ: ตรงกับหน้าการเงินทุกประการ
+// ตรวจแยกทีละสัปดาห์ (2wk ago / last week) — ระงับเมื่อ: มีค้างชำระ AND ไม่มีสลิปยืนยัน AND pastWed
+// บิลพัก (is_on_hold=true) ไม่นับ | billing_start_date ใช้แทน created_at หลัง resume
+// สลิป vat/fee ไม่นับ (เหมือน finance page ที่ใช้เฉพาะ pay+store)
 async function checkBlockedFromDB(branchId: number): Promise<boolean> {
   const { dayOfWeek } = getISOWeekInfo()
   // ISO dow: จ.=1 อ.=2 พ.=3 พฤ.=4 ศ.=5 ส.=6 อา.=7
   // บล็อคเฉพาะ พ.(3)–ส.(6); อา.(7)=เริ่มสัปดาห์ใหม่ ไม่บล็อค
   if (dayOfWeek < 3 || dayOfWeek === 7) return false
+  const SUN = SUN_WEEK_START_SQL
   const { rows } = await pool.query(`
-    SELECT EXISTS (
-      SELECT 1 FROM booking_orders
-      WHERE branch_id = $1
-        AND payment_status != 'paid'
-        AND status != 'cancelled'
-        AND is_on_hold = false
-        AND COALESCE(billing_start_date,
-              (created_at AT TIME ZONE 'Asia/Bangkok')::date
-            ) < (${SUN_WEEK_START_SQL})::date
+    SELECT (
+      -- สัปดาห์ที่แล้ว: มีค้างชำระ AND ไม่มีสลิปยืนยัน
+      (
+        EXISTS (
+          SELECT 1 FROM booking_orders
+          WHERE branch_id = $1
+            AND payment_status != 'paid' AND status != 'cancelled' AND is_on_hold = false
+            AND COALESCE(billing_start_date, (created_at AT TIME ZONE 'Asia/Bangkok')::date)
+                >= (${SUN})::date - INTERVAL '7 days'
+            AND COALESCE(billing_start_date, (created_at AT TIME ZONE 'Asia/Bangkok')::date)
+                < (${SUN})::date
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM slips
+          WHERE branch_id = $1 AND status = 'confirmed' AND category NOT IN ('vat','fee')
+            AND slip_date >= (${SUN})::date - INTERVAL '7 days'
+            AND slip_date <  (${SUN})::date
+        )
+      )
+      OR
+      -- 2 สัปดาห์ก่อน: มีค้างชำระ AND ไม่มีสลิปยืนยัน
+      (
+        EXISTS (
+          SELECT 1 FROM booking_orders
+          WHERE branch_id = $1
+            AND payment_status != 'paid' AND status != 'cancelled' AND is_on_hold = false
+            AND COALESCE(billing_start_date, (created_at AT TIME ZONE 'Asia/Bangkok')::date)
+                >= (${SUN})::date - INTERVAL '14 days'
+            AND COALESCE(billing_start_date, (created_at AT TIME ZONE 'Asia/Bangkok')::date)
+                < (${SUN})::date - INTERVAL '7 days'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM slips
+          WHERE branch_id = $1 AND status = 'confirmed' AND category NOT IN ('vat','fee')
+            AND slip_date >= (${SUN})::date - INTERVAL '14 days'
+            AND slip_date <  (${SUN})::date - INTERVAL '7 days'
+        )
+      )
     ) AS blocked
   `, [branchId])
   return rows[0]?.blocked === true
