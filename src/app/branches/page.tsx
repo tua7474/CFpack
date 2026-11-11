@@ -125,22 +125,17 @@ function fmtDateShort(iso: string | null) {
 
 function computeWeekBounds(weeksAgo: number) {
   const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
-  const day = bkk.getDay()
-  const mon = new Date(bkk)
-  mon.setDate(bkk.getDate() - (day === 0 ? 6 : day - 1) - weeksAgo * 7)
-  mon.setHours(0, 0, 0, 0)
-  const sun = new Date(mon)
-  sun.setDate(mon.getDate() + 6)
-  const yr = mon.getFullYear()
-  const jan1 = new Date(yr, 0, 1)
-  const jan1Day = jan1.getDay()
-  const jan1Mon = new Date(jan1)
-  jan1Mon.setDate(jan1.getDate() - (jan1Day === 0 ? 6 : jan1Day - 1))
-  const weekNum = Math.floor((mon.getTime() - jan1Mon.getTime()) / (7 * 864e5)) + 1
+  const day = bkk.getDay()  // 0=อาทิตย์ … 6=เสาร์
+  // สัปดาห์เริ่มอาทิตย์ (เหมือน finance page)
+  const sun = new Date(bkk)
+  sun.setDate(bkk.getDate() - day - weeksAgo * 7)
+  sun.setHours(0, 0, 0, 0)
+  const sat = new Date(sun)
+  sat.setDate(sun.getDate() + 6)
   const pad = (n: number) => String(n).padStart(2, '0')
   const iso   = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
   const short = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}`
-  return { start: iso(mon), end: iso(sun), weekNum, year: yr, dateRange: `${short(mon)}–${short(sun)}` }
+  return { start: iso(sun), end: iso(sat), dateRange: `${short(sun)}–${short(sat)}` }
 }
 
 // ── Slip Confirm Modal ────────────────────────────────────────────────────────
@@ -366,21 +361,21 @@ function BranchRow({
           const lastW  = computeWeekBounds(1)
           const twoW   = computeWeekBounds(2)
           const bkk    = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
-          const isoDow = bkk.getDay() === 0 ? 7 : bkk.getDay()
+          const isoDow = bkk.getDay()  // 0=อาทิตย์ … 6=เสาร์ (ตรงกับ finance page)
           const fmt    = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
           const groups = [
-            { label: '2wk', items: orderEntries.filter(e => e.date >= twoW.start && e.date < lastW.start), stores: slipEntries.filter(e => e.date >= twoW.start && e.date < lastW.start), pastWed: true },
-            { label: 'last', items: orderEntries.filter(e => e.date >= lastW.start && e.date < thisW.start), stores: slipEntries.filter(e => e.date >= lastW.start && e.date < thisW.start), pastWed: isoDow >= 3 },
-            { label: 'this', items: orderEntries.filter(e => e.date >= thisW.start), stores: slipEntries.filter(e => e.date >= thisW.start), pastWed: false },
+            { label: '2wk', items: orderEntries.filter(e => e.date >= twoW.start && e.date < lastW.start), stores: slipEntries.filter(e => e.date >= twoW.start && e.date < lastW.start), pastSat: true },
+            { label: 'last', items: orderEntries.filter(e => e.date >= lastW.start && e.date < thisW.start), stores: slipEntries.filter(e => e.date >= lastW.start && e.date < thisW.start), pastSat: isoDow === 6 },
+            { label: 'this', items: orderEntries.filter(e => e.date >= thisW.start), stores: slipEntries.filter(e => e.date >= thisW.start), pastSat: false },
           ].filter(g => g.items.length > 0)
           if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
           return (
             <div className="flex flex-col gap-0.5">
-              {groups.map(({ label, items, stores, pastWed }) => {
+              {groups.map(({ label, items, stores, pastSat }) => {
                 const total     = items.reduce((s, e) => s + e.amount, 0)
                 const allPaid   = items.every(e => e.payment_status === 'paid')
                 const noSlips   = stores.length === 0
-                const suspended = !allPaid && noSlips && pastWed
+                const suspended = !allPaid && noSlips && pastSat
                 const color     = allPaid ? 'text-green-600' : 'text-red-500'
                 return (
                   <div key={label} className={`text-[11px] font-mono font-semibold ${color} leading-tight flex items-center gap-1`}>
