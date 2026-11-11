@@ -608,7 +608,6 @@ function Booking2Inner() {
         const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
         if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
       }
-      setVatMode('no-vat')
     } else if (hasBubble && !hasNonBubble && bubbleUnits <= 20 && bubbleUnits > 0) {
       // บับเบิลล้วน ≤ 20 units — reset ค่าที่ไม่อนุญาต (ข้ามถ้ารับเอง)
       if (!vehicleType.includes('รับเอง')) {
@@ -1032,17 +1031,37 @@ function Booking2Inner() {
   // Pre-scan: ตรวจว่าเป็นบับเบิลล้วนหรือไม่ (ใช้ก่อน totals loop)
   // โนแวตได้ เมื่อ bubble-only + isBBDirectMode
   let _bbAmt = 0, _hasBB = false, _hasNonBB = false
+  let _totalBubbleUnits = 0
+  const _bbPriceByGrams: Record<number, number> = {}   // incl-VAT price per roll
+  const _bbHasQtyByGrams: Record<number, boolean> = {} // มี qty > 0 ในออเดอร์
   for (const sec of sections) {
     for (const row of sec.rows) {
       if (row.type !== 'product') continue
       const _qty = pending[row.product.id] ?? 0
       if (BUBBLE_GROUPS_SET.has(row.product.group_name)) {
-        if (_qty > 0) { _hasBB = true; _bbAmt += _qty * (getProductPrice(row.product.price)) }
+        const _grams = parseFloat(row.product.product_name)
+        const _price = getProductPrice(row.product.price)
+        if (_qty > 0) {
+          _hasBB = true
+          _bbAmt += _qty * _price
+          _totalBubbleUnits += _qty * getBubbleUnits(row.product.product_name)
+        }
+        if ([32.5, 65, 130].includes(_grams) && !_bbPriceByGrams[_grams]) _bbPriceByGrams[_grams] = _price
+        if ([32.5, 65, 130].includes(_grams) && _qty > 0) _bbHasQtyByGrams[_grams] = true
       } else if (_qty > 0) _hasNonBB = true
     }
   }
   if (Object.values(foyPending).some(d => d.amount > 0)) _hasNonBB = true
   const canBubbleNoVat = _hasBB && !_hasNonBB && isBBDirectMode
+  const _isBubbleForcedMode = _hasBB && !_hasNonBB && _totalBubbleUnits > 20
+  const _isBubbleFullTruck  = _isBubbleForcedMode && isBBDirectMode && _totalBubbleUnits >= 112 && _totalBubbleUnits <= 128
+  // แถมฟรี 8 units: 65g×4 → 130g×2 → 32.5g×8 (incl-VAT)
+  let _freeDiscountInclVat = 0
+  if (_isBubbleFullTruck) {
+    if (_bbHasQtyByGrams[65])        _freeDiscountInclVat = 4 * (_bbPriceByGrams[65]  ?? 0)
+    else if (_bbHasQtyByGrams[130])  _freeDiscountInclVat = 2 * (_bbPriceByGrams[130] ?? 0)
+    else if (_bbHasQtyByGrams[32.5]) _freeDiscountInclVat = 8 * (_bbPriceByGrams[32.5] ?? 0)
+  }
 
   // Precompute print gray index for each subgroup (cycles through 0→1→2)
   const subgroupPrintGray = new Map<string, number>()
@@ -1137,13 +1156,14 @@ function Booking2Inner() {
   const fixedTotal = grayTotal + orangeTotal - switchableProductTotal - switchableBubbleTotal
   const couponVal        = parseFloat(couponAmount) || 0
   const appliedCouponVal = appliedCouponCol !== null ? couponVal : 0
-  // ซ้าย (โนแวต): excl-VAT as-is + incl-VAT ÷1.07 (ถอดแวต)
+  // ซ้าย (โนแวต): excl-VAT as-is + incl-VAT ÷1.07 (ถอดแวต) − ส่วนลดเต็มคัน
+  const _freeDiscountNoVat = Math.round(_freeDiscountInclVat / 1.07 * 100) / 100
   const noVatColTotal = vatMode === 'no-vat'
-    ? switchableExclVatTotal + Math.round(switchableBubbleTotal / 1.07 * 100) / 100
+    ? switchableExclVatTotal + Math.round(switchableBubbleTotal / 1.07 * 100) / 100 - _freeDiscountNoVat
     : 0
-  // ขวา (รวมแวต): fixed เสมอ + (excl-VAT ×1.07 + incl-VAT as-is) เมื่อ vat mode
+  // ขวา (รวมแวต): fixed เสมอ + (excl-VAT ×1.07 + incl-VAT as-is) เมื่อ vat mode − ส่วนลดเต็มคัน
   const vatColTotal = fixedTotal + (vatMode === 'vat'
-    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal
+    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal - _freeDiscountInclVat
     : 0)
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - appliedCouponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000 && !vehicleType.includes('รับเอง')
@@ -1218,9 +1238,9 @@ function Booking2Inner() {
         bubbleWarning = `⛔ บับเบิลเกิน (ลด ${over} ลูก 32.5)`
       }
     } else {
-      // บับเบิลล้วน full truck (120–128 units)
-      if (totalBubbleUnits < 120) {
-        const need = 120 - totalBubbleUnits
+      // บับเบิลล้วน full truck (112–128 units, ส่วนลด 8 units เมื่อครบ + โรงBB + BBส่งตรง/รับเอง)
+      if (totalBubbleUnits < 112) {
+        const need = 112 - totalBubbleUnits
         bubbleBlocking = true
         bubbleWarning = `⛔ เทียบเท่า 32.5x100 ขาด ${need} ลูก`
       } else if (!isBBDirectMode) {
@@ -1233,6 +1253,14 @@ function Booking2Inner() {
         bubbleWarning = `⛔ เทียบเท่า 32.5x100 เกิน ${over} ลูก`
       }
     }
+  }
+
+  // ป้ายแถมฟรีเต็มคัน
+  let bubbleBonusLabel: string | null = null
+  if (_isBubbleFullTruck) {
+    if (_bbHasQtyByGrams[65])        bubbleBonusLabel = `🎁 แถมฟรี 65g × 4 ลูก`
+    else if (_bbHasQtyByGrams[130])  bubbleBonusLabel = `🎁 แถมฟรี 130g × 2 ลูก`
+    else if (_bbHasQtyByGrams[32.5]) bubbleBonusLabel = `🎁 แถมฟรี 32.5g × 8 ลูก`
   }
 
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -1533,6 +1561,7 @@ function Booking2Inner() {
                 {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รูปแบบการจัดส่ง</span>}
                 {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+                {bubbleBonusLabel && <span className="text-green-300 text-sm font-semibold">{bubbleBonusLabel}</span>}
               </>
             )}
 
@@ -1556,6 +1585,7 @@ function Booking2Inner() {
                 {vehicleType === '' && <span className="text-red-400 text-xs font-semibold">⚠ กรุณาเลือก รูปแบบการจัดส่ง</span>}
                 {cannotBook25k && <span className="text-red-400 text-sm font-semibold">⛔ ยอดไม่ถึง 25,000 — เลือกเต็มคันไม่ได้</span>}
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+                {bubbleBonusLabel && <span className="text-green-300 text-sm font-semibold">{bubbleBonusLabel}</span>}
                 <button
                   onClick={handleCancelOrder}
                   disabled={saving}
@@ -2499,8 +2529,8 @@ function Booking2Inner() {
               />
 
               {/* Feedback */}
-              <div className={`text-center mt-2 text-sm font-bold h-5 ${overStock ? 'text-red-600' : exact ? 'text-orange-600' : popupVal ? 'text-green-700' : 'text-transparent'}`}>
-                {popupVal
+              <div className={`text-center mt-2 text-sm font-bold h-5 ${!sourceType.includes('โรงบับเบิล') && overStock ? 'text-red-600' : exact && !sourceType.includes('โรงบับเบิล') ? 'text-orange-600' : popupVal && !sourceType.includes('โรงบับเบิล') ? 'text-green-700' : 'text-transparent'}`}>
+                {popupVal && !sourceType.includes('โรงบับเบิล')
                   ? overStock  ? `${entered} / ${stock} ⚠ เกินสต็อค`
                     : exact    ? `${entered} / ${stock} · หมดพอดี`
                                : `${entered} / ${stock} · เหลือ ${remaining}`
