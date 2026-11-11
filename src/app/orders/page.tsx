@@ -431,9 +431,15 @@ export default function OrdersPage() {
       return base
     }
 
-    // Switchable subgroup names → NV form; all others → V form
-    // หมายเหตุ: ซองPPกันกระแทก = แถบสีเทา บังคับแวต → ต้องอยู่ฟอร์ม V
+    // แบ่งสินค้าไป NV / V form ตาม nv_total + v_total ของ order
+    // - มีแต่ nv_total → ทุกชิ้นไป NV form
+    // - มีแต่ v_total  → ทุกชิ้นไป V form
+    // - มีทั้งคู่      → แบ่งด้วย SWITCHABLE_SG (ซองใสปะหน้า ฯลฯ → NV, อื่นๆ → V)
     const SWITCHABLE_SG = new Set(['ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก'])
+    const orderNvTotal  = parseFloat(order.nv_total ?? '0') || 0
+    const orderVTotal   = parseFloat(order.v_total  ?? '0') || 0
+    const nvOnly = orderNvTotal > 0 && orderVTotal === 0
+    const vOnly  = orderVTotal  > 0 && orderNvTotal === 0
 
     const productMap = new Map(products.map(p => [p.id, p]))
 
@@ -447,7 +453,9 @@ export default function OrdersPage() {
       if (!p) continue
       const price = adjustPrice(parseFloat(p.price ?? '0') || 0)
       const key = p.subgroup_name || p.section_name
-      const targetMap = SWITCHABLE_SG.has(p.subgroup_name) ? nvSectionMap : vSectionMap
+      const targetMap = nvOnly ? nvSectionMap
+                      : vOnly  ? vSectionMap
+                      : SWITCHABLE_SG.has(p.subgroup_name) ? nvSectionMap : vSectionMap
       if (!targetMap.has(key)) {
         targetMap.set(key, { order: p.section_order, subOrder: p.subgroup_order, items: [] })
       }
