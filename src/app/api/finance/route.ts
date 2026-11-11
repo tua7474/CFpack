@@ -42,6 +42,7 @@ export interface BranchFinanceRow {
   fee:   SlipEntry[]
   order_entries: SlipEntry[]
   order_total: number; order_paid: number; order_pending: number
+  held_count: number
 }
 
 export async function GET(req: NextRequest) {
@@ -83,9 +84,10 @@ export async function GET(req: NextRequest) {
   `)
 
   // Individual order entries per branch (for weekly breakdown — all non-cancelled, non-held, no date filter)
+  // ใช้ COALESCE(billing_start_date, created_at) เพื่อให้บิลที่เคยพักแล้ว resume จัดกลุ่มตามวันที่ส่งของ ไม่ใช่วันที่สร้าง
   const { rows: orderEntryRows } = await pool.query(`
     SELECT o.branch_id,
-           (o.created_at AT TIME ZONE 'Asia/Bangkok')::date::text AS date,
+           COALESCE(o.billing_start_date, (o.created_at AT TIME ZONE 'Asia/Bangkok')::date)::text AS date,
            o.total_amount::float AS amount,
            o.order_no,
            o.payment_status
@@ -113,6 +115,16 @@ export async function GET(req: NextRequest) {
 
   const orderMap: Record<number, { order_total: number; order_paid: number; order_pending: number }> = {}
   for (const r of orderRows) orderMap[r.branch_id] = r
+
+  // Held order count per branch
+  const { rows: heldRows } = await pool.query(`
+    SELECT branch_id, COUNT(*)::int AS held_count
+    FROM booking_orders
+    WHERE branch_id IS NOT NULL AND is_on_hold = true AND status != 'cancelled'
+    GROUP BY branch_id
+  `)
+  const heldMap: Record<number, number> = {}
+  for (const r of heldRows) heldMap[r.branch_id] = r.held_count
 
   // Group slips per branch by type
   const slipMap: Record<number, { pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[] }> = {}
@@ -142,6 +154,7 @@ export async function GET(req: NextRequest) {
     order_total:   orderMap[b.id]?.order_total   ?? 0,
     order_paid:    orderMap[b.id]?.order_paid     ?? 0,
     order_pending: orderMap[b.id]?.order_pending  ?? 0,
+    held_count:    heldMap[b.id] ?? 0,
   }))
 
   return NextResponse.json(result)

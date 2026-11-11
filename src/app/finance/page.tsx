@@ -54,6 +54,7 @@ interface BranchFinance {
   pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[]
   order_entries: SlipEntry[]
   order_total: number; order_paid: number; order_pending: number
+  held_count: number
 }
 
 type Period = 'week' | 'month' | 'all'
@@ -178,29 +179,29 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, s
       label: '2 สัปดาห์ก่อน',
       items:  entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
       stores: (storeEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
-      pastWed: true,          // ผ่านวันพุธมานานแล้ว
+      pastSat: true,          // เกิน 7 วันแล้ว — ระงับทุกวัน
     },
     {
       label: 'สัปดาห์ที่แล้ว',
       items:  entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
       stores: (storeEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
-      pastWed: isoDow >= 3,   // วันนี้ถึงวันพุธหรือเลยแล้ว
+      pastSat: isoDow === 6,  // ครบ 7 วัน = วันเสาร์ของสัปดาห์ถัดไป
     },
     {
       label: 'สัปดาห์นี้',
       items:  entries.filter(e => e.date >= thisMondayStr),
       stores: (storeEntries ?? []).filter(e => e.date >= thisMondayStr),
-      pastWed: false,         // สัปดาห์ปัจจุบัน ยังไม่นับ
+      pastSat: false,         // สัปดาห์ปัจจุบัน ยังไม่นับ
     },
   ].filter(g => g.items.length > 0)
   if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   return (
     <div className="flex flex-col gap-0.5">
-      {groups.map(({ label, items, stores, pastWed }) => {
+      {groups.map(({ label, items, stores, pastSat }) => {
         const orderTotal = items.reduce((s, e) => s + e.amount, 0)
         const allPaid    = items.length > 0 && items.every(e => e.payment_status === 'paid')
         const noSlips    = stores.length === 0
-        const suspended  = storeEntries !== undefined && !allPaid && noSlips && pastWed
+        const suspended  = storeEntries !== undefined && !allPaid && noSlips && pastSat
         const dynColor   = storeEntries !== undefined
           ? (allPaid ? 'text-green-600' : 'text-red-500')
           : amtColor
@@ -604,7 +605,16 @@ export default function FinancePage() {
                         const bPending = Math.max(0, b.order_total - bPaid)
                         return (
                         <tr key={b.id} className={`border-b border-gray-100 hover:brightness-95 transition-all align-top ${ROW_BG[color]}`}>
-                          <td className="px-3 py-2 border-r border-gray-200 font-medium whitespace-nowrap">{b.name}</td>
+                          <td className="px-3 py-2 border-r border-gray-200 font-medium whitespace-nowrap">
+                            <div className="flex flex-col gap-0.5">
+                              <span>{b.name}</span>
+                              {b.held_count > 0 && (
+                                <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1 py-0.5 rounded w-fit whitespace-nowrap">
+                                  ⏸ พักบิล {b.held_count} รายการ
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <GroupedSlipCell entries={b.pay}   amtColor="text-green-700" title={`${b.name} — ยอดตรงใบจอง`}   onDetail={setModal} compact />
                           </td>

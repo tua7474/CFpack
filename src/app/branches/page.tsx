@@ -316,7 +316,7 @@ function MapCell({ branchId, currentUrl, onSave }: {
 
 function BranchRow({
   branch, session, onManage, colorGroup,
-  withdrawalTypes, unpaidOrders, orderEntries, slipEntries, onMapSave,
+  withdrawalTypes, unpaidOrders, orderEntries, slipEntries, heldCount, onMapSave,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -326,6 +326,7 @@ function BranchRow({
   unpaidOrders: Record<number, UnpaidOrder[]>
   orderEntries: FinanceEntry[]
   slipEntries: FinanceEntry[]
+  heldCount: number
   onMapSave: (branchId: number, url: string) => void
 }) {
   return (
@@ -347,6 +348,13 @@ function BranchRow({
             {branch.phones.map(p => (
               <div key={p.id} className="text-[10px] text-gray-400">{p.phone}</div>
             ))}
+          </div>
+        )}
+        {heldCount > 0 && (
+          <div className="mt-0.5">
+            <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1 py-0.5 rounded whitespace-nowrap">
+              ⏸ พักบิล {heldCount} รายการ
+            </span>
           </div>
         )}
       </td>
@@ -647,6 +655,7 @@ export default function BranchesPage() {
   // Finance order entries by branch
   const [orderEntriesByBranch, setOrderEntriesByBranch] = useState<Record<number, FinanceEntry[]>>({})
   const [slipEntriesByBranch,  setSlipEntriesByBranch]  = useState<Record<number, FinanceEntry[]>>({})
+  const [heldCountByBranch,    setHeldCountByBranch]    = useState<Record<number, number>>({})
 
   // Unpaid orders by withdrawal type
   const [withdrawalTypes,  setWithdrawalTypes]  = useState<WithdrawalType[]>([])
@@ -697,15 +706,18 @@ export default function BranchesPage() {
 
   const loadFinanceOrders = useCallback(async () => {
     const r = await fetch('/api/finance')
-    const data: { id: number; order_entries: FinanceEntry[]; pay: FinanceEntry[]; store: FinanceEntry[] }[] = await r.json()
+    const data: { id: number; order_entries: FinanceEntry[]; pay: FinanceEntry[]; store: FinanceEntry[]; held_count: number }[] = await r.json()
     const orderMap: Record<number, FinanceEntry[]> = {}
     const slipMap:  Record<number, FinanceEntry[]> = {}
+    const heldMap:  Record<number, number>         = {}
     for (const b of data) {
       orderMap[b.id] = b.order_entries ?? []
       slipMap[b.id]  = [...(b.pay ?? []), ...(b.store ?? [])]
+      heldMap[b.id]  = b.held_count ?? 0
     }
     setOrderEntriesByBranch(orderMap)
     setSlipEntriesByBranch(slipMap)
+    setHeldCountByBranch(heldMap)
   }, [])
 
   useEffect(() => { loadBranches() }, [loadBranches])
@@ -996,6 +1008,7 @@ export default function BranchesPage() {
                         unpaidOrders={unpaidByBranch[b.id] ?? {}}
                         orderEntries={orderEntriesByBranch[b.id] ?? []}
                         slipEntries={slipEntriesByBranch[b.id] ?? []}
+                        heldCount={heldCountByBranch[b.id] ?? 0}
                         onMapSave={handleMapSave} />
                     ))}
                   </>
