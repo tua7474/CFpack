@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     ORDER BY s.branch_id, s.slip_date ASC, s.created_at ASC
   `)
 
-  // Individual order entries per branch (for weekly breakdown — all non-cancelled, no date filter)
+  // Individual order entries per branch (for weekly breakdown — all non-cancelled, non-held, no date filter)
   const { rows: orderEntryRows } = await pool.query(`
     SELECT o.branch_id,
            (o.created_at AT TIME ZONE 'Asia/Bangkok')::date::text AS date,
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
            o.order_no,
            o.payment_status
     FROM booking_orders o
-    WHERE o.branch_id IS NOT NULL AND o.status != 'cancelled'
+    WHERE o.branch_id IS NOT NULL AND o.status != 'cancelled' AND o.is_on_hold = false
     ORDER BY o.branch_id, o.created_at ASC
   `)
   const orderEntryMap: Record<number, SlipEntry[]> = {}
