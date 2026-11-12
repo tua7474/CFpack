@@ -68,14 +68,10 @@ const SUBGROUP_BG: Record<SubgroupColor, string> = {
   maroon: 'bg-[#9b9484] text-white border-gray-500',
 }
 
-// subgroups that can toggle between no-VAT (orange) and VAT (gray) — ไม่รวมบับเบิล
+// subgroups that can toggle between no-VAT (orange) and VAT (gray)
+// บับเบิล: ราคาในระบบเป็น excl-VAT แล้ว → โนแวต = ใช้ราคาเดิม, รวมแวต = ×1.07
 const SWITCHABLE_SUBGROUP_NAMES = new Set([
   'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
-])
-// bubble subgroups: ราคาในระบบ รวมแวตแล้ว (incl-VAT)
-// สลับได้เฉพาะเมื่อบับเบิลล้วน ≥ 15k (โรงBBส่งตรง) เท่านั้น
-// → โนแวต = ÷1.07 | รวมแวต = ใช้ราคาเดิม
-const BUBBLE_SWITCHABLE_NAMES = new Set([
   'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
 ])
 
@@ -1029,10 +1025,10 @@ function Booking2Inner() {
   })()
 
   // Pre-scan: ตรวจว่าเป็นบับเบิลล้วนหรือไม่ (ใช้ก่อน totals loop)
-  // โนแวตได้ เมื่อ bubble-only + isBBDirectMode
+  // Pre-scan: นับ bubble units + คำนวณส่วนลดเต็มคัน
   let _bbAmt = 0, _hasBB = false, _hasNonBB = false
   let _totalBubbleUnits = 0
-  const _bbPriceByGrams: Record<number, number> = {}   // incl-VAT price per roll
+  const _bbPriceByGrams: Record<number, number> = {}   // excl-VAT price per roll
   const _bbHasQtyByGrams: Record<number, boolean> = {} // มี qty > 0 ในออเดอร์
   for (const sec of sections) {
     for (const row of sec.rows) {
@@ -1055,12 +1051,12 @@ function Booking2Inner() {
   const canBubbleNoVat = _hasBB && !_hasNonBB && isBBDirectMode
   const _isBubbleForcedMode = _hasBB && !_hasNonBB && _totalBubbleUnits > 20
   const _isBubbleFullTruck  = _isBubbleForcedMode && isBBDirectMode && _totalBubbleUnits >= 112 && _totalBubbleUnits <= 128
-  // แถมฟรี 8 units: 65g×4 → 130g×2 → 32.5g×8 (incl-VAT)
-  let _freeDiscountInclVat = 0
+  // แถมฟรี 8 units: 65g×4 → 130g×2 → 32.5g×8 (excl-VAT price)
+  let _freeDiscountExclVat = 0
   if (_isBubbleFullTruck) {
-    if (_bbHasQtyByGrams[65])        _freeDiscountInclVat = 4 * (_bbPriceByGrams[65]  ?? 0)
-    else if (_bbHasQtyByGrams[130])  _freeDiscountInclVat = 2 * (_bbPriceByGrams[130] ?? 0)
-    else if (_bbHasQtyByGrams[32.5]) _freeDiscountInclVat = 8 * (_bbPriceByGrams[32.5] ?? 0)
+    if (_bbHasQtyByGrams[65])        _freeDiscountExclVat = 4 * (_bbPriceByGrams[65]  ?? 0)
+    else if (_bbHasQtyByGrams[130])  _freeDiscountExclVat = 2 * (_bbPriceByGrams[130] ?? 0)
+    else if (_bbHasQtyByGrams[32.5]) _freeDiscountExclVat = 8 * (_bbPriceByGrams[32.5] ?? 0)
   }
 
   // Precompute print gray index for each subgroup (cycles through 0→1→2)
@@ -1113,8 +1109,7 @@ function Booking2Inner() {
   })
 
   let grayTotal = 0, orangeTotal = 0
-  let switchableProductTotal = 0   // excl-VAT switchable (ซองใสปะหน้า ฯลฯ)
-  let switchableBubbleTotal  = 0   // incl-VAT switchable (บับเบิล ฯลฯ) — ต้อง ÷1.07 เมื่อโนแวต
+  let switchableProductTotal = 0   // excl-VAT switchable (ซองใสปะหน้า, บับเบิล ฯลฯ)
   const sectionTotals  = new Map<number, number>()
   const subgroupTotals = new Map<string, number>()   // key = `${sec.order}-${subgroup.name}`
   for (const sec of sections) {
@@ -1139,8 +1134,7 @@ function Booking2Inner() {
         if (sec.is_vat_included) grayTotal += val
         else orangeTotal += val
         secTotal += val
-        if (BUBBLE_SWITCHABLE_NAMES.has(currentSubgroup ?? '') && canBubbleNoVat) switchableBubbleTotal += val
-        else if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
+        if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
         if (currentSubgroup !== null) {
           const sgKey = `${sec.order}-${currentSubgroup}`
           subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + val)
@@ -1153,17 +1147,17 @@ function Booking2Inner() {
   // excl-VAT switchable + กระดาษฝอย
   const switchableExclVatTotal = switchableProductTotal + foyTotal
   // fixed = ส่วนที่ไม่สลับได้ (gray + non-switchable orange)
-  const fixedTotal = grayTotal + orangeTotal - switchableProductTotal - switchableBubbleTotal
+  const fixedTotal = grayTotal + orangeTotal - switchableProductTotal
   const couponVal        = parseFloat(couponAmount) || 0
   const appliedCouponVal = appliedCouponCol !== null ? couponVal : 0
-  // ซ้าย (โนแวต): excl-VAT as-is + incl-VAT ÷1.07 (ถอดแวต) − ส่วนลดเต็มคัน
-  const _freeDiscountNoVat = Math.round(_freeDiscountInclVat / 1.07 * 100) / 100
+  // ซ้าย (โนแวต): excl-VAT as-is − ส่วนลดเต็มคัน (excl-VAT)
   const noVatColTotal = vatMode === 'no-vat'
-    ? switchableExclVatTotal + Math.round(switchableBubbleTotal / 1.07 * 100) / 100 - _freeDiscountNoVat
+    ? switchableExclVatTotal - _freeDiscountExclVat
     : 0
-  // ขวา (รวมแวต): fixed เสมอ + (excl-VAT ×1.07 + incl-VAT as-is) เมื่อ vat mode − ส่วนลดเต็มคัน
+  // ขวา (รวมแวต): fixed + excl-VAT ×1.07 − ส่วนลดเต็มคัน (×1.07)
+  const _freeDiscountInclVat = Math.round(_freeDiscountExclVat * 1.07 * 100) / 100
   const vatColTotal = fixedTotal + (vatMode === 'vat'
-    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal - _freeDiscountInclVat
+    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 - _freeDiscountInclVat
     : 0)
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - appliedCouponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000 && !vehicleType.includes('รับเอง')
@@ -1944,7 +1938,6 @@ function Booking2Inner() {
                             const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             const isSwitchableSg = SWITCHABLE_SUBGROUP_NAMES.has(cell.name)
-                              || (canBubbleNoVat && BUBBLE_SWITCHABLE_NAMES.has(cell.name))
                             const sgBgClass = isSwitchableSg && vatMode === 'no-vat'
                               ? 'bg-orange-500 text-white border-orange-600'
                               : SUBGROUP_BG[cell.color]

@@ -435,7 +435,8 @@ export default function OrdersPage() {
     // - มีแต่ nv_total → ทุกชิ้นไป NV form
     // - มีแต่ v_total  → ทุกชิ้นไป V form
     // - มีทั้งคู่      → แบ่งด้วย SWITCHABLE_SG (ซองใสปะหน้า ฯลฯ → NV, อื่นๆ → V)
-    const SWITCHABLE_SG = new Set(['ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก'])
+    const SWITCHABLE_SG = new Set(['ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
+      'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
     const orderNvTotal  = parseFloat(order.nv_total ?? '0') || 0
     const orderVTotal   = parseFloat(order.v_total  ?? '0') || 0
     const nvOnly = orderNvTotal > 0 && orderVTotal === 0
