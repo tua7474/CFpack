@@ -500,14 +500,10 @@ function POInner() {
     if (foyAmt > 0) hasNonBubble = true
 
     if (hasBubble && !hasNonBubble && bubbleUnits > 120) {
-      // บับเบิลล้วน > 120 units → auto-force โรงBB + BBส่งตรง
+      // บับเบิลล้วน > 120 units → auto-force โรงBB
       const bbWT = withdrawalTypes.find(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
       if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
       if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
-      if (!vehicleType.includes('รับเอง')) {
-        const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
-        if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
-      }
     } else if (hasBubble && !hasNonBubble && bubbleUnits <= 120 && bubbleUnits > 0) {
       // บับเบิลล้วน ≤ 120 units — reset ค่าที่ไม่อนุญาต
       const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
@@ -846,13 +842,12 @@ function POInner() {
 
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
-  // เบิกของ โรงBB + จัดส่ง BBส่งตรง หรือ รับเอง
+  // เบิกของ โรงBB เท่านั้น (PO ไม่บังคับจัดส่ง)
   const isBBDirectMode = (() => {
     if (!withdrawalTypeId) return false
     const wt = withdrawalTypes.find(w => w.id === withdrawalTypeId)
     if (!wt) return false
-    return (wt.name.includes('BB') || wt.name.includes('โรงบับเบิล')) &&
-           (vehicleType.includes('BBส่งตรง') || vehicleType.includes('รับเอง'))
+    return wt.name.includes('BB') || wt.name.includes('โรงบับเบิล')
   })()
 
   // Pre-scan: นับ bubble units + คำนวณส่วนลดเต็มคัน
