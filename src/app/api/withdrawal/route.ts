@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 
-const SEED = ['เบิกของโกดัง', 'เบิกของสาย4', 'เบิกสาขา', 'เบิกโรงกล่อง', 'เบิกโรงบับเบิล', 'เบิกโรงเทป']
+const SEED = ['เบิกของโกดัง', 'เบิกของสาย4', 'เบิกสาขา', 'โรงกล่อง', 'โรงBB', 'เบิกโรงเทป', 'โรงกระบอก']
 
 async function ensureTable() {
   await pool.query(`
@@ -15,6 +15,15 @@ async function ensureTable() {
   if (rows[0].cnt === 0) {
     for (const name of SEED) {
       await pool.query(`INSERT INTO withdrawal_types (name) VALUES ($1)`, [name])
+    }
+  } else {
+    // migrate old names → new names
+    await pool.query(`UPDATE withdrawal_types SET name='โรงกล่อง'  WHERE name='เบิกโรงกล่อง'`)
+    await pool.query(`UPDATE withdrawal_types SET name='โรงBB'     WHERE name='เบิกโรงบับเบิล'`)
+    // add โรงกระบอก if not exists
+    const { rows: existing } = await pool.query(`SELECT id FROM withdrawal_types WHERE name='โรงกระบอก'`)
+    if (existing.length === 0) {
+      await pool.query(`INSERT INTO withdrawal_types (name) VALUES ('โรงกระบอก')`)
     }
   }
 }

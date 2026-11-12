@@ -501,7 +501,7 @@ function POInner() {
 
     if (hasBubble && !hasNonBubble && bubbleUnits > 120) {
       // บับเบิลล้วน > 120 units → auto-force โรงBB
-      const bbWT = withdrawalTypes.find(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
+      const bbWT = withdrawalTypes.find(w => w.name.includes('BB'))
       if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
       if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
     } else if (hasBubble && !hasNonBubble && bubbleUnits <= 120 && bubbleUnits > 0) {
@@ -847,7 +847,7 @@ function POInner() {
     if (!withdrawalTypeId) return false
     const wt = withdrawalTypes.find(w => w.id === withdrawalTypeId)
     if (!wt) return false
-    return wt.name.includes('BB') || wt.name.includes('โรงบับเบิล')
+    return wt.name.includes('BB')
   })()
 
   // Pre-scan: นับ bubble units + คำนวณส่วนลดเต็มคัน

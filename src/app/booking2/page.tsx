@@ -597,7 +597,7 @@ function Booking2Inner() {
 
     if (hasBubble && !hasNonBubble && bubbleUnits > 20) {
       // บับเบิลล้วน > 20 units → auto-force โรงBB + BBส่งตรง/รับเอง + โนแวต
-      const bbWT = withdrawalTypes.find(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
+      const bbWT = withdrawalTypes.find(w => w.name.includes('BB'))
       if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
       if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
       if (!vehicleType.includes('รับเอง')) {
@@ -1020,7 +1020,7 @@ function Booking2Inner() {
     if (!withdrawalTypeId) return false
     const wt = withdrawalTypes.find(w => w.id === withdrawalTypeId)
     if (!wt) return false
-    return (wt.name.includes('BB') || wt.name.includes('โรงบับเบิล')) &&
+    return wt.name.includes('BB') &&
            (vehicleType.includes('BBส่งตรง') || vehicleType.includes('รับเอง'))
   })()
 
@@ -1209,7 +1209,7 @@ function Booking2Inner() {
   const allowedWithdrawalTypes = isPickup
     ? withdrawalTypes
     : isBubbleForcedMode
-      ? withdrawalTypes.filter(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
+      ? withdrawalTypes.filter(w => w.name.includes('BB'))
       : isBubbleOnlyLow
         ? withdrawalTypes.filter(w => !w.name.includes('โรงกล่อง'))
         : isBoxOnlyLow
@@ -1853,7 +1853,7 @@ function Booking2Inner() {
                                       // map ชื่อ → sourceType เพื่อ vehicleType logic
                                       const name = withdrawalTypes.find(w => w.id === id)?.name ?? ''
                                       const src = name.includes('โรงกล่อง') ? 'โรงกล่อง'
-                                               : (name.includes('โรงบับเบิล') || name.includes('BB')) ? 'โรงบับเบิล'
+                                               : name.includes('BB') ? 'โรงบับเบิล'
                                                : name.includes('โกดัง') ? 'โกดัง' : 'หน้าร้าน'
                                       setSourceType(src)
                                       if ((src === 'โรงกล่อง' || src === 'โรงบับเบิล') && vehicleType !== 'รับเอง' && vehicleType !== 'รถโรงงาน') setVehicleType('')
