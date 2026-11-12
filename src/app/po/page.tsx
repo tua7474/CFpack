@@ -68,14 +68,10 @@ const SUBGROUP_BG: Record<SubgroupColor, string> = {
   maroon: 'bg-[#4e7a5e] text-white border-gray-500',
 }
 
-// subgroups that can toggle between no-VAT (orange) and VAT (gray) — ไม่รวมบับเบิล
+// subgroups that can toggle between no-VAT (orange) and VAT (gray)
+// บับเบิล: ราคาในระบบเป็น excl-VAT แล้ว → โนแวต = ใช้ราคาเดิม, รวมแวต = ×1.07
 const SWITCHABLE_SUBGROUP_NAMES = new Set([
   'ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
-])
-// bubble subgroups: ราคาในระบบ รวมแวตแล้ว (incl-VAT)
-// สลับได้เฉพาะเมื่อบับเบิลล้วน ≥ 15k (โรงBBส่งตรง) เท่านั้น
-// → โนแวต = ÷1.07 | รวมแวต = ใช้ราคาเดิม
-const BUBBLE_SWITCHABLE_NAMES = new Set([
   'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g',
 ])
 
@@ -493,26 +489,27 @@ function POInner() {
     if (foyAmt > 0) hasOther = true
     const total = bt + otherTotal + foyAmt
 
-    // ตรวจบับเบิลล้วน + ยอดเงิน
-    let hasBubble = false, hasNonBubble = false, bubbleAmt = 0
+    // ตรวจบับเบิลล้วน + units
+    let hasBubble = false, hasNonBubble = false, bubbleUnits = 0
     for (const p of products) {
       const qty = pending[p.id] ?? 0
-      const price = parseFloat(p.price ?? '0') || 0
       if (BUBBLE_GROUPS_SET.has(p.group_name)) {
-        if (qty > 0) { hasBubble = true; bubbleAmt += qty * price }
+        if (qty > 0) { hasBubble = true; bubbleUnits += qty * getBubbleUnits(p.product_name) }
       } else if (qty > 0) hasNonBubble = true
     }
     if (foyAmt > 0) hasNonBubble = true
 
-    if (hasBubble && !hasNonBubble && bubbleAmt >= 15000) {
-      // บับเบิลล้วน ยอดเกิน 15k → auto-force โรงBB + โรงBBส่งตรง
+    if (hasBubble && !hasNonBubble && bubbleUnits > 120) {
+      // บับเบิลล้วน > 120 units → auto-force โรงBB + BBส่งตรง
       const bbWT = withdrawalTypes.find(w => w.name.includes('BB') || w.name.includes('โรงบับเบิล'))
       if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
       if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
-      const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
-      if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
-    } else if (hasBubble && !hasNonBubble && bubbleAmt > 0) {
-      // บับเบิลล้วน ยอดต่ำกว่า 15k — reset ค่าที่ไม่อนุญาต
+      if (!vehicleType.includes('รับเอง')) {
+        const bbDelivery = deliveryMethods.find(d => d.name.includes('BBส่งตรง'))
+        if (bbDelivery && vehicleType !== bbDelivery.name) setVehicleType(bbDelivery.name)
+      }
+    } else if (hasBubble && !hasNonBubble && bubbleUnits <= 120 && bubbleUnits > 0) {
+      // บับเบิลล้วน ≤ 120 units — reset ค่าที่ไม่อนุญาต
       const curWT = withdrawalTypes.find(w => w.id === withdrawalTypeId)
       if (curWT?.name.includes('โรงกล่อง')) setWithdrawalTypeId(null)
       if (vehicleType.includes('BBส่งตรง') || vehicleType.includes('กล่องส่งตรง')) setVehicleType('')
@@ -849,20 +846,46 @@ function POInner() {
 
   const sections    = injectFoyRows(buildSections(products), foyPending, foyCategoryVis, foyModelVis, foyStockItems)
 
-  // Pre-scan: ตรวจว่าเป็นบับเบิลล้วน ≥ 15k หรือไม่ (ใช้ก่อน totals loop)
-  // ถ้าใช่ → bubble switchable (โนแวตได้) | ถ้าไม่ใช่ → bubble ล็อคฝั่งแวต
-  let _bbAmt = 0, _hasBB = false, _hasNonBB = false
+  // เบิกของ โรงBB + จัดส่ง BBส่งตรง หรือ รับเอง
+  const isBBDirectMode = (() => {
+    if (!withdrawalTypeId) return false
+    const wt = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+    if (!wt) return false
+    return (wt.name.includes('BB') || wt.name.includes('โรงบับเบิล')) &&
+           (vehicleType.includes('BBส่งตรง') || vehicleType.includes('รับเอง'))
+  })()
+
+  // Pre-scan: นับ bubble units + คำนวณส่วนลดเต็มคัน
+  let _hasBB = false, _hasNonBB = false
+  let _totalBubbleUnits = 0
+  const _bbPriceByGrams: Record<number, number> = {}   // excl-VAT price per roll
+  const _bbHasQtyByGrams: Record<number, boolean> = {} // มี qty > 0 ในออเดอร์
   for (const sec of sections) {
     for (const row of sec.rows) {
       if (row.type !== 'product') continue
       const _qty = pending[row.product.id] ?? 0
       if (BUBBLE_GROUPS_SET.has(row.product.group_name)) {
-        if (_qty > 0) { _hasBB = true; _bbAmt += _qty * (parseFloat(row.product.price ?? '0') || 0) }
+        const _grams = parseFloat(row.product.product_name)
+        const _price = parseFloat(row.product.price ?? '0') || 0
+        if (_qty > 0) {
+          _hasBB = true
+          _totalBubbleUnits += _qty * getBubbleUnits(row.product.product_name)
+        }
+        if ([32.5, 65, 130].includes(_grams) && !_bbPriceByGrams[_grams]) _bbPriceByGrams[_grams] = _price
+        if ([32.5, 65, 130].includes(_grams) && _qty > 0) _bbHasQtyByGrams[_grams] = true
       } else if (_qty > 0) _hasNonBB = true
     }
   }
   if (Object.values(foyPending).some(d => d.amount > 0)) _hasNonBB = true
-  const canBubbleNoVat = _hasBB && !_hasNonBB && _bbAmt >= 15000
+  const _isBubbleForcedMode = _hasBB && !_hasNonBB && _totalBubbleUnits > 20
+  const _isBubbleFullTruck  = _isBubbleForcedMode && isBBDirectMode && _totalBubbleUnits >= 120 && _totalBubbleUnits <= 128
+  // แถมฟรี 8 units: 65g×4 → 130g×2 → 32.5g×8 (excl-VAT price)
+  let _freeDiscountExclVat = 0
+  if (_isBubbleFullTruck) {
+    if (_bbHasQtyByGrams[65])        _freeDiscountExclVat = 4 * (_bbPriceByGrams[65]  ?? 0)
+    else if (_bbHasQtyByGrams[130])  _freeDiscountExclVat = 2 * (_bbPriceByGrams[130] ?? 0)
+    else if (_bbHasQtyByGrams[32.5]) _freeDiscountExclVat = 8 * (_bbPriceByGrams[32.5] ?? 0)
+  }
 
   // Precompute print gray index for each subgroup (cycles through 0→1→2)
   const subgroupPrintGray = new Map<string, number>()
@@ -914,8 +937,7 @@ function POInner() {
   })
 
   let grayTotal = 0, orangeTotal = 0
-  let switchableProductTotal = 0   // excl-VAT switchable (ซองใสปะหน้า ฯลฯ)
-  let switchableBubbleTotal  = 0   // incl-VAT switchable (บับเบิล ฯลฯ) — ต้อง ÷1.07 เมื่อโนแวต
+  let switchableProductTotal = 0   // excl-VAT switchable (ซองใสปะหน้า, บับเบิล ฯลฯ)
   const sectionTotals  = new Map<number, number>()
   const subgroupTotals = new Map<string, number>()   // key = `${sec.order}-${subgroup.name}`
   for (const sec of sections) {
@@ -940,8 +962,7 @@ function POInner() {
         if (sec.is_vat_included) grayTotal += val
         else orangeTotal += val
         secTotal += val
-        if (BUBBLE_SWITCHABLE_NAMES.has(currentSubgroup ?? '') && canBubbleNoVat) switchableBubbleTotal += val
-        else if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
+        if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
         if (currentSubgroup !== null) {
           const sgKey = `${sec.order}-${currentSubgroup}`
           subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + val)
@@ -954,15 +975,16 @@ function POInner() {
   // excl-VAT switchable + กระดาษฝอย
   const switchableExclVatTotal = switchableProductTotal + foyTotal
   // fixed = ส่วนที่ไม่สลับได้ (gray + non-switchable orange)
-  const fixedTotal = grayTotal + orangeTotal - switchableProductTotal - switchableBubbleTotal
+  const fixedTotal = grayTotal + orangeTotal - switchableProductTotal
   const couponVal  = parseFloat(couponAmount) || 0
-  // ซ้าย (โนแวต): excl-VAT as-is + incl-VAT ÷1.07 (ถอดแวต)
+  // ซ้าย (โนแวต): excl-VAT as-is − ส่วนลดเต็มคัน (excl-VAT)
   const noVatColTotal = vatMode === 'no-vat'
-    ? switchableExclVatTotal + Math.round(switchableBubbleTotal / 1.07 * 100) / 100
+    ? switchableExclVatTotal - _freeDiscountExclVat
     : 0
-  // ขวา (รวมแวต): fixed เสมอ + (excl-VAT ×1.07 + incl-VAT as-is) เมื่อ vat mode
+  // ขวา (รวมแวต): fixed + excl-VAT ×1.07 − ส่วนลดเต็มคัน (×1.07)
+  const _freeDiscountInclVat = Math.round(_freeDiscountExclVat * 1.07 * 100) / 100
   const vatColTotal = fixedTotal + (vatMode === 'vat'
-    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 + switchableBubbleTotal
+    ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 - _freeDiscountInclVat
     : 0)
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - couponVal)
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000
@@ -1003,8 +1025,8 @@ function POInner() {
   if (foyTotal > 0) hasNonBubbleInOrder = true
 
   const isBubbleOnly    = hasBubbleItems && !hasNonBubbleInOrder
-  const isBubbleOnlyLow = isBubbleOnly && bubbleTotalAmt > 0 && bubbleTotalAmt < 15000
-  const autoForceBubble = isBubbleOnly && bubbleTotalAmt >= 15000
+  const isBubbleOnlyLow = isBubbleOnly && totalBubbleUnits > 0 && totalBubbleUnits <= 20
+  const autoForceBubble = isBubbleOnly && totalBubbleUnits > 120
   const isBoxOnlyLow    = !hasNonBoxItems && boxTotal > 0 && boxTotal < 20000
   const isAutoForced    = autoForceFactory || autoForceWarehouse || autoForceBubble
 
@@ -1032,12 +1054,23 @@ function POInner() {
         const need = 120 - totalBubbleUnits
         bubbleBlocking = true
         bubbleWarning = `⛔ เทียบเท่า 32.5x100 ขาด ${need} ลูก`
+      } else if (!isBBDirectMode) {
+        bubbleBlocking = true
+        bubbleWarning = `⛔ บับเบิลล้วนเต็มคัน ต้องเลือก โรงBB + BBส่งตรง/รับเอง`
       } else if (totalBubbleUnits > 128) {
         const over = totalBubbleUnits - 128
         bubbleBlocking = true
         bubbleWarning = `⛔ เทียบเท่า 32.5x100 เกิน ${over} ลูก`
       }
     }
+  }
+
+  // ป้ายแถมฟรีเต็มคัน
+  let bubbleBonusLabel: string | null = null
+  if (_isBubbleFullTruck) {
+    if (_bbHasQtyByGrams[65])        bubbleBonusLabel = `🎁 แถมฟรี 65g × 4 ลูก`
+    else if (_bbHasQtyByGrams[130])  bubbleBonusLabel = `🎁 แถมฟรี 130g × 2 ลูก`
+    else if (_bbHasQtyByGrams[32.5]) bubbleBonusLabel = `🎁 แถมฟรี 32.5g × 8 ลูก`
   }
 
   const today = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -1267,6 +1300,7 @@ function POInner() {
                   {saving ? 'กำลังบันทึก...' : '💾 บันทึกใบPO'}
                 </button>
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+                {bubbleBonusLabel && <span className="text-green-300 text-sm font-semibold">{bubbleBonusLabel}</span>}
               </>
             )}
 
@@ -1287,6 +1321,7 @@ function POInner() {
                   {saving ? 'กำลังบันทึก...' : '💾 อัพเดทใบPO'}
                 </button>
                 {bubbleWarning && <span className="text-red-400 text-sm font-semibold">{bubbleWarning}</span>}
+                {bubbleBonusLabel && <span className="text-green-300 text-sm font-semibold">{bubbleBonusLabel}</span>}
                 {pendingCount === 0 && !hasFoyPending && (
                   <button
                     onClick={handleCancelOrder}
@@ -1526,7 +1561,6 @@ function POInner() {
                             const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             const isSwitchableSg = SWITCHABLE_SUBGROUP_NAMES.has(cell.name)
-                              || (canBubbleNoVat && BUBBLE_SWITCHABLE_NAMES.has(cell.name))
                             const sgBgClass = isSwitchableSg && vatMode === 'no-vat'
                               ? 'bg-green-600 text-white border-green-700'
                               : SUBGROUP_BG[cell.color]

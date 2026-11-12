@@ -1050,7 +1050,7 @@ function Booking2Inner() {
   if (Object.values(foyPending).some(d => d.amount > 0)) _hasNonBB = true
   const canBubbleNoVat = _hasBB && !_hasNonBB && isBBDirectMode
   const _isBubbleForcedMode = _hasBB && !_hasNonBB && _totalBubbleUnits > 20
-  const _isBubbleFullTruck  = _isBubbleForcedMode && isBBDirectMode && _totalBubbleUnits >= 112 && _totalBubbleUnits <= 128
+  const _isBubbleFullTruck  = _isBubbleForcedMode && isBBDirectMode && _totalBubbleUnits >= 120 && _totalBubbleUnits <= 128
   // แถมฟรี 8 units: 65g×4 → 130g×2 → 32.5g×8 (excl-VAT price)
   let _freeDiscountExclVat = 0
   if (_isBubbleFullTruck) {
@@ -1232,9 +1232,9 @@ function Booking2Inner() {
         bubbleWarning = `⛔ บับเบิลเกิน (ลด ${over} ลูก 32.5)`
       }
     } else {
-      // บับเบิลล้วน full truck (112–128 units, ส่วนลด 8 units เมื่อครบ + โรงBB + BBส่งตรง/รับเอง)
-      if (totalBubbleUnits < 112) {
-        const need = 112 - totalBubbleUnits
+      // บับเบิลล้วน full truck (120–128 units, ส่วนลด 8 units เมื่อครบ + โรงBB + BBส่งตรง/รับเอง)
+      if (totalBubbleUnits < 120) {
+        const need = 120 - totalBubbleUnits
         bubbleBlocking = true
         bubbleWarning = `⛔ เทียบเท่า 32.5x100 ขาด ${need} ลูก`
       } else if (!isBBDirectMode) {
