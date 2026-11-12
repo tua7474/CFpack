@@ -499,8 +499,8 @@ function POInner() {
     }
     if (foyAmt > 0) hasNonBubble = true
 
-    if (hasBubble && !hasNonBubble && bubbleUnits > 120) {
-      // บับเบิลล้วน > 120 units → auto-force โรงBB
+    if (hasBubble && !hasNonBubble && bubbleUnits >= 120) {
+      // บับเบิลล้วน >= 120 units → auto-force โรงBB
       const bbWT = withdrawalTypes.find(w => w.name.includes('BB'))
       if (bbWT && withdrawalTypeId !== bbWT.id) setWithdrawalTypeId(bbWT.id)
       if (sourceType !== 'โรงบับเบิล') setSourceType('โรงบับเบิล')
@@ -1021,7 +1021,7 @@ function POInner() {
 
   const isBubbleOnly    = hasBubbleItems && !hasNonBubbleInOrder
   const isBubbleOnlyLow = isBubbleOnly && totalBubbleUnits > 0 && totalBubbleUnits <= 20
-  const autoForceBubble = isBubbleOnly && totalBubbleUnits > 120
+  const autoForceBubble = isBubbleOnly && totalBubbleUnits >= 120
   const isBoxOnlyLow    = !hasNonBoxItems && boxTotal > 0 && boxTotal < 20000
   const isAutoForced    = autoForceFactory || autoForceWarehouse || autoForceBubble
 
