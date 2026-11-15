@@ -55,13 +55,14 @@ const GROUP_MAP: Record<string, SecInfo> = {
   'เชือก':              { section_order: 5, section_name: 'อื่นๆ',           is_vat_included: false, subgroup_order: 8, subgroup_name: 'เชือก' },
   'กระดาษพิมพ์สลิป':    { section_order: 5, section_name: 'อื่นๆ',           is_vat_included: false, subgroup_order: 9, subgroup_name: 'กระดาษพิมพ์สลิป' },
   'ปากกาเขียน PP':      { section_order: 5, section_name: 'อื่นๆ',           is_vat_included: false, subgroup_order: 10, subgroup_name: 'ปากกาเขียน PP' },
-  'ซองกันกระแทก':       { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 1, subgroup_name: 'ซองกันกระแทก' },
-  'AirBag ม้วน':        { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 2, subgroup_name: 'Air bag (m.)' },
-  'MINI AIR BAG ม้วนเปล่า': { section_order: 6, section_name: 'Air Cushion', is_vat_included: false, subgroup_order: 3, subgroup_name: 'MINI AIR BAG ม้วนเปล่า' },
-  'AIRLOCK':            { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 4, subgroup_name: 'AIRLOCK' },
-  'MINI AIR เครื่องเป่า': { section_order: 6, section_name: 'Air Cushion',   is_vat_included: false, subgroup_order: 5, subgroup_name: 'MINI AIR เครื่องเป่า' },
-  'สติกเกอร์ระวังแตก':   { section_order: 6, section_name: 'Air Cushion',    is_vat_included: false, subgroup_order: 6, subgroup_name: 'สติกเกอร์ระวังแตก' },
-  'เบิกฟรี':            { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 8, subgroup_name: 'เบิกฟรี' },
+  'AIR BAG (m.)':        { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 1, subgroup_name: 'AIR BAG (m.)' },
+  'ซองกันกระแทก':       { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 2, subgroup_name: 'ซองกันกระแทก' },
+  'AirBag ม้วน':        { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 3, subgroup_name: 'Air bag (m.)' },
+  'MINI AIR BAG ม้วนเปล่า': { section_order: 6, section_name: 'Air Cushion', is_vat_included: false, subgroup_order: 4, subgroup_name: 'MINI AIR BAG ม้วนเปล่า' },
+  'AIRLOCK':            { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 5, subgroup_name: 'AIRLOCK' },
+  'MINI AIR เครื่องเป่า': { section_order: 6, section_name: 'Air Cushion',   is_vat_included: false, subgroup_order: 6, subgroup_name: 'MINI AIR เครื่องเป่า' },
+  'สติกเกอร์ระวังแตก':   { section_order: 6, section_name: 'Air Cushion',    is_vat_included: false, subgroup_order: 7, subgroup_name: 'สติกเกอร์ระวังแตก' },
+  'เบิกฟรี':            { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 9, subgroup_name: 'เบิกฟรี' },
 }
 
 // ── GET /api/orders/image?no=ORDER_NO ─────────────────────────────────────────
