@@ -55,9 +55,9 @@ const SUBGROUP_COLOR: Record<string, SubgroupColor> = {
   // S5 — ถุงแก้วฝากาว 60M/100P, ถุงซิปรูด, ซองใสปะหน้า, กระบอก, ฝาปิดกระบอก, สายรัด PP, กระดาษห่อ, เชือก, กระดาษพิมพ์สลิป, ปากกาเขียน PP
   '5-1': 'gray',   '5-2': 'gray',   '5-3': 'gray',   '5-4': 'light',  '5-5': 'teal',
   '5-6': 'gray',   '5-7': 'gray',   '5-8': 'orange', '5-9': 'orange', '5-10': 'gray',
-  // S6 — ซองกันกระแทก, MINI AIR BAG ม้วนเปล่า, AIRLOCK, MINI AIR เครื่องเป่า, สติกเกอร์ระวังแตก, เครื่อง/สติกเกอร์/เคส, เบิกฟรี
+  // S6 — ซองกันกระแทก, Air bag (m.), MINI AIR BAG ม้วนเปล่า, AIRLOCK, MINI AIR เครื่องเป่า, สติกเกอร์ระวังแตก, เครื่อง/สติกเกอร์/เคส, เบิกฟรี
   '6-1': 'gray',   '6-2': 'orange', '6-3': 'orange', '6-4': 'orange', '6-5': 'orange',
-  '6-6': 'orange', '6-7': 'teal',
+  '6-6': 'orange', '6-7': 'orange', '6-8': 'teal',
 }
 
 const SUBGROUP_BG: Record<SubgroupColor, string> = {
