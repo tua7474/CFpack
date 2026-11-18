@@ -123,6 +123,199 @@ async function setSetting(key: string, value: string) {
   )
 }
 
+// ── Route-planning helpers ────────────────────────────────────────────────────
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+type Coord = { id: number; name: string; lat: number; lng: number; deliveryType: string }
+type Depot = { lat: number; lng: number }
+
+function bestInsertionRoute(depot: Depot, stops: Coord[]): Coord[] {
+  if (!stops.length) return []
+  const dist = (a: Depot | Coord, b: Depot | Coord) =>
+    haversineKm(a.lat, a.lng, b.lat, b.lng)
+
+  // seed: nearest to depot
+  let nearest = stops.reduce((best, s) => dist(depot, s) < dist(depot, best) ? s : best, stops[0])
+  const route: Coord[] = [nearest]
+  const remaining = stops.filter(s => s.id !== nearest.id)
+
+  while (remaining.length) {
+    let bestExtra = Infinity, bestPos = 0, bestIdx = 0
+    for (let ri = 0; ri < remaining.length; ri++) {
+      const cand = remaining[ri]
+      for (let pos = 0; pos <= route.length; pos++) {
+        const prev: Depot | Coord = pos === 0 ? depot : route[pos - 1]
+        const next: Depot | Coord = pos === route.length ? depot : route[pos]
+        const extra = dist(prev, cand) + dist(cand, next) - dist(prev, next)
+        if (extra < bestExtra) { bestExtra = extra; bestPos = pos; bestIdx = ri }
+      }
+    }
+    route.splice(bestPos, 0, remaining[bestIdx])
+    remaining.splice(bestIdx, 1)
+  }
+  return route
+}
+
+function calcRouteKm(depot: Depot, route: Coord[]): number {
+  if (!route.length) return 0
+  let total = haversineKm(depot.lat, depot.lng, route[0].lat, route[0].lng)
+  for (let i = 1; i < route.length; i++)
+    total += haversineKm(route[i - 1].lat, route[i - 1].lng, route[i].lat, route[i].lng)
+  total += haversineKm(route[route.length - 1].lat, route[route.length - 1].lng, depot.lat, depot.lng)
+  return total
+}
+
+// ── คิวรถ — plan builder ──────────────────────────────────────────────────────
+
+type TruckPlan = {
+  truckNo: number
+  truckName: string
+  morning: { route: Coord[]; km: number }
+  afternoon: { route: Coord[]; km: number }
+}
+
+async function buildTripPlan(targetDate: string): Promise<TruckPlan[] | null> {
+  // warehouse coordinates
+  const wLat = await getSetting('warehouse_lat')
+  const wLng = await getSetting('warehouse_lng')
+  if (!wLat || !wLng) return null
+  const depot: Depot = { lat: parseFloat(wLat), lng: parseFloat(wLng) }
+
+  // find week_start (Monday) for targetDate
+  const dt = new Date(targetDate + 'T00:00:00+07:00')
+  const dow = dt.getDay() // 0=Sun
+  const dbDow = dow === 0 ? 7 : dow // 1=Mon…7=Sun
+  const diffToMon = dow === 0 ? -6 : 1 - dow
+  const mon = new Date(dt)
+  mon.setDate(dt.getDate() + diffToMon)
+  const weekStart = mon.toISOString().slice(0, 10)
+
+  // fetch schedule branches with lat/lng
+  const { rows: sched } = await pool.query(`
+    SELECT ds.truck_no, ds.round, ds.branch_id, b.name, b.lat, b.lng
+    FROM delivery_schedule ds
+    JOIN branches b ON b.id = ds.branch_id
+    WHERE ds.week_start = $1 AND ds.day_of_week = $2
+      AND b.lat IS NOT NULL AND b.lng IS NOT NULL
+    ORDER BY ds.truck_no, ds.round, ds.sort_order, ds.id
+  `, [weekStart, dbDow])
+
+  if (!sched.length) return []
+
+  const TRUCKS_META = [
+    { no: 1, name: 'อ๊อบ CF01' },
+    { no: 2, name: 'ต้น CF02'  },
+  ]
+
+  return TRUCKS_META.map(truck => {
+    const toCoords = (round: string): Coord[] =>
+      sched
+        .filter(r => r.truck_no === truck.no && r.round === round)
+        .map(r => ({ id: r.branch_id, name: r.name, lat: parseFloat(r.lat), lng: parseFloat(r.lng), deliveryType: 'รอพ่วง' }))
+
+    const mStops = bestInsertionRoute(depot, toCoords('เช้า'))
+    const aStops = bestInsertionRoute(depot, toCoords('บ่าย'))
+
+    return {
+      truckNo:   truck.no,
+      truckName: truck.name,
+      morning:   { route: mStops, km: calcRouteKm(depot, mStops) },
+      afternoon: { route: aStops, km: calcRouteKm(depot, aStops) },
+    }
+  })
+}
+
+function buildTripPlanFlex(plans: TruckPlan[], targetDate: string): object {
+  const dateLabel = new Date(targetDate + 'T00:00:00+07:00')
+    .toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' })
+
+  const TRUCK_COLORS = ['#1d4ed8', '#7c3aed']  // blue, violet
+
+  const bubbles = plans.map((plan, ti) => {
+    const color = TRUCK_COLORS[ti] ?? '#374151'
+    const noStops = !plan.morning.route.length && !plan.afternoon.route.length
+
+    const renderRound = (label: string, r: { route: Coord[]; km: number }, maxKm: number) => {
+      const over = r.km > maxKm
+      const kmText = r.route.length ? `${r.km.toFixed(1)} กม.${over ? ' ⚠️' : ''}` : '—'
+      const rows: object[] = [
+        {
+          type: 'box', layout: 'horizontal', spacing: 'none', marginBottom: '2px',
+          contents: [
+            { type: 'text', text: `รอบ${label}`, size: 'xxs', weight: 'bold', color: '#374151', flex: 0 },
+            { type: 'text', text: kmText, size: 'xxs', color: over ? '#dc2626' : '#6b7280', align: 'end', flex: 1 },
+          ],
+        },
+      ]
+      if (!r.route.length) {
+        rows.push({ type: 'text', text: 'ไม่มีสาขา', size: 'xxs', color: '#d1d5db', margin: 'none' })
+      } else {
+        r.route.forEach((s, i) => {
+          rows.push({
+            type: 'text',
+            text: `  ${i + 1}. ${s.name}`,
+            size: 'xxs', color: '#374151', wrap: true, margin: 'none',
+          })
+        })
+      }
+      return rows
+    }
+
+    // encode postback: BOOK_TRIPS:DATE:1-เช้า:5,3:1-บ่าย:2,7
+    const encSection = (truckNo: number, round: string, route: Coord[]) =>
+      route.length ? `${truckNo}-${round}:${route.map(s => s.id).join(',')}` : ''
+    const sections = [
+      encSection(plan.truckNo, 'เช้า', plan.morning.route),
+      encSection(plan.truckNo, 'บ่าย', plan.afternoon.route),
+    ].filter(Boolean).join(':')
+    const postbackData = `BOOK_TRIPS:${targetDate}:${sections}`
+
+    return {
+      type: 'bubble', size: 'kilo',
+      header: {
+        type: 'box', layout: 'horizontal', backgroundColor: color, paddingAll: '10px',
+        contents: [
+          { type: 'text', text: `🚛 ${plan.truckName}`, color: '#ffffff', weight: 'bold', size: 'sm', flex: 1 },
+          { type: 'text', text: dateLabel, color: '#ffffffaa', size: 'xxs', align: 'end', flex: 0 },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'sm',
+        backgroundColor: '#F5EED8',
+        contents: noStops
+          ? [{ type: 'text', text: 'ไม่มีสาขาในตารางคิววันนี้', size: 'xs', color: '#9ca3af', align: 'center' }]
+          : [
+              ...renderRound('เช้า', plan.morning, 60),
+              { type: 'separator', margin: 'sm' },
+              ...renderRound('บ่าย', plan.afternoon, 40),
+            ],
+      },
+      footer: noStops ? undefined : {
+        type: 'box', layout: 'vertical', paddingAll: '8px', backgroundColor: '#ede8de',
+        contents: [{
+          type: 'button', style: 'primary', height: 'sm',
+          color: color,
+          action: { type: 'postback', label: '📋 บุ๊คคิวนี้', data: postbackData },
+        }],
+      },
+    }
+  })
+
+  return {
+    type: 'flex',
+    altText: `🚛 แผนคิวรถ ${dateLabel}`,
+    contents: { type: 'carousel', contents: bubbles },
+  }
+}
+
 function genSnapNo(): string {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
   const y  = String(now.getFullYear()).slice(2)
@@ -2029,6 +2222,86 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
 
     return reply(replyToken, msgs)
   }
+
+  // ── BOOK_TRIPS:DATE:SECTIONS ──────────────────────────────────────────────
+  if (data.startsWith('BOOK_TRIPS:')) {
+    if (!await isLineAdmin(userId, source))
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้น' }])
+
+    await ensureTable()
+    // format: BOOK_TRIPS:2026-11-18:1-เช้า:5,3,8:1-บ่าย:2,7:2-เช้า:1,4:2-บ่าย:9
+    const parts = data.split(':')
+    // parts[0]=BOOK_TRIPS, parts[1]=date, then alternating "truck-round" / "ids,..."
+    const targetDate = parts[1]
+    if (!targetDate) return reply(replyToken, [{ type: 'text', text: '❌ ข้อมูลไม่ครบ' }])
+
+    // parse sections
+    const sections: { truckNo: number; round: string; branchIds: number[] }[] = []
+    for (let i = 2; i < parts.length - 1; i += 2) {
+      const header = parts[i]   // e.g. "1-เช้า"
+      const ids    = parts[i + 1] // e.g. "5,3,8"
+      const m = header.match(/^(\d+)-(.+)$/)
+      if (!m) continue
+      sections.push({
+        truckNo:   parseInt(m[1]),
+        round:     m[2],
+        branchIds: ids.split(',').map(Number).filter(Boolean),
+      })
+    }
+
+    if (!sections.length) return reply(replyToken, [{ type: 'text', text: '❌ ไม่มีข้อมูลเส้นทาง' }])
+
+    // ตรวจว่ายังไม่มี trip ในวันนี้
+    const { rows: existing } = await pool.query(
+      `SELECT id, truck_no, round FROM delivery_trips WHERE trip_date=$1 AND status != 'cancelled'`,
+      [targetDate]
+    )
+
+    // สร้าง trips + stops
+    let createdCount = 0
+    let skippedCount = 0
+    for (const sec of sections) {
+      // skip ถ้ามีอยู่แล้ว
+      const dup = existing.find(e => e.truck_no === sec.truckNo && e.round === sec.round)
+      if (dup) { skippedCount++; continue }
+      if (!sec.branchIds.length) continue
+
+      // สร้าง trip
+      const { rows: [trip] } = await pool.query(`
+        INSERT INTO delivery_trips (truck_no, trip_date, round, created_by)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+      `, [sec.truckNo, targetDate, sec.round, 'LINE Bot'])
+
+      // ดึงชื่อสาขา
+      const { rows: branchRows } = await pool.query(
+        `SELECT id, name FROM branches WHERE id = ANY($1::int[])`,
+        [sec.branchIds]
+      )
+      const branchMap = Object.fromEntries(branchRows.map((b: { id: number; name: string }) => [b.id, b.name]))
+
+      // เพิ่ม stops ตามลำดับ
+      for (let order = 0; order < sec.branchIds.length; order++) {
+        const bid = sec.branchIds[order]
+        const bname = branchMap[bid]
+        if (!bname) continue
+        await pool.query(`
+          INSERT INTO delivery_trip_stops (trip_id, stop_order, branch_id, branch_name, delivery_type, order_nos)
+          VALUES ($1, $2, $3, $4, 'รอพ่วง', '{}')
+        `, [trip.id, order + 1, bid, bname])
+      }
+      createdCount++
+    }
+
+    const dateLabel = new Date(targetDate + 'T00:00:00').toLocaleDateString('th-TH', {
+      weekday: 'long', day: 'numeric', month: 'long',
+    })
+    const lines = [`✅ บุ๊คคิวรถสำเร็จ — ${dateLabel}`]
+    if (createdCount) lines.push(`สร้าง ${createdCount} รอบวิ่งแล้ว`)
+    if (skippedCount) lines.push(`ข้าม ${skippedCount} รอบ (มีอยู่แล้ว)`)
+    lines.push('\nดูรายละเอียดได้ที่หน้าจัดส่ง → 🚛 รอบวิ่ง')
+    return reply(replyToken, [{ type: 'text', text: lines.join('\n') }])
+  }
 }
 
 // ── Text handler ──────────────────────────────────────────────────────────────
@@ -2238,6 +2511,61 @@ async function handleText(text: string, userId: string, replyToken: string, sour
       type: 'text',
       text: `🪪 LINE User ID ของคุณ:\n${userId}\n\n${isAdmin ? '✅ คุณเป็นแอดมินในระบบแล้ว' : '📋 นำ ID นี้ไปให้แอดมิน\nเพื่อเพิ่มสิทธิ์ในหน้า CF ระบบจัดการข้อมูล\n→ สาขาและตัวแทน → ผู้ใช้งาน → ใส่ LINE ID → ติ๊ก แอดมิน'}`
     }])
+  }
+
+  // ── คิวรถ ─────────────────────────────────────────────────────────────────────
+  if (t.startsWith('คิวรถ')) {
+    if (!await isLineAdmin(userId, source))
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้น' }])
+
+    await ensureTable()
+
+    // parse date: "คิวรถ", "คิวรถ พรุ่งนี้", "คิวรถ 2026-11-19"
+    let targetDate: string
+    const datePart = t.replace('คิวรถ', '').trim()
+    if (datePart === 'พรุ่งนี้' || datePart === 'พรุ่ง') {
+      const tom = new Date(); tom.setDate(tom.getDate() + 1)
+      targetDate = tom.toISOString().slice(0, 10)
+    } else if (datePart) {
+      const parsed = parseDateInput(datePart)
+      targetDate = parsed ?? new Date().toISOString().slice(0, 10)
+    } else {
+      targetDate = new Date().toISOString().slice(0, 10)
+    }
+
+    // ตรวจสอบ warehouse coords
+    const wLat = await getSetting('warehouse_lat')
+    const wLng = await getSetting('warehouse_lng')
+    if (!wLat || !wLng) {
+      return reply(replyToken, [{
+        type: 'text',
+        text: '⚠️ ยังไม่ได้ตั้งพิกัดโกดัง\nพิมพ์: ตั้งโกดัง 13.7563,100.5018\nเพื่อบันทึกพิกัดโกดังก่อนครับ',
+      }])
+    }
+
+    const plans = await buildTripPlan(targetDate)
+    if (!plans) {
+      return reply(replyToken, [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการดึงข้อมูล' }])
+    }
+    if (!plans.length) {
+      const dl = new Date(targetDate + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })
+      return reply(replyToken, [{ type: 'text', text: `📅 ${dl}\nไม่มีสาขาในตารางคิวที่มีพิกัด GPS\n\nกรุณาตั้งค่าตารางคิวและพิกัด GPS สาขาในหน้า CF ระบบจัดการข้อมูล → จัดส่ง` }])
+    }
+
+    return reply(replyToken, [buildTripPlanFlex(plans, targetDate)])
+  }
+
+  // ── ตั้งโกดัง lat,lng ─────────────────────────────────────────────────────────
+  if (t.startsWith('ตั้งโกดัง')) {
+    if (!await isLineAdmin(userId, source))
+      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้น' }])
+    const coords = t.replace('ตั้งโกดัง', '').trim()
+    const m = coords.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/)
+    if (!m) return reply(replyToken, [{ type: 'text', text: '❌ รูปแบบไม่ถูกต้อง\nตัวอย่าง: ตั้งโกดัง 13.7563,100.5018' }])
+    await ensureTable()
+    await setSetting('warehouse_lat', m[1])
+    await setSetting('warehouse_lng', m[2])
+    return reply(replyToken, [{ type: 'text', text: `✅ บันทึกพิกัดโกดังแล้ว\nLat: ${m[1]}\nLng: ${m[2]}` }])
   }
 
   // ── สรุปยอดสต็อค ─────────────────────────────────────────────────────────────
