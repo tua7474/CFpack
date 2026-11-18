@@ -17,7 +17,7 @@ export type PageKey = typeof PAGE_LIST[number]['key']
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface BranchPhone { id: number; phone: string; is_admin: boolean; is_manager: boolean; allowed_pages: string[]; line_user_id: string | null }
-interface Branch { id: number; name: string; color_group: string | null; map_url: string | null; phones: BranchPhone[]; pending_count: number }
+interface Branch { id: number; name: string; color_group: string | null; map_url: string | null; lat: number | null; lng: number | null; phones: BranchPhone[]; pending_count: number }
 
 // ── Color groups ──────────────────────────────────────────────────────────────
 
@@ -258,6 +258,62 @@ function SlipConfirmModal({ slip, onClose, onSaved, session, branches }: {
   )
 }
 
+// ── LatLngCell ────────────────────────────────────────────────────────────────
+function LatLngCell({ branchId, lat, lng, onSave }: {
+  branchId: number; lat: number | null; lng: number | null
+  onSave: (branchId: number, lat: number | null, lng: number | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const startEdit = () => {
+    setVal(lat != null && lng != null ? `${lat}, ${lng}` : '')
+    setEditing(true)
+  }
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  const commit = () => {
+    setEditing(false)
+    const trimmed = val.trim()
+    if (!trimmed) { onSave(branchId, null, null); return }
+    const parts = trimmed.split(',')
+    const newLat = parseFloat(parts[0]?.trim() ?? '')
+    const newLng = parseFloat(parts[1]?.trim() ?? '')
+    if (!isNaN(newLat) && !isNaN(newLng)) onSave(branchId, newLat, newLng)
+    else onSave(branchId, null, null)
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1 min-w-[120px]">
+        <input ref={inputRef} type="text" value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+          placeholder="lat, lng"
+          className="w-full text-[11px] border border-blue-400 rounded px-1.5 py-1 focus:outline-none bg-white"
+        />
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-0.5">
+      {lat != null && lng != null ? (
+        <span className="text-[10px] text-gray-500 font-mono leading-none whitespace-nowrap" title={`${lat}, ${lng}`}>
+          {lat.toFixed(3)},{lng.toFixed(3)}
+        </span>
+      ) : (
+        <span className="text-gray-300 text-xs">—</span>
+      )}
+      <button onClick={startEdit}
+        className="text-gray-300 hover:text-blue-400 text-[11px] transition-colors leading-none ml-0.5" title="แก้ไขพิกัด">
+        ✏️
+      </button>
+    </div>
+  )
+}
+
 // ── MapCell ───────────────────────────────────────────────────────────────────
 function MapCell({ branchId, currentUrl, onSave }: {
   branchId: number; currentUrl: string | null
@@ -311,7 +367,7 @@ function MapCell({ branchId, currentUrl, onSave }: {
 
 function BranchRow({
   branch, session, onManage, colorGroup,
-  withdrawalTypes, unpaidOrders, orderEntries, slipEntries, heldCount, onMapSave,
+  withdrawalTypes, unpaidOrders, orderEntries, slipEntries, heldCount, onMapSave, onCoordsSave,
 }: {
   branch: Branch
   session: BranchSession | null
@@ -323,6 +379,7 @@ function BranchRow({
   slipEntries: FinanceEntry[]
   heldCount: number
   onMapSave: (branchId: number, url: string) => void
+  onCoordsSave: (branchId: number, lat: number | null, lng: number | null) => void
 }) {
   return (
     <tr className={`${ROW_BG[colorGroup]} align-top border-b border-gray-200 transition-colors`}>
@@ -396,6 +453,11 @@ function BranchRow({
       {/* MAP */}
       <td className="px-1 py-1 border-r border-gray-200 align-middle text-center w-px whitespace-nowrap">
         <MapCell branchId={branch.id} currentUrl={branch.map_url} onSave={onMapSave} />
+      </td>
+
+      {/* พิกัด lat/lng */}
+      <td className="px-1 py-1 border-r border-gray-200 align-middle text-center w-px whitespace-nowrap">
+        <LatLngCell branchId={branch.id} lat={branch.lat} lng={branch.lng} onSave={onCoordsSave} />
       </td>
 
       {/* ใบจองค้างชำระ — 1 คอลัมน์ต่อ 1 ประเภทเบิกของ */}
@@ -753,6 +815,15 @@ export default function BranchesPage() {
     })
   }, [])
 
+  const handleCoordsSave = useCallback(async (branchId: number, lat: number | null, lng: number | null) => {
+    setBranches(prev => prev.map(b => b.id === branchId ? { ...b, lat, lng } : b))
+    await fetch('/api/branches', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_coords', id: branchId, lat, lng }),
+    })
+  }, [])
+
   const handleAddBranch = async () => {
     if (!newBranchName.trim()) return
     await fetch('/api/branches', {
@@ -973,6 +1044,7 @@ export default function BranchesPage() {
                     ประวัติใบจอง
                   </th>
                   <th rowSpan={2} className="px-1 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom w-px">MAP</th>
+                  <th rowSpan={2} className="px-1 py-2 border-r border-gray-500 whitespace-nowrap text-center align-bottom w-px">📍</th>
                   {withdrawalTypes.length > 0 && (
                     <th colSpan={withdrawalTypes.length} className="px-2 py-1.5 border-r border-[#5a4530] text-center text-[11px] font-bold whitespace-nowrap bg-[#7d6348]">
                       เบิกของ
@@ -992,7 +1064,7 @@ export default function BranchesPage() {
                 {sortAndGroup(visibleBranches).map(({ color, items }) => (
                   <>
                     <tr key={`header-${color}`} className={GROUP_HEADER_BG[color]}>
-                      <td colSpan={3 + withdrawalTypes.length} className="px-3 py-1 text-xs font-bold tracking-wide">
+                      <td colSpan={4 + withdrawalTypes.length} className="px-3 py-1 text-xs font-bold tracking-wide">
                         {GROUP_LABEL[color]}
                       </td>
                     </tr>
@@ -1004,7 +1076,8 @@ export default function BranchesPage() {
                         orderEntries={orderEntriesByBranch[b.id] ?? []}
                         slipEntries={slipEntriesByBranch[b.id] ?? []}
                         heldCount={heldCountByBranch[b.id] ?? 0}
-                        onMapSave={handleMapSave} />
+                        onMapSave={handleMapSave}
+                        onCoordsSave={handleCoordsSave} />
                     ))}
                   </>
                 ))}
@@ -1040,7 +1113,8 @@ export default function BranchesPage() {
                             : <span className={`text-[11px] font-mono font-semibold ${color}`}>{orderItems.length}/{fmt(total)}</span>
                           }
                         </td>
-                        {/* MAP — rowspan ครั้งแรก */}
+                        {/* MAP + พิกัด — rowspan ครั้งแรก */}
+                        {idx === 0 && <td rowSpan={4} className="px-1 py-1 border-r border-gray-200" />}
                         {idx === 0 && <td rowSpan={4} className="px-1 py-1 border-r border-gray-200" />}
                         {/* Withdrawal columns — คำนวณตาม period */}
                         {withdrawalTypes.map(wt => {

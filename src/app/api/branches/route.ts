@@ -28,6 +28,8 @@ export async function ensureTables() {
   await pool.query(`ALTER TABLE branch_phones ALTER COLUMN phone TYPE VARCHAR(50)`).catch(() => {})
   await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS line_group_id VARCHAR(100)`)
   await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS map_url TEXT`)
+  await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS lat DECIMAL(9,6)`)
+  await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS lng DECIMAL(9,6)`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS branch_otps (
       id         SERIAL PRIMARY KEY,
@@ -49,7 +51,7 @@ export async function ensureTables() {
 export async function GET() {
   try {
     await ensureTables()
-    const { rows: branches } = await pool.query(`SELECT id, name, color_group, map_url, created_at FROM branches ORDER BY name`)
+    const { rows: branches } = await pool.query(`SELECT id, name, color_group, map_url, lat, lng, created_at FROM branches ORDER BY name`)
     const { rows: phones }   = await pool.query(`SELECT id, branch_id, phone, is_admin, is_manager, allowed_pages, line_user_id FROM branch_phones ORDER BY branch_id, id`)
     const { rows: counts }   = await pool.query(`
       SELECT branch_id, COUNT(*)::int AS pending_count
@@ -126,6 +128,18 @@ export async function PATCH(req: NextRequest) {
     // Update map URL
     if (body.action === 'update_map_url') {
       await pool.query(`UPDATE branches SET map_url=$1 WHERE id=$2`, [body.map_url ?? null, body.id])
+      return NextResponse.json({ ok: true })
+    }
+
+    // Update lat/lng
+    if (body.action === 'update_coords') {
+      const lat = body.lat != null ? parseFloat(body.lat) : null
+      const lng = body.lng != null ? parseFloat(body.lng) : null
+      await pool.query(`UPDATE branches SET lat=$1, lng=$2 WHERE id=$3`, [
+        lat != null && !isNaN(lat) ? lat : null,
+        lng != null && !isNaN(lng) ? lng : null,
+        body.id,
+      ])
       return NextResponse.json({ ok: true })
     }
 
