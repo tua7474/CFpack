@@ -193,6 +193,223 @@ function WeekTable({
   )
 }
 
+// ── HistoryTable ──────────────────────────────────────────────────────────────
+
+interface PivotRow {
+  week_start: string
+  truck_no: number
+  branch_id: number
+  branch_name: string
+  color_group: string | null
+  order_count: number
+  total_amount: string
+}
+
+const COL_GROUP_ORDER = ['orange', 'yellow', 'red']
+const BRANCH_COL_COLOR: Record<string, { header: string }> = {
+  orange: { header: 'bg-orange-200 text-orange-900' },
+  yellow: { header: 'bg-yellow-200 text-yellow-900' },
+  red:    { header: 'bg-red-200    text-red-900'    },
+}
+const DEFAULT_COL_COLOR = { header: 'bg-gray-200 text-gray-700' }
+function getColColor(cg: string | null) {
+  return BRANCH_COL_COLOR[cg ?? ''] ?? DEFAULT_COL_COLOR
+}
+
+function HistoryTable() {
+  const [rows,    setRows]    = useState<PivotRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [weeks,   setWeeks]   = useState(8)
+
+  useEffect(() => {
+    setLoading(true)
+    const to   = new Date()
+    const from = new Date()
+    from.setDate(from.getDate() - weeks * 7)
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    fetch(`/api/delivery/trips?pivot=1&from=${fmt(from)}&to=${fmt(to)}`)
+      .then(r => r.json())
+      .then(d => { setRows(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [weeks])
+
+  // ── build branch columns (sorted by color group) ──────────────────────
+  const branchMap = new Map<number, { name: string; color_group: string | null }>()
+  for (const r of rows) {
+    if (!branchMap.has(r.branch_id))
+      branchMap.set(r.branch_id, { name: r.branch_name, color_group: r.color_group })
+  }
+  const branchCols = [...branchMap.entries()]
+    .sort(([, a], [, b]) => {
+      const ai = COL_GROUP_ORDER.indexOf(a.color_group ?? '')
+      const bi = COL_GROUP_ORDER.indexOf(b.color_group ?? '')
+      const ao = ai === -1 ? 99 : ai
+      const bo = bi === -1 ? 99 : bi
+      return ao !== bo ? ao - bo : a.name.localeCompare(b.name, 'th')
+    })
+    .map(([id, info]) => ({ id, ...info }))
+
+  // group cols by color for colspan header
+  const colorGroups: { key: string; branches: typeof branchCols }[] = []
+  for (const cg of COL_GROUP_ORDER) {
+    const bs = branchCols.filter(b => b.color_group === cg)
+    if (bs.length) colorGroups.push({ key: cg, branches: bs })
+  }
+  const others = branchCols.filter(b => !COL_GROUP_ORDER.includes(b.color_group ?? ''))
+  if (others.length) colorGroups.push({ key: 'other', branches: others })
+
+  // ── unique weeks (desc) ───────────────────────────────────────────────
+  const weekSet = [...new Set(rows.map(r => r.week_start))].sort((a, b) => b.localeCompare(a))
+
+  // ── helper: sum per week+truck ────────────────────────────────────────
+  const getWkTruck = (week: string, truck: number) => {
+    const filtered = rows.filter(r => r.week_start === week && r.truck_no === truck)
+    return {
+      totalOrders: filtered.reduce((s, r) => s + Number(r.order_count), 0),
+      totalAmount: filtered.reduce((s, r) => s + parseFloat(r.total_amount), 0),
+      byBranch: Object.fromEntries(
+        filtered.map(r => [r.branch_id, { orders: Number(r.order_count), amount: parseFloat(r.total_amount) }])
+      ) as Record<number, { orders: number; amount: number }>,
+    }
+  }
+
+  const fmtAmt = (n: number) =>
+    n > 0 ? n.toLocaleString('th-TH', { maximumFractionDigits: 0 }) : ''
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* controls */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500">แสดงย้อนหลัง</span>
+        {[4, 8, 12, 24].map(w => (
+          <button key={w} onClick={() => setWeeks(w)}
+            className={`px-2.5 py-1 text-xs rounded border transition-colors ${weeks === w ? 'bg-[#9b9484] text-white border-[#9b9484]' : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'}`}>
+            {w} สัปดาห์
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="text-gray-400 text-sm py-12 text-center">กำลังโหลด...</div>
+      ) : !weekSet.length ? (
+        <div className="text-gray-400 text-sm py-12 text-center">ยังไม่มีข้อมูลประวัติการวิ่ง</div>
+      ) : (
+        <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden bg-white">
+          <div className="overflow-x-auto">
+            <table className="text-xs border-collapse w-auto">
+              <thead>
+                {/* row 1 — group headers */}
+                <tr className="bg-[#9b9484] text-white">
+                  <th rowSpan={2} className="px-3 py-2 border-r border-gray-500 whitespace-nowrap align-bottom text-left">สัปดาห์</th>
+                  <th rowSpan={2} className="px-2 py-2 border-r border-gray-500 whitespace-nowrap align-bottom text-center">รถ</th>
+                  <th rowSpan={2} className="px-2 py-2 border-r border-gray-500 whitespace-nowrap align-bottom text-center">ใบจอง</th>
+                  <th rowSpan={2} className="px-2 py-2 border-r border-gray-500 whitespace-nowrap align-bottom text-center">มูลค่า (฿)</th>
+                  {colorGroups.map(cg => (
+                    <th key={cg.key} colSpan={cg.branches.length}
+                      className={`px-2 py-1.5 border-r border-gray-500 text-center font-bold text-[11px] ${getColColor(cg.key === 'other' ? null : cg.key).header}`}>
+                      {cg.key === 'orange' ? '🟠 ส้ม' : cg.key === 'yellow' ? '🟡 เหลือง' : cg.key === 'red' ? '🔴 แดง' : '—'}
+                    </th>
+                  ))}
+                </tr>
+                {/* row 2 — branch names */}
+                <tr className="bg-gray-50">
+                  {branchCols.map((b, i) => (
+                    <th key={b.id}
+                      className={`px-2 py-1 ${i < branchCols.length - 1 ? 'border-r' : ''} border-gray-200 text-center whitespace-nowrap font-semibold text-[10px] ${getColColor(b.color_group).header}`}>
+                      {b.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {weekSet.map((week, wi) => {
+                  const t1 = getWkTruck(week, 1)
+                  const t2 = getWkTruck(week, 2)
+                  const total = {
+                    totalOrders: t1.totalOrders + t2.totalOrders,
+                    totalAmount: t1.totalAmount + t2.totalAmount,
+                    byBranch: Object.fromEntries(
+                      branchCols.map(bc => {
+                        const a = t1.byBranch[bc.id] ?? { orders: 0, amount: 0 }
+                        const b = t2.byBranch[bc.id] ?? { orders: 0, amount: 0 }
+                        return [bc.id, { orders: a.orders + b.orders, amount: a.amount + b.amount }]
+                      })
+                    ) as Record<number, { orders: number; amount: number }>,
+                  }
+
+                  return (
+                    <Fragment key={week}>
+                      {[{ truck: TRUCKS[0], data: t1 }, { truck: TRUCKS[1], data: t2 }].map(({ truck, data }, ti) => (
+                        <tr key={truck.no}
+                          className={`hover:bg-gray-50/50 ${ti === 0 ? (wi === 0 ? 'border-t-2 border-gray-400' : 'border-t-2 border-gray-300') : 'border-t border-gray-100'}`}>
+                          {ti === 0 && (
+                            <td rowSpan={3} className="px-3 py-2 border-r border-gray-200 font-semibold text-gray-600 whitespace-nowrap align-middle text-[11px]">
+                              {fmtWeekRange(week)}
+                            </td>
+                          )}
+                          <td className="px-2 py-1.5 border-r border-gray-200 text-center whitespace-nowrap">
+                            <span className={`inline-block px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${truck.badge}`}>
+                              {truck.name}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1.5 border-r border-gray-200 text-center font-mono font-bold text-gray-700">
+                            {data.totalOrders > 0 ? data.totalOrders : <span className="text-gray-200">—</span>}
+                          </td>
+                          <td className="px-2 py-1.5 border-r border-gray-200 text-right font-mono text-gray-600 whitespace-nowrap">
+                            {fmtAmt(data.totalAmount) || <span className="text-gray-200">—</span>}
+                          </td>
+                          {branchCols.map((bc, bci) => {
+                            const cell = data.byBranch[bc.id]
+                            return (
+                              <td key={bc.id}
+                                className={`px-1.5 py-1 ${bci < branchCols.length - 1 ? 'border-r' : ''} border-gray-200 text-center`}>
+                                {cell?.orders > 0 ? (
+                                  <div className="flex flex-col items-center leading-tight">
+                                    <span className="text-[12px] font-bold text-gray-700">{cell.orders}</span>
+                                    {cell.amount > 0 && <span className="text-[9px] text-gray-400">{fmtAmt(cell.amount)}</span>}
+                                  </div>
+                                ) : <span className="text-gray-200">—</span>}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                      {/* รวม row */}
+                      <tr className="bg-orange-50 border-t border-orange-200 font-bold">
+                        <td className="px-2 py-1 border-r border-orange-200 text-center text-orange-700 text-[10px] whitespace-nowrap">รวม</td>
+                        <td className="px-2 py-1 border-r border-orange-200 text-center font-mono text-orange-800">
+                          {total.totalOrders > 0 ? total.totalOrders : <span className="text-orange-200">—</span>}
+                        </td>
+                        <td className="px-2 py-1 border-r border-orange-200 text-right font-mono text-orange-700 whitespace-nowrap">
+                          {fmtAmt(total.totalAmount) || <span className="text-orange-200">—</span>}
+                        </td>
+                        {branchCols.map((bc, bci) => {
+                          const cell = total.byBranch[bc.id]
+                          return (
+                            <td key={bc.id}
+                              className={`px-1.5 py-1 ${bci < branchCols.length - 1 ? 'border-r' : ''} border-orange-200 text-center`}>
+                              {cell?.orders > 0 ? (
+                                <div className="flex flex-col items-center leading-tight">
+                                  <span className="text-[11px] font-bold text-orange-700">{cell.orders}</span>
+                                  {cell.amount > 0 && <span className="text-[9px] text-orange-400">{fmtAmt(cell.amount)}</span>}
+                                </div>
+                              ) : <span className="text-orange-200">—</span>}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function DeliveryPage() {
@@ -212,6 +429,8 @@ export default function DeliveryPage() {
   const [scheduleNext, setScheduleNext] = useState<ScheduleEntry[]>([])
   const [loadingSched, setLoadingSched] = useState(true)
   const [busySched, setBusySched]       = useState(false)
+
+  const [activeTab, setActiveTab] = useState<'schedule' | 'history'>('schedule')
 
   const weekThis = getWeekStart(0)
   const weekNext = getWeekStart(1)
@@ -396,10 +615,26 @@ export default function DeliveryPage() {
         <Link href="/ocha-import" className="inline-block px-4 py-3 text-sm font-medium text-gray-500 hover:text-green-400 hover:bg-green-50 transition-colors whitespace-nowrap">📊 นำเข้า Ocha</Link>
       </div>
 
+      {/* Sub-tab switcher */}
+      <div className="bg-white border-b border-gray-200 px-4 flex gap-1 items-center">
+        <button
+          onClick={() => setActiveTab('schedule')}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${activeTab === 'schedule' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          📅 ตารางคิวรถ
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${activeTab === 'history' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          📊 ประวัติการวิ่ง
+        </button>
+      </div>
+
       {/* Main */}
       <main className="p-4 flex flex-col gap-6">
 
-        {/* ── ตารางคิวรถจัดส่ง ── */}
+        {activeTab === 'history' && <HistoryTable />}
+
+        {activeTab === 'schedule' && <>
         <div>
           <h2 className="text-sm font-bold text-gray-600 mb-3">📅 ตารางคิวรถจัดส่ง</h2>
           {loadingSched ? (
@@ -505,6 +740,7 @@ export default function DeliveryPage() {
             </div>
           </div>
         </div>
+        </>}
 
       </main>
     </div>

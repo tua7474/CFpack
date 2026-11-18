@@ -108,6 +108,39 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(trips)
     }
 
+    // ── pivot mode: สรุปรายสัปดาห์ per branch ────────────────────────────
+    if (searchParams.get('pivot') === '1' && from && to) {
+      const { rows: pivotRows } = await pool.query(`
+        SELECT
+          date_trunc('week', t.trip_date)::date  AS week_start,
+          t.truck_no,
+          s.branch_id,
+          b.name                                 AS branch_name,
+          b.color_group,
+          COUNT(unnested) FILTER (
+            WHERE unnested IS NOT NULL AND unnested != ''
+          )::int                                 AS order_count,
+          COALESCE(
+            SUM(bo.total_amount::decimal) FILTER (
+              WHERE unnested IS NOT NULL AND unnested != ''
+            ), 0
+          )                                      AS total_amount
+        FROM delivery_trips t
+        JOIN delivery_trip_stops s ON s.trip_id = t.id
+        JOIN branches b             ON b.id = s.branch_id
+        LEFT JOIN LATERAL unnest(s.order_nos) AS unnested ON true
+        LEFT JOIN booking_orders bo ON bo.order_no = unnested
+        WHERE t.trip_date BETWEEN $1 AND $2
+          AND t.status != 'cancelled'
+          AND s.status  = 'delivered'
+        GROUP BY
+          date_trunc('week', t.trip_date)::date,
+          t.truck_no, s.branch_id, b.name, b.color_group
+        ORDER BY week_start DESC, t.truck_no, b.name
+      `, [from, to])
+      return NextResponse.json(pivotRows)
+    }
+
     // ── single date ────────────────────────────────────────────────────────
     if (date) {
       const { rows: trips } = await pool.query(`
