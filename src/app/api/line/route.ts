@@ -2533,47 +2533,8 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }])
   }
 
-  // ── คิวรถ ─────────────────────────────────────────────────────────────────────
-  if (t.startsWith('คิวรถ')) {
-    if (!await isLineAdmin(userId, source))
-      return reply(replyToken, [{ type: 'text', text: '❌ เฉพาะแอดมินเท่านั้น' }])
-
-    await ensureTable()
-
-    // parse date: "คิวรถ", "คิวรถ พรุ่งนี้", "คิวรถ 2026-11-19"
-    let targetDate: string
-    const datePart = t.replace('คิวรถ', '').trim()
-    if (datePart === 'พรุ่งนี้' || datePart === 'พรุ่ง') {
-      const tom = new Date(); tom.setDate(tom.getDate() + 1)
-      targetDate = tom.toISOString().slice(0, 10)
-    } else if (datePart) {
-      const parsed = parseDateInput(datePart)
-      targetDate = parsed ?? new Date().toISOString().slice(0, 10)
-    } else {
-      targetDate = new Date().toISOString().slice(0, 10)
-    }
-
-    // ตรวจสอบ warehouse coords
-    const wLat = await getSetting('warehouse_lat')
-    const wLng = await getSetting('warehouse_lng')
-    if (!wLat || !wLng) {
-      return reply(replyToken, [{
-        type: 'text',
-        text: '⚠️ ยังไม่ได้ตั้งพิกัดโกดัง\nพิมพ์: ตั้งโกดัง 13.7563,100.5018\nเพื่อบันทึกพิกัดโกดังก่อนครับ',
-      }])
-    }
-
-    const plans = await buildTripPlan(targetDate)
-    if (!plans) {
-      return reply(replyToken, [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการดึงข้อมูล' }])
-    }
-    if (!plans.length) {
-      const dl = new Date(targetDate + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })
-      return reply(replyToken, [{ type: 'text', text: `📅 ${dl}\nไม่มีสาขาในตารางคิวที่มีพิกัด GPS\n\nกรุณาตั้งค่าตารางคิวและพิกัด GPS สาขาในหน้า CF ระบบจัดการข้อมูล → จัดส่ง` }])
-    }
-
-    return reply(replyToken, [buildTripPlanFlex(plans, targetDate)])
-  }
+  // ── คิวรถ — ปิดชั่วคราว ──────────────────────────────────────────────────────
+  // if (t.startsWith('คิวรถ')) { ... }
 
   // ── ตั้งคนขับ CF01/CF02 — ลงทะเบียน LINE ID ของคนขับ ─────────────────────────
   if (t.startsWith('ตั้งคนขับ')) {
