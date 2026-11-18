@@ -301,7 +301,7 @@ function LatLngCell({ branchId, lat, lng, onSave }: {
     <div className="flex items-center gap-0.5">
       {lat != null && lng != null ? (
         <span className="text-[10px] text-gray-500 font-mono leading-none whitespace-nowrap" title={`${lat}, ${lng}`}>
-          {lat.toFixed(3)},{lng.toFixed(3)}
+          {Number(lat).toFixed(3)},{Number(lng).toFixed(3)}
         </span>
       ) : (
         <span className="text-gray-300 text-xs">—</span>

@@ -51,7 +51,7 @@ export async function ensureTables() {
 export async function GET() {
   try {
     await ensureTables()
-    const { rows: branches } = await pool.query(`SELECT id, name, color_group, map_url, lat, lng, created_at FROM branches ORDER BY name`)
+    const { rows: branches } = await pool.query(`SELECT id, name, color_group, map_url, lat::float, lng::float, created_at FROM branches ORDER BY name`)
     const { rows: phones }   = await pool.query(`SELECT id, branch_id, phone, is_admin, is_manager, allowed_pages, line_user_id FROM branch_phones ORDER BY branch_id, id`)
     const { rows: counts }   = await pool.query(`
       SELECT branch_id, COUNT(*)::int AS pending_count
