@@ -193,6 +193,454 @@ function WeekTable({
   )
 }
 
+// ── Trip interfaces & constants ───────────────────────────────────────────────
+
+type TripStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+type StopStatus = 'pending' | 'delivered' | 'skipped' | 'failed'
+
+interface Trip {
+  id: number
+  truck_no: number
+  trip_date: string
+  round: string
+  status: TripStatus
+  departed_at: string | null
+  completed_at: string | null
+  total_distance_km: string | null
+  rescheduled_stop_count: number
+  driver_note: string | null
+  stops: TripStop[]
+}
+
+interface TripStop {
+  id: number
+  stop_order: number
+  branch_id: number
+  branch_name: string
+  delivery_type: string
+  order_nos: string[]
+  status: StopStatus
+  skip_reason_code: string | null
+  skip_reason_note: string | null
+}
+
+const TRIP_STATUS: Record<TripStatus, { label: string; cls: string }> = {
+  pending:     { label: 'รอออก',     cls: 'bg-gray-100 text-gray-600 border-gray-300' },
+  in_progress: { label: 'กำลังวิ่ง', cls: 'bg-blue-100 text-blue-700 border-blue-300' },
+  completed:   { label: 'เสร็จสิ้น', cls: 'bg-green-100 text-green-700 border-green-300' },
+  cancelled:   { label: 'ยกเลิก',   cls: 'bg-red-50 text-red-500 border-red-200' },
+}
+
+const STOP_STATUS: Record<StopStatus, { label: string; cls: string }> = {
+  pending:   { label: 'รอส่ง',    cls: 'bg-gray-100 text-gray-500' },
+  delivered: { label: 'ส่งแล้ว',  cls: 'bg-green-100 text-green-700' },
+  skipped:   { label: 'ข้ามสาขา', cls: 'bg-amber-100 text-amber-700' },
+  failed:    { label: 'ล้มเหลว',  cls: 'bg-red-100 text-red-600' },
+}
+
+function fmtTime(ts: string | null): string {
+  if (!ts) return '—'
+  return new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+}
+
+// ── TripCard ──────────────────────────────────────────────────────────────────
+
+function TripCard({
+  trip, branches, onUpdateTrip, onUpdateStop, onAddStop, onRemoveStop, busy,
+}: {
+  trip: Trip
+  branches: Branch[]
+  onUpdateTrip: (id: number, patch: object) => Promise<void>
+  onUpdateStop: (id: number, patch: object) => Promise<void>
+  onAddStop: (tripId: number, branchId: number, deliveryType: string) => Promise<void>
+  onRemoveStop: (id: number) => Promise<void>
+  busy: boolean
+}) {
+  const [expanded,       setExpanded]       = useState(true)
+  const [addingStop,     setAddingStop]     = useState(false)
+  const [newBranchId,    setNewBranchId]    = useState<number | ''>('')
+  const [newDelivType,   setNewDelivType]   = useState<'ส่งตรง' | 'รอพ่วง'>('รอพ่วง')
+  const [skipTarget,     setSkipTarget]     = useState<number | null>(null)
+  const [skipReason,     setSkipReason]     = useState('')
+  const [distEdit,       setDistEdit]       = useState(false)
+  const [distVal,        setDistVal]        = useState(trip.total_distance_km ?? '')
+
+  const ts = TRIP_STATUS[trip.status] ?? TRIP_STATUS.pending
+  const deliveredCount = trip.stops.filter(s => s.status === 'delivered').length
+  const usedBranchIds  = new Set(trip.stops.map(s => s.branch_id))
+  const availBranches  = branches.filter(b => !usedBranchIds.has(b.id))
+
+  const handleStart    = () => onUpdateTrip(trip.id, { status: 'in_progress', departed_at: new Date().toISOString() })
+  const handleComplete = () => onUpdateTrip(trip.id, { status: 'completed',   completed_at: new Date().toISOString() })
+  const handleCancel   = () => { if (confirm('ยืนยันยกเลิกรอบนี้?')) onUpdateTrip(trip.id, { status: 'cancelled' }) }
+
+  const handleDelivered = (stopId: number) =>
+    onUpdateStop(stopId, { status: 'delivered', arrived_at: new Date().toISOString() })
+
+  const handleSkip = (stopId: number) => {
+    onUpdateStop(stopId, { status: 'skipped', skip_reason_code: skipReason || 'other' })
+    setSkipTarget(null); setSkipReason('')
+  }
+
+  const handleSaveDist = () => {
+    onUpdateTrip(trip.id, { total_distance_km: distVal ? parseFloat(String(distVal)) : null })
+    setDistEdit(false)
+  }
+
+  if (trip.status === 'cancelled') {
+    return (
+      <div className="rounded border border-dashed border-red-200 bg-red-50 px-3 py-2 text-xs text-red-400 italic">
+        ยกเลิกรอบนี้แล้ว
+      </div>
+    )
+  }
+
+  const headerBg = trip.status === 'in_progress' ? 'bg-blue-50' : trip.status === 'completed' ? 'bg-green-50' : 'bg-gray-50'
+  const cardBorder = trip.status === 'in_progress' ? 'border-blue-300' : trip.status === 'completed' ? 'border-green-300' : 'border-gray-200'
+
+  return (
+    <div className={`rounded-lg border shadow-sm bg-white overflow-hidden ${cardBorder}`}>
+      {/* header */}
+      <div className={`px-3 py-2 flex items-center gap-2 ${headerBg}`}>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${ts.cls}`}>{ts.label}</span>
+        <span className="text-[11px] text-gray-500">
+          {trip.stops.length > 0 && <>{deliveredCount}/{trip.stops.length} สาขา</>}
+          {trip.total_distance_km && <> · {trip.total_distance_km} กม.</>}
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          {trip.status === 'pending' && (
+            <button onClick={handleStart} disabled={busy}
+              className="px-2.5 py-0.5 text-[11px] rounded bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50">
+              เริ่มออก
+            </button>
+          )}
+          {trip.status === 'in_progress' && (
+            <button onClick={handleComplete} disabled={busy}
+              className="px-2.5 py-0.5 text-[11px] rounded bg-green-500 hover:bg-green-600 text-white disabled:opacity-50">
+              เสร็จสิ้น
+            </button>
+          )}
+          {(trip.status === 'pending' || trip.status === 'in_progress') && (
+            <button onClick={handleCancel} disabled={busy}
+              className="px-2 py-0.5 text-[11px] rounded bg-white hover:bg-red-50 text-red-400 border border-red-200 disabled:opacity-50">
+              ยกเลิก
+            </button>
+          )}
+          <button onClick={() => setExpanded(v => !v)}
+            className="px-2 py-0.5 text-[11px] rounded bg-white border border-gray-200 text-gray-400 hover:bg-gray-50">
+            {expanded ? '▲' : '▼'}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <>
+          {/* timing + distance row */}
+          {(trip.departed_at || trip.completed_at || trip.status !== 'pending') && (
+            <div className="px-3 py-1.5 border-b border-gray-100 flex gap-4 text-[11px] text-gray-500 items-center">
+              {trip.departed_at  && <span>ออก {fmtTime(trip.departed_at)}</span>}
+              {trip.completed_at && <span>กลับ {fmtTime(trip.completed_at)}</span>}
+              <div className="ml-auto flex items-center gap-1">
+                {distEdit ? (
+                  <>
+                    <input type="number" step="0.1" min="0" value={distVal}
+                      onChange={e => setDistVal(e.target.value)}
+                      className="w-16 px-1 py-0.5 border border-gray-300 rounded text-[11px] focus:outline-none"
+                      autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') handleSaveDist(); if (e.key === 'Escape') setDistEdit(false) }}
+                    />
+                    <span className="text-gray-400">กม.</span>
+                    <button onClick={handleSaveDist} className="text-green-600 text-[11px] hover:text-green-700">✓</button>
+                    <button onClick={() => setDistEdit(false)} className="text-gray-400 text-[11px] hover:text-gray-600">✕</button>
+                  </>
+                ) : (
+                  <button onClick={() => { setDistVal(trip.total_distance_km ?? ''); setDistEdit(true) }}
+                    className="text-gray-400 hover:text-gray-600 text-[11px]">
+                    {trip.total_distance_km ? `${trip.total_distance_km} กม. ✏️` : '+ บันทึกระยะทาง'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* stops list */}
+          {trip.stops.length > 0 ? (
+            <table className="w-full text-xs border-collapse">
+              <tbody>
+                {trip.stops.map((stop, si) => {
+                  const ss = STOP_STATUS[stop.status] ?? STOP_STATUS.pending
+                  return (
+                    <Fragment key={stop.id}>
+                      <tr className={`border-t border-gray-100 ${stop.status === 'delivered' ? 'bg-green-50/40' : stop.status === 'skipped' ? 'bg-amber-50/40' : ''}`}>
+                        <td className="px-2 py-1.5 w-6 text-gray-300 text-[10px] text-center">{stop.stop_order}</td>
+                        <td className="px-1 py-1.5">
+                          <div className="font-medium text-gray-700">{stop.branch_name}</div>
+                          {stop.order_nos.length > 0 && (
+                            <div className="text-[10px] text-gray-400">{stop.order_nos.length} ใบจอง</div>
+                          )}
+                        </td>
+                        <td className="px-1 py-1.5 text-center">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${stop.delivery_type === 'ส่งตรง' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {stop.delivery_type}
+                          </span>
+                        </td>
+                        <td className="px-1 py-1.5 text-center">
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${ss.cls}`}>{ss.label}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          {stop.status === 'pending' && trip.status !== 'completed' && (
+                            <div className="flex gap-1 justify-end">
+                              <button onClick={() => handleDelivered(stop.id)} disabled={busy}
+                                className="px-2 py-0.5 text-[10px] rounded bg-green-500 hover:bg-green-600 text-white disabled:opacity-50">
+                                ✓ ส่งแล้ว
+                              </button>
+                              <button onClick={() => setSkipTarget(id => id === stop.id ? null : stop.id)}
+                                className="px-2 py-0.5 text-[10px] rounded bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-200">
+                                ข้าม
+                              </button>
+                              <button onClick={() => onRemoveStop(stop.id)} disabled={busy}
+                                className="px-1.5 py-0.5 text-[10px] rounded text-gray-300 hover:text-red-400 hover:bg-red-50">
+                                ✕
+                              </button>
+                            </div>
+                          )}
+                          {stop.status === 'skipped' && stop.skip_reason_code && (
+                            <span className="text-[9px] text-amber-500 italic">{stop.skip_reason_code}</span>
+                          )}
+                        </td>
+                      </tr>
+                      {skipTarget === stop.id && (
+                        <tr className="bg-amber-50 border-t border-amber-100">
+                          <td colSpan={5} className="px-3 py-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] text-amber-700 font-medium">เหตุผล:</span>
+                              <select value={skipReason} onChange={e => setSkipReason(e.target.value)}
+                                className="text-xs border border-amber-300 rounded px-1.5 py-0.5 bg-white focus:outline-none">
+                                <option value="">— เลือก —</option>
+                                <option value="full_truck">รถเต็ม</option>
+                                <option value="branch_closed">สาขาปิด</option>
+                                <option value="road_blocked">ถนนปิด</option>
+                                <option value="other">อื่นๆ</option>
+                              </select>
+                              <button onClick={() => handleSkip(stop.id)} disabled={busy || !skipReason}
+                                className="px-2 py-0.5 text-xs rounded bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50">
+                                ยืนยัน
+                              </button>
+                              <button onClick={() => { setSkipTarget(null); setSkipReason('') }}
+                                className="px-2 py-0.5 text-xs rounded bg-white border border-gray-200 text-gray-500">
+                                ยกเลิก
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="px-3 py-3 text-[11px] text-gray-300 italic">ยังไม่มีสาขาในรอบนี้</div>
+          )}
+
+          {/* add stop */}
+          {trip.status !== 'completed' && (
+            <div className="border-t border-gray-100 px-3 py-2">
+              {addingStop ? (
+                <div className="flex gap-2 items-center flex-wrap">
+                  <select value={newBranchId} onChange={e => setNewBranchId(e.target.value ? Number(e.target.value) : '')}
+                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-orange-300">
+                    <option value="">— เลือกสาขา —</option>
+                    {availBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                  <select value={newDelivType} onChange={e => setNewDelivType(e.target.value as 'ส่งตรง' | 'รอพ่วง')}
+                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none">
+                    <option value="รอพ่วง">รอพ่วง</option>
+                    <option value="ส่งตรง">ส่งตรง</option>
+                  </select>
+                  <button onClick={() => { if (newBranchId) { onAddStop(trip.id, Number(newBranchId), newDelivType); setNewBranchId(''); setAddingStop(false) } }}
+                    disabled={!newBranchId || busy}
+                    className="px-2.5 py-1 text-xs rounded bg-[#9b9484] hover:bg-[#857e72] text-white disabled:opacity-50">
+                    + เพิ่ม
+                  </button>
+                  <button onClick={() => setAddingStop(false)}
+                    className="px-2 py-1 text-xs rounded bg-white border border-gray-200 text-gray-500">
+                    ยกเลิก
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setAddingStop(true)}
+                  className="text-[11px] text-gray-400 hover:text-orange-500 transition-colors">
+                  + เพิ่มสาขา
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── TripDayView ───────────────────────────────────────────────────────────────
+
+function TripDayView({ branches }: { branches: Branch[] }) {
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const [date,    setDate]    = useState(todayStr)
+  const [trips,   setTrips]   = useState<Trip[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy,    setBusy]    = useState(false)
+
+  const loadTrips = useCallback(async () => {
+    setLoading(true)
+    const r = await fetch(`/api/delivery/trips?date=${date}`)
+    if (r.ok) setTrips(await r.json())
+    else setTrips([])
+    setLoading(false)
+  }, [date])
+
+  useEffect(() => { loadTrips() }, [loadTrips])
+
+  const shiftDate = (d: number) => {
+    const dt = new Date(date + 'T00:00:00')
+    dt.setDate(dt.getDate() + d)
+    setDate(dt.toISOString().slice(0, 10))
+  }
+
+  const patch = async (body: object) => {
+    setBusy(true)
+    await fetch('/api/delivery/trips', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    await loadTrips()
+    setBusy(false)
+  }
+
+  const handleCreateTrip = async (truckNo: number, round: string) => {
+    setBusy(true)
+    const r = await fetch('/api/delivery/trips', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ truck_no: truckNo, trip_date: date, round }),
+    })
+    if (r.ok) await loadTrips()
+    setBusy(false)
+  }
+
+  const handleUpdateTrip = (id: number, p: object) => patch({ action: 'update_trip', id, ...p })
+  const handleUpdateStop = (id: number, p: object) => patch({ action: 'update_stop', id, ...p })
+  const handleAddStop    = (tripId: number, branchId: number, deliveryType: string) =>
+    patch({ action: 'add_stop', trip_id: tripId, branch_id: branchId, delivery_type: deliveryType, order_nos: [] })
+  const handleRemoveStop = (id: number) => patch({ action: 'remove_stop', id })
+
+  // ── day summary stats ──────────────────────────────────────────────────────
+  const activeTrips    = trips.filter(t => t.status !== 'cancelled')
+  const totalDelivered = activeTrips.reduce((s, t) => s + t.stops.filter(st => st.status === 'delivered').length, 0)
+  const totalStops     = activeTrips.reduce((s, t) => s + t.stops.length, 0)
+  const anyInProgress  = activeTrips.some(t => t.status === 'in_progress')
+
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  })
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* date nav */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => shiftDate(-1)}
+          className="px-2.5 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 leading-none">‹</button>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white" />
+        <button onClick={() => shiftDate(1)}
+          className="px-2.5 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 leading-none">›</button>
+        <button onClick={() => setDate(todayStr)} disabled={date === todayStr}
+          className="px-2.5 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-500 disabled:opacity-30">
+          วันนี้
+        </button>
+        <span className="text-sm text-gray-600">{dateLabel}</span>
+        {anyInProgress && (
+          <span className="ml-auto px-2.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 animate-pulse">
+            กำลังวิ่งอยู่
+          </span>
+        )}
+      </div>
+
+      {/* stats strip */}
+      {!loading && activeTrips.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {TRUCKS.map(truck => {
+            const tTrips = activeTrips.filter(t => t.truck_no === truck.no)
+            if (!tTrips.length) return null
+            const tDel   = tTrips.reduce((s, t) => s + t.stops.filter(st => st.status === 'delivered').length, 0)
+            const tTotal = tTrips.reduce((s, t) => s + t.stops.length, 0)
+            const tDist  = tTrips.reduce((s, t) => s + (t.total_distance_km ? parseFloat(String(t.total_distance_km)) : 0), 0)
+            return (
+              <div key={truck.no} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-gray-200 shadow-sm text-xs">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${truck.badge}`}>{truck.name}</span>
+                <span className="text-gray-600 font-medium">{tDel}/{tTotal} สาขา</span>
+                {tDist > 0 && <span className="text-gray-400">{tDist.toFixed(1)} กม.</span>}
+              </div>
+            )
+          })}
+          {totalStops > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-50 border border-orange-200 text-xs font-bold text-orange-700">
+              รวม {totalDelivered}/{totalStops} สาขา
+            </div>
+          )}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-gray-400 text-sm py-12 text-center">กำลังโหลด...</div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {TRUCKS.map(truck => (
+            <div key={truck.no} className="rounded-lg border border-gray-200 shadow-sm overflow-hidden bg-white">
+              <div className={`px-4 py-2.5 flex items-center gap-2 ${truck.no === 1 ? 'bg-blue-600' : 'bg-violet-600'} text-white`}>
+                <span className="font-bold text-sm">{truck.name}</span>
+                <span className="text-xs opacity-75">{truck.no === 1 ? 'CF01' : 'CF02'}</span>
+              </div>
+              {ROUNDS.map(round => {
+                const trip = trips.find(t => t.truck_no === truck.no && t.round === round && t.status !== 'cancelled')
+                return (
+                  <div key={round} className="border-t border-gray-100">
+                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-600">รอบ{round}</span>
+                      {!trip && (
+                        <button onClick={() => handleCreateTrip(truck.no, round)} disabled={busy}
+                          className="px-2.5 py-0.5 text-[11px] rounded bg-[#9b9484] hover:bg-[#857e72] text-white disabled:opacity-50">
+                          + สร้างรอบวิ่ง
+                        </button>
+                      )}
+                    </div>
+                    <div className="p-2">
+                      {trip ? (
+                        <TripCard
+                          trip={trip}
+                          branches={branches}
+                          onUpdateTrip={handleUpdateTrip}
+                          onUpdateStop={handleUpdateStop}
+                          onAddStop={handleAddStop}
+                          onRemoveStop={handleRemoveStop}
+                          busy={busy}
+                        />
+                      ) : (
+                        <div className="text-[11px] text-gray-300 italic py-1 px-1">ยังไม่มีรอบวิ่ง</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── HistoryTable ──────────────────────────────────────────────────────────────
 
 interface PivotRow {
@@ -430,7 +878,7 @@ export default function DeliveryPage() {
   const [loadingSched, setLoadingSched] = useState(true)
   const [busySched, setBusySched]       = useState(false)
 
-  const [activeTab, setActiveTab] = useState<'schedule' | 'history'>('schedule')
+  const [activeTab, setActiveTab] = useState<'schedule' | 'trips' | 'history'>('trips')
 
   const weekThis = getWeekStart(0)
   const weekNext = getWeekStart(1)
@@ -623,6 +1071,11 @@ export default function DeliveryPage() {
           📅 ตารางคิวรถ
         </button>
         <button
+          onClick={() => setActiveTab('trips')}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${activeTab === 'trips' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          🚛 รอบวิ่ง
+        </button>
+        <button
           onClick={() => setActiveTab('history')}
           className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${activeTab === 'history' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
           📊 ประวัติการวิ่ง
@@ -633,6 +1086,8 @@ export default function DeliveryPage() {
       <main className="p-4 flex flex-col gap-6">
 
         {activeTab === 'history' && <HistoryTable />}
+
+        {activeTab === 'trips' && <TripDayView branches={branches} />}
 
         {activeTab === 'schedule' && <>
         <div>
