@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { pushDriverCard, notifyBranchArrived } from '@/lib/driver-card'
+import { bestInsertionRoute, calcRouteKm, type Coord, type Depot } from '@/lib/route-optimizer'
 
 // ── Ensure tables ─────────────────────────────────────────────────────────────
 
@@ -325,6 +326,135 @@ export async function PATCH(req: NextRequest) {
         )
       }
       return NextResponse.json({ ok: true })
+    }
+
+    // ── เติม stops จาก delivery_schedule + เรียงเส้นทาง ─────────────────
+    if (body.action === 'populate_from_schedule') {
+      const { trip_id } = body
+      // ดึงข้อมูล trip
+      const { rows: [trip] } = await pool.query(
+        `SELECT truck_no, trip_date, round FROM delivery_trips WHERE id=$1`, [trip_id]
+      )
+      if (!trip) return NextResponse.json({ error: 'trip not found' }, { status: 404 })
+
+      // หา week_start (วันจันทร์) ของ trip_date
+      const dt = new Date(trip.trip_date + 'T00:00:00')
+      const dow = dt.getDay() // 0=Sun
+      const dbDow = dow === 0 ? 7 : dow
+      const diffToMon = dow === 0 ? -6 : 1 - dow
+      const mon = new Date(dt)
+      mon.setDate(dt.getDate() + diffToMon)
+      const weekStart = mon.toISOString().slice(0, 10)
+
+      // ดึง warehouse lat/lng จาก system_settings
+      const { rows: wRows } = await pool.query(
+        `SELECT key, value FROM system_settings WHERE key IN ('warehouse_lat','warehouse_lng')`
+      )
+      const wMap = Object.fromEntries(wRows.map(r => [r.key, r.value]))
+      const depot: Depot | null = (wMap.warehouse_lat && wMap.warehouse_lng)
+        ? { lat: parseFloat(wMap.warehouse_lat), lng: parseFloat(wMap.warehouse_lng) }
+        : null
+
+      // ดึง branches จาก delivery_schedule
+      const { rows: sched } = await pool.query(`
+        SELECT ds.branch_id, b.name, b.lat::float, b.lng::float
+        FROM delivery_schedule ds
+        JOIN branches b ON b.id = ds.branch_id
+        WHERE ds.week_start=$1 AND ds.day_of_week=$2 AND ds.truck_no=$3 AND ds.round=$4
+        ORDER BY ds.sort_order, ds.id
+      `, [weekStart, dbDow, trip.truck_no, trip.round])
+
+      if (!sched.length) return NextResponse.json({ ok: true, inserted: 0 })
+
+      // เรียงเส้นทางถ้ามี depot coordinates
+      const withCoords  = sched.filter(r => r.lat != null && r.lng != null)
+      const noCoords    = sched.filter(r => r.lat == null || r.lng == null)
+
+      let ordered: typeof sched
+      if (depot && withCoords.length) {
+        const coords: Coord[] = withCoords.map(r => ({
+          id: r.branch_id, name: r.name, lat: r.lat, lng: r.lng, deliveryType: 'รอพ่วง',
+        }))
+        const route = bestInsertionRoute(depot, coords)
+        ordered = [...route.map(c => withCoords.find(r => r.branch_id === c.id)!), ...noCoords]
+      } else {
+        ordered = sched
+      }
+
+      // insert stops (ข้ามถ้ามีอยู่แล้ว)
+      let inserted = 0
+      for (let i = 0; i < ordered.length; i++) {
+        const r = ordered[i]
+        const { rowCount } = await pool.query(`
+          INSERT INTO delivery_trip_stops (trip_id, stop_order, branch_id, branch_name, delivery_type, order_nos)
+          SELECT $1,$2,$3,$4,'รอพ่วง','{}'
+          WHERE NOT EXISTS (SELECT 1 FROM delivery_trip_stops WHERE trip_id=$1 AND branch_id=$3)
+        `, [trip_id, i + 1, r.branch_id, r.name])
+        inserted += rowCount ?? 0
+      }
+
+      // คำนวณ total_distance_calc
+      if (depot && withCoords.length) {
+        const coords: Coord[] = withCoords.map(r => ({
+          id: r.branch_id, name: r.name, lat: r.lat, lng: r.lng, deliveryType: 'รอพ่วง',
+        }))
+        const route = bestInsertionRoute(depot, coords)
+        const km = calcRouteKm(depot, route)
+        await pool.query(
+          `UPDATE delivery_trips SET total_distance_calc=$1 WHERE id=$2`,
+          [parseFloat(km.toFixed(1)), trip_id]
+        )
+      }
+
+      return NextResponse.json({ ok: true, inserted })
+    }
+
+    // ── เรียงเส้นทาง stops ที่มีอยู่ใหม่ ──────────────────────────────────
+    if (body.action === 'optimize_route') {
+      const { trip_id } = body
+
+      // ดึง warehouse lat/lng
+      const { rows: wRows } = await pool.query(
+        `SELECT key, value FROM system_settings WHERE key IN ('warehouse_lat','warehouse_lng')`
+      )
+      const wMap = Object.fromEntries(wRows.map(r => [r.key, r.value]))
+      if (!wMap.warehouse_lat || !wMap.warehouse_lng)
+        return NextResponse.json({ error: 'warehouse coords not set' }, { status: 400 })
+      const depot: Depot = { lat: parseFloat(wMap.warehouse_lat), lng: parseFloat(wMap.warehouse_lng) }
+
+      // ดึง pending stops ที่มี lat/lng
+      const { rows: stops } = await pool.query(`
+        SELECT s.id, s.branch_id, b.lat::float, b.lng::float, s.branch_name
+        FROM delivery_trip_stops s
+        JOIN branches b ON b.id = s.branch_id
+        WHERE s.trip_id=$1 AND s.status='pending'
+          AND b.lat IS NOT NULL AND b.lng IS NOT NULL
+        ORDER BY s.stop_order
+      `, [trip_id])
+
+      if (stops.length < 2) return NextResponse.json({ ok: true, reordered: 0 })
+
+      const coords: Coord[] = stops.map(r => ({
+        id: r.id, name: r.branch_name, lat: r.lat, lng: r.lng, deliveryType: 'รอพ่วง',
+      }))
+      const route = bestInsertionRoute(depot, coords)
+
+      // อัปเดต stop_order
+      for (let i = 0; i < route.length; i++) {
+        await pool.query(
+          `UPDATE delivery_trip_stops SET stop_order=$1 WHERE id=$2`,
+          [i + 1, route[i].id]
+        )
+      }
+
+      // อัปเดต total_distance_calc
+      const km = calcRouteKm(depot, route)
+      await pool.query(
+        `UPDATE delivery_trips SET total_distance_calc=$1 WHERE id=$2`,
+        [parseFloat(km.toFixed(1)), trip_id]
+      )
+
+      return NextResponse.json({ ok: true, reordered: route.length })
     }
 
     return NextResponse.json({ error: 'unknown action' }, { status: 400 })

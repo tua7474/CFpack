@@ -207,6 +207,7 @@ interface Trip {
   departed_at: string | null
   completed_at: string | null
   total_distance_km: string | null
+  total_distance_calc: string | null
   rescheduled_stop_count: number
   driver_note: string | null
   stops: TripStop[]
@@ -246,7 +247,7 @@ function fmtTime(ts: string | null): string {
 // ── TripCard ──────────────────────────────────────────────────────────────────
 
 function TripCard({
-  trip, branches, onUpdateTrip, onUpdateStop, onAddStop, onRemoveStop, busy,
+  trip, branches, onUpdateTrip, onUpdateStop, onAddStop, onRemoveStop, onOptimize, busy,
 }: {
   trip: Trip
   branches: Branch[]
@@ -254,6 +255,7 @@ function TripCard({
   onUpdateStop: (id: number, patch: object) => Promise<void>
   onAddStop: (tripId: number, branchId: number, deliveryType: string) => Promise<void>
   onRemoveStop: (id: number) => Promise<void>
+  onOptimize: (tripId: number) => Promise<void>
   busy: boolean
 }) {
   const [expanded,       setExpanded]       = useState(true)
@@ -266,9 +268,10 @@ function TripCard({
   const [distVal,        setDistVal]        = useState(trip.total_distance_km ?? '')
 
   const ts = TRIP_STATUS[trip.status] ?? TRIP_STATUS.pending
-  const deliveredCount = trip.stops.filter(s => s.status === 'delivered').length
-  const usedBranchIds  = new Set(trip.stops.map(s => s.branch_id))
-  const availBranches  = branches.filter(b => !usedBranchIds.has(b.id))
+  const deliveredCount  = trip.stops.filter(s => s.status === 'delivered').length
+  const pendingStops    = trip.stops.filter(s => s.status === 'pending')
+  const usedBranchIds   = new Set(trip.stops.map(s => s.branch_id))
+  const availBranches   = branches.filter(b => !usedBranchIds.has(b.id))
 
   const handleStart    = () => onUpdateTrip(trip.id, { status: 'in_progress', departed_at: new Date().toISOString() })
   const handleComplete = () => onUpdateTrip(trip.id, { status: 'completed',   completed_at: new Date().toISOString() })
@@ -305,9 +308,19 @@ function TripCard({
         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${ts.cls}`}>{ts.label}</span>
         <span className="text-[11px] text-gray-500">
           {trip.stops.length > 0 && <>{deliveredCount}/{trip.stops.length} สาขา</>}
-          {trip.total_distance_km && <> · {trip.total_distance_km} กม.</>}
+          {trip.total_distance_km
+            ? <> · {trip.total_distance_km} กม.</>
+            : trip.total_distance_calc
+              ? <> · ~{trip.total_distance_calc} กม.</>
+              : null}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
+          {pendingStops.length >= 2 && trip.status !== 'completed' && (
+            <button onClick={() => onOptimize(trip.id)} disabled={busy}
+              className="px-2.5 py-0.5 text-[11px] rounded bg-white hover:bg-orange-50 text-orange-500 border border-orange-200 disabled:opacity-50">
+              🔀 เรียงเส้นทาง
+            </button>
+          )}
           {trip.status === 'pending' && (
             <button onClick={handleStart} disabled={busy}
               className="px-2.5 py-0.5 text-[11px] rounded bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50">
@@ -525,7 +538,16 @@ function TripDayView({ branches }: { branches: Branch[] }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ truck_no: truckNo, trip_date: date, round }),
     })
-    if (r.ok) await loadTrips()
+    if (r.ok) {
+      const trip = await r.json()
+      // เติม stops จาก schedule + เรียงเส้นทาง
+      await fetch('/api/delivery/trips', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'populate_from_schedule', trip_id: trip.id }),
+      })
+      await loadTrips()
+    }
     setBusy(false)
   }
 
@@ -534,6 +556,7 @@ function TripDayView({ branches }: { branches: Branch[] }) {
   const handleAddStop    = (tripId: number, branchId: number, deliveryType: string) =>
     patch({ action: 'add_stop', trip_id: tripId, branch_id: branchId, delivery_type: deliveryType, order_nos: [] })
   const handleRemoveStop = (id: number) => patch({ action: 'remove_stop', id })
+  const handleOptimize   = (tripId: number) => patch({ action: 'optimize_route', trip_id: tripId })
 
   // ── day summary stats ──────────────────────────────────────────────────────
   const activeTrips    = trips.filter(t => t.status !== 'cancelled')
@@ -624,6 +647,7 @@ function TripDayView({ branches }: { branches: Branch[] }) {
                           onUpdateStop={handleUpdateStop}
                           onAddStop={handleAddStop}
                           onRemoveStop={handleRemoveStop}
+                          onOptimize={handleOptimize}
                           busy={busy}
                         />
                       ) : (
