@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { pushDriverCard, notifyBranchArrived } from '@/lib/driver-card'
 
 // ── Ensure tables ─────────────────────────────────────────────────────────────
 
@@ -227,6 +228,10 @@ export async function PATCH(req: NextRequest) {
         WHERE id = $1
       `, [id, status ?? null, departed_at ?? null, completed_at ?? null,
           total_distance_km ?? null, driver_note ?? null])
+      // เมื่อรอบเริ่มวิ่ง → ส่งการ์ดคนขับ
+      if (status === 'in_progress') {
+        pushDriverCard(id).catch(e => console.error('[trip in_progress push]', e))
+      }
       return NextResponse.json({ ok: true })
     }
 
@@ -284,6 +289,22 @@ export async function PATCH(req: NextRequest) {
             [stopRow[0].trip_id]
           )
         }
+      }
+      // notifications: ส่งสำเร็จ → แจ้งสาขา + อัปเดตการ์ดคนขับ
+      if (status === 'delivered' || status === 'skipped') {
+        pool.query(`
+          SELECT s.branch_id, s.trip_id, t.truck_no
+          FROM delivery_trip_stops s
+          JOIN delivery_trips t ON t.id = s.trip_id
+          WHERE s.id = $1
+        `, [id]).then(async ({ rows: [info] }) => {
+          if (!info) return
+          if (status === 'delivered') {
+            const tn = info.truck_no === 1 ? 'CF01 (อ๊อบ)' : 'CF02 (ต้น)'
+            await notifyBranchArrived(info.branch_id, tn)
+          }
+          await pushDriverCard(info.trip_id)
+        }).catch(e => console.error('[stop notify]', e))
       }
       return NextResponse.json({ ok: true })
     }

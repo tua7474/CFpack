@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as crypto from 'crypto'
 import pool from '@/lib/db'
+import { buildDriverCardFlex, fetchTripFull, notifyBranchArrived } from '@/lib/driver-card'
 
 const TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN!
 const SECRET = process.env.LINE_CHANNEL_SECRET!
@@ -2223,6 +2224,74 @@ async function handlePostback(data: string, userId: string, replyToken: string, 
     return reply(replyToken, msgs)
   }
 
+  // ── STOP_DEL:stopId:tripId — คนขับกด ✓ ส่งสำเร็จ ─────────────────────────
+  if (data.startsWith('STOP_DEL:')) {
+    const parts = data.split(':')
+    const stopId = parseInt(parts[1])
+    const tripId = parseInt(parts[2])
+    if (isNaN(stopId) || isNaN(tripId))
+      return reply(replyToken, [{ type: 'text', text: '❌ ข้อมูลไม่ถูกต้อง' }])
+
+    await ensureTable()
+    await pool.query(`
+      UPDATE delivery_trip_stops
+      SET status='delivered', arrived_at=NOW()
+      WHERE id=$1 AND status='pending'
+    `, [stopId])
+
+    // แจ้งสาขา + อัปเดตการ์ด
+    const { rows: [info] } = await pool.query(`
+      SELECT s.branch_id, t.truck_no
+      FROM delivery_trip_stops s
+      JOIN delivery_trips t ON t.id = s.trip_id
+      WHERE s.id = $1
+    `, [stopId])
+    if (info) {
+      const tn = info.truck_no === 1 ? 'CF01 (อ๊อบ)' : 'CF02 (ต้น)'
+      notifyBranchArrived(info.branch_id, tn).catch(console.error)
+    }
+
+    const trip = await fetchTripFull(tripId)
+    if (!trip) return reply(replyToken, [{ type: 'text', text: '✅ บันทึกแล้วครับ' }])
+    return reply(replyToken, [buildDriverCardFlex(trip)])
+  }
+
+  // ── STOP_SKIP:stopId:tripId:reason — คนขับข้ามสาขา ───────────────────────
+  if (data.startsWith('STOP_SKIP:')) {
+    const parts = data.split(':')
+    const stopId    = parseInt(parts[1])
+    const tripId    = parseInt(parts[2])
+    const reason    = parts[3] ?? 'other'
+    if (isNaN(stopId) || isNaN(tripId))
+      return reply(replyToken, [{ type: 'text', text: '❌ ข้อมูลไม่ถูกต้อง' }])
+
+    await ensureTable()
+    await pool.query(`
+      UPDATE delivery_trip_stops
+      SET status='skipped', skip_reason_code=$1
+      WHERE id=$2 AND status='pending'
+    `, [reason, stopId])
+    // เพิ่ม rescheduled_stop_count ของ trip
+    await pool.query(`
+      UPDATE delivery_trips
+      SET rescheduled_stop_count = rescheduled_stop_count + 1
+      WHERE id = $1
+    `, [tripId])
+
+    const trip = await fetchTripFull(tripId)
+    if (!trip) return reply(replyToken, [{ type: 'text', text: '✅ บันทึกข้ามสาขาแล้วครับ' }])
+    return reply(replyToken, [buildDriverCardFlex(trip)])
+  }
+
+  // ── DRIVER_CARD:tripId — รีเฟรชการ์ด ─────────────────────────────────────
+  if (data.startsWith('DRIVER_CARD:')) {
+    const tripId = parseInt(data.split(':')[1])
+    await ensureTable()
+    const trip = await fetchTripFull(tripId)
+    if (!trip) return reply(replyToken, [{ type: 'text', text: '❌ ไม่พบรอบวิ่ง' }])
+    return reply(replyToken, [buildDriverCardFlex(trip)])
+  }
+
   // ── BOOK_TRIPS:DATE:SECTIONS ──────────────────────────────────────────────
   if (data.startsWith('BOOK_TRIPS:')) {
     if (!await isLineAdmin(userId, source))
@@ -2553,6 +2622,65 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
 
     return reply(replyToken, [buildTripPlanFlex(plans, targetDate)])
+  }
+
+  // ── ตั้งคนขับ CF01/CF02 — ลงทะเบียน LINE ID ของคนขับ ─────────────────────────
+  if (t.startsWith('ตั้งคนขับ')) {
+    const userInfo = await getBranchFromLineUser(userId)
+    if (!await isLineAdmin(userId, source) && !userInfo) {
+      return reply(replyToken, [{ type: 'text', text: '❌ ต้องลงทะเบียนในระบบก่อน\nพิมพ์: ลงทะเบียน 0812345678' }])
+    }
+    const arg = t.replace('ตั้งคนขับ', '').trim().toLowerCase()
+    const truckNo = (arg.includes('1') || arg.includes('cf01')) ? 1
+                  : (arg.includes('2') || arg.includes('cf02')) ? 2 : null
+    if (!truckNo) {
+      return reply(replyToken, [{ type: 'text', text: '❌ ระบุรถให้ถูกต้อง\nตัวอย่าง: ตั้งคนขับ CF01' }])
+    }
+    await ensureTable()
+    await setSetting(`driver_line_id_truck_${truckNo}`, userId)
+    const name = truckNo === 1 ? 'CF01 (อ๊อบ)' : 'CF02 (ต้น)'
+    return reply(replyToken, [{
+      type: 'text',
+      text: `✅ ลงทะเบียนคนขับ ${name} แล้วครับ\n\nจากนี้คุณจะได้รับการ์ดคิวรถเมื่อรอบวิ่งเริ่มต้น\nพิมพ์ "คิวฉัน" เพื่อดูรอบวิ่งวันนี้ได้เลยครับ`,
+    }])
+  }
+
+  // ── คิวฉัน — คนขับขอดูการ์ดรอบวิ่งวันนี้ ────────────────────────────────────
+  if (t === 'คิวฉัน' || t === 'คิววันนี้') {
+    await ensureTable()
+    // หาว่าเป็นคนขับรถคันไหน
+    const { rows: s1 } = await pool.query(`SELECT value FROM system_settings WHERE key='driver_line_id_truck_1'`)
+    const { rows: s2 } = await pool.query(`SELECT value FROM system_settings WHERE key='driver_line_id_truck_2'`)
+    let truckNo: number | null = null
+    if (s1[0]?.value === userId) truckNo = 1
+    else if (s2[0]?.value === userId) truckNo = 2
+
+    if (!truckNo) {
+      return reply(replyToken, [{
+        type: 'text',
+        text: '❌ ไม่พบข้อมูลคนขับ\nกรุณาพิมพ์ก่อน: ตั้งคนขับ CF01 (หรือ CF02)',
+      }])
+    }
+
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }) // YYYY-MM-DD
+    const { rows: todayTrips } = await pool.query(`
+      SELECT id FROM delivery_trips
+      WHERE trip_date=$1 AND truck_no=$2 AND status IN ('pending','in_progress')
+      ORDER BY round
+    `, [today, truckNo])
+
+    if (!todayTrips.length) {
+      return reply(replyToken, [{ type: 'text', text: '📭 ยังไม่มีรอบวิ่งสำหรับวันนี้ครับ' }])
+    }
+
+    const cards = (await Promise.all(
+      todayTrips.map(async (r: { id: number }) => {
+        const trip = await fetchTripFull(r.id)
+        return trip ? buildDriverCardFlex(trip) : null
+      })
+    )).filter(Boolean) as object[]
+
+    return reply(replyToken, cards)
   }
 
   // ── ตั้งโกดัง lat,lng ─────────────────────────────────────────────────────────
