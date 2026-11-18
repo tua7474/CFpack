@@ -1049,6 +1049,12 @@ function Booking2Inner() {
   }
   if (Object.values(foyPending).some(d => d.amount > 0)) _hasNonBB = true
   const canBubbleNoVat = _hasBB && !_hasNonBB && isBBDirectMode
+  // บับเบิลบังคับแวต: มีบับเบิลในออเดอร์ + เบิกจากโกดัง/สาย4
+  const bubbleForceVat: boolean = _hasBB && (() => {
+    if (!withdrawalTypeId) return false
+    const wt = withdrawalTypes.find(w => w.id === withdrawalTypeId)
+    return !!(wt && (wt.name.includes('โกดัง') || wt.name.includes('สาย4') || wt.name.includes('สาย 4')))
+  })()
   const _isBubbleForcedMode = _hasBB && !_hasNonBB && _totalBubbleUnits > 20
   const _isBubbleFullTruck  = _isBubbleForcedMode && isBBDirectMode && _totalBubbleUnits >= 120 && _totalBubbleUnits <= 128
   // แถมฟรี 8 units: 65g×4 → 130g×2 → 32.5g×8 (excl-VAT price)
@@ -1129,12 +1135,15 @@ function Booking2Inner() {
         secTotal += row.amount
       } else {
         const qty   = pending[row.product.id] ?? 0
-        const price = getProductPrice(row.product.price)
+        const isBubbleSg = BUBBLE_GROUPS_SET.has(currentSubgroup ?? '')
+        const price = (isBubbleSg && bubbleForceVat)
+          ? Math.round(getProductPrice(row.product.price) * 1.07 * 100) / 100
+          : getProductPrice(row.product.price)
         const val   = price * qty
         if (sec.is_vat_included) grayTotal += val
         else orangeTotal += val
         secTotal += val
-        if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '')) switchableProductTotal += val
+        if (SWITCHABLE_SUBGROUP_NAMES.has(currentSubgroup ?? '') && !(isBubbleSg && bubbleForceVat)) switchableProductTotal += val
         if (currentSubgroup !== null) {
           const sgKey = `${sec.order}-${currentSubgroup}`
           subgroupTotals.set(sgKey, (subgroupTotals.get(sgKey) ?? 0) + val)
@@ -1938,7 +1947,8 @@ function Booking2Inner() {
                             const sgTotal = subgroupTotals.get(`${sec.order}-${cell.name}`) ?? 0
                             const sgGray  = subgroupPrintGray.get(`${sec.order}-${cell.name}`) ?? 0
                             const isSwitchableSg = SWITCHABLE_SUBGROUP_NAMES.has(cell.name)
-                            const sgBgClass = isSwitchableSg && vatMode === 'no-vat'
+                            const isBubbleForceVatSg = bubbleForceVat && BUBBLE_GROUPS_SET.has(cell.name)
+                            const sgBgClass = isSwitchableSg && vatMode === 'no-vat' && !isBubbleForceVatSg
                               ? 'bg-orange-500 text-white border-orange-600'
                               : SUBGROUP_BG[cell.color]
                             return [
@@ -2010,7 +2020,9 @@ function Booking2Inner() {
                           }
 
                           const { product: p } = cell
-                          const price      = getProductPrice(p.price)
+                          const price      = (BUBBLE_GROUPS_SET.has(p.group_name) && bubbleForceVat)
+                            ? Math.round(getProductPrice(p.price) * 1.07 * 100) / 100
+                            : getProductPrice(p.price)
                           const stockQty   = parseFloat(p.stock_qty ?? '0') || 0
                           const qty        = stockPrintMode ? stockQty : (pending[p.id] ?? 0)
                           const total      = qty * price
