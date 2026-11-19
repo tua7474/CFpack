@@ -282,7 +282,7 @@ function Booking2Inner() {
   const [priorityMode, setPriorityMode]         = useState<PriorityLevel | null>(null)
   const [autoCapEnabled, setAutoCapEnabled]     = useState(true)  // auto-add ฝาปิดกระบอก 2x when กระบอก qty changes
   const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
-  const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('vat')
+  const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
   const [isManager, setIsManager]           = useState(false)
   const [allBranches, setAllBranches]       = useState<{ id: number; name: string; color_group: string | null }[]>([])
   const [showBranchSwitch, setShowBranchSwitch] = useState(false)
@@ -1273,15 +1273,6 @@ function Booking2Inner() {
   // On iOS Safari, pinch-zoom changes window.innerWidth → resize fires → viewScale shrinks
   // progressively until the document disappears. orientationchange only fires on actual rotation.
   const [viewScale, setViewScale] = useState(1)
-  // Auto-switch vatMode: vat by default → no-vat เมื่อเต็มคัน หรือ BB ส่งตรง
-  useEffect(() => {
-    const wt = withdrawalTypes.find(w => w.id === withdrawalTypeId)
-    const bbDirect = !!(wt?.name.includes('BB') &&
-      (vehicleType.includes('BBส่งตรง') || vehicleType.includes('รับเอง')))
-    const isFullTruck = vehicleType === 'จองรถ60000'
-    setVatMode(bbDirect || isFullTruck ? 'no-vat' : 'vat')
-  }, [vehicleType, withdrawalTypeId, withdrawalTypes])
-
   useEffect(() => {
     const calc = () => setViewScale(Math.min(1, (window.innerWidth - 16) / A4_W_PX))
     calc()
