@@ -244,6 +244,140 @@ function fmtTime(ts: string | null): string {
   return new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
 }
 
+function fmtWeekRangeMSat(weekStart: string): string {
+  const start = new Date(weekStart + 'T00:00:00')
+  const end   = new Date(start); end.setDate(start.getDate() + 5)
+  const fmt = (d: Date) => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
+// ── TripStatusCell ────────────────────────────────────────────────────────────
+
+function TripStatusCell({
+  trip, isSelected, canCreate, onClick,
+}: {
+  trip: Trip | null
+  isSelected: boolean
+  canCreate: boolean
+  onClick: () => void
+}) {
+  if (!trip) {
+    if (!canCreate) return <span className="text-[10px] text-gray-200 select-none">—</span>
+    return (
+      <button onClick={onClick}
+        className="text-[10px] text-gray-300 hover:text-orange-500 border border-dashed border-gray-200 hover:border-orange-300 rounded px-1.5 py-0.5 transition-colors whitespace-nowrap w-full text-left">
+        + สร้าง
+      </button>
+    )
+  }
+  const { label, cls } = TRIP_STATUS[trip.status] ?? TRIP_STATUS.pending
+  const delivered = trip.stops.filter(s => s.status === 'delivered').length
+  const total     = trip.stops.length
+  const calcKm    = trip.total_distance_calc ? parseFloat(String(trip.total_distance_calc)) : 0
+  return (
+    <button onClick={onClick}
+      className={`flex flex-col items-start w-full rounded px-1.5 py-1 border text-left transition-all
+        ${cls} ${isSelected ? 'ring-2 ring-orange-400' : 'hover:opacity-80'}
+        ${trip.status === 'in_progress' ? 'animate-pulse' : ''}`}>
+      <span className="text-[10px] font-bold leading-none whitespace-nowrap">{label}</span>
+      {total > 0 && (
+        <span className="text-[9px] mt-0.5 opacity-80 whitespace-nowrap">
+          {delivered}/{total}{calcKm > 0 ? ` · ~${calcKm.toFixed(0)}km` : ''}
+        </span>
+      )}
+    </button>
+  )
+}
+
+// ── WeekTripTable ─────────────────────────────────────────────────────────────
+
+function WeekTripTable({
+  label, weekStart, trips, todayStr, canBook, selected, onSelect,
+}: {
+  label: string
+  weekStart: string
+  trips: Trip[]
+  todayStr: string
+  canBook: boolean
+  selected: { date: string; truckNo: number; round: string } | null
+  onSelect: (cell: { date: string; truckNo: number; round: string } | null) => void
+}) {
+  const days = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() + i)
+    return d.toISOString().slice(0, 10)
+  })
+  return (
+    <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden bg-white">
+      <div className="bg-[#9b9484] text-white px-4 py-2 flex items-center justify-between">
+        <h2 className="text-sm font-bold">{label}</h2>
+        <span className="text-xs text-orange-200">{fmtWeekRangeMSat(weekStart)}</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="px-3 py-2 text-left text-gray-500 font-semibold w-24">วัน</th>
+              <th className="px-2 py-2 text-left text-gray-500 font-semibold w-24">คนขับ</th>
+              <th className="px-3 py-2 text-center text-gray-500 font-semibold w-28">รอบเช้า</th>
+              <th className="px-3 py-2 text-center text-gray-500 font-semibold w-28">รอบบ่าย</th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((dateStr, i) => {
+              const dc      = DAY_COLORS[i]
+              const isToday = dateStr === todayStr
+              return (
+                <Fragment key={dateStr}>
+                  {TRUCKS.map((truck, ti) => (
+                    <tr key={truck.no}
+                      className={`${ti === 0 ? dc.truck1 : dc.truck2}
+                        ${i === 5 && ti === TRUCKS.length - 1 ? '' : ti === TRUCKS.length - 1 ? 'border-b border-gray-300' : 'border-b border-white/60'}`}>
+                      {ti === 0 && (
+                        <td rowSpan={TRUCKS.length}
+                          className={`px-3 py-2 font-bold whitespace-nowrap border-r border-white/40 align-middle ${dc.dayCell}
+                            ${isToday ? 'ring-2 ring-inset ring-orange-300' : ''}`}>
+                          <div className="text-sm">{DAYS_TH[i]}</div>
+                          <div className="text-[10px] opacity-80 font-normal">{getDayDate(weekStart, i)}</div>
+                          {isToday && <div className="text-[9px] mt-0.5 bg-white/30 rounded-sm px-1 w-fit leading-tight">วันนี้</div>}
+                        </td>
+                      )}
+                      <td className="px-2 py-1.5 border-r border-white/40 whitespace-nowrap">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold leading-none shadow-sm ${truck.badge}`}>
+                          {truck.name}
+                        </span>
+                      </td>
+                      {ROUNDS.map((round, ri) => {
+                        const trip = trips.find(t =>
+                          t.trip_date === dateStr && t.truck_no === truck.no &&
+                          t.round === round && t.status !== 'cancelled'
+                        ) ?? null
+                        const isSelected =
+                          selected?.date === dateStr &&
+                          selected?.truckNo === truck.no &&
+                          selected?.round === round
+                        return (
+                          <td key={round} className={`px-2 py-1.5 ${ri === 0 ? 'border-r border-white/40' : ''}`}>
+                            <TripStatusCell
+                              trip={trip}
+                              isSelected={isSelected}
+                              canCreate={canBook}
+                              onClick={() => onSelect(isSelected ? null : { date: dateStr, truckNo: truck.no, round })}
+                            />
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── TripCard ──────────────────────────────────────────────────────────────────
 
 function TripCard({
@@ -495,58 +629,115 @@ function TripCard({
   )
 }
 
-// ── TripDayView ───────────────────────────────────────────────────────────────
+// ── DriverSettings ────────────────────────────────────────────────────────────
 
-function TripDayView({ branches }: { branches: Branch[] }) {
+function DriverSettings() {
+  const [vals,   setVals]   = useState({ cf01: '', cf02: '' })
+  const [saved,  setSaved]  = useState({ cf01: false, cf02: false })
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/delivery/settings')
+      .then(r => r.json())
+      .then(d => { setVals({ cf01: d.driver_cf01 ?? '', cf02: d.driver_cf02 ?? '' }); setLoaded(true) })
+      .catch(() => setLoaded(true))
+  }, [])
+
+  const save = async (k: 'cf01' | 'cf02') => {
+    const key = k === 'cf01' ? 'driver_line_id_truck_1' : 'driver_line_id_truck_2'
+    await fetch('/api/delivery/settings', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value: vals[k] }),
+    })
+    setSaved(p => ({ ...p, [k]: true }))
+    setTimeout(() => setSaved(p => ({ ...p, [k]: false })), 2000)
+  }
+
+  if (!loaded) return null
+
+  return (
+    <div className="rounded-lg border border-gray-200 shadow-sm overflow-hidden bg-white max-w-lg">
+      <div className="bg-[#9b9484] text-white px-4 py-2">
+        <h2 className="text-sm font-bold">🔑 LINE ID คนขับ</h2>
+      </div>
+      <div className="p-3 flex flex-col gap-2.5">
+        {([
+          { k: 'cf01' as const, label: 'CF01 (อ๊อบ)' },
+          { k: 'cf02' as const, label: 'CF02 (ต้น)'  },
+        ]).map(({ k, label }) => (
+          <div key={k} className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-600 w-24 shrink-0">{label}</span>
+            <input
+              value={vals[k]}
+              onChange={e => setVals(p => ({ ...p, [k]: e.target.value }))}
+              onKeyDown={e => e.key === 'Enter' && save(k)}
+              placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              className="flex-1 text-[11px] border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-orange-300 font-mono min-w-0"
+            />
+            <button onClick={() => save(k)}
+              className={`px-2.5 py-1 text-xs rounded whitespace-nowrap transition-colors ${saved[k] ? 'bg-green-500 text-white' : 'bg-[#9b9484] hover:bg-[#857e72] text-white'}`}>
+              {saved[k] ? '✓ บันทึก' : 'บันทึก'}
+            </button>
+          </div>
+        ))}
+        <p className="text-[10px] text-gray-400 mt-0.5">LINE User ID คนขับแต่ละคัน สำหรับส่งการ์ดคิวรถอัตโนมัติ</p>
+      </div>
+    </div>
+  )
+}
+
+// ── TripWeekView ──────────────────────────────────────────────────────────────
+
+function TripWeekView({ branches }: { branches: Branch[] }) {
+  const [weekA] = useState(() => getWeekStart(0))
+  const [weekB] = useState(() => getWeekStart(1))
+
   const todayStr = new Date().toISOString().slice(0, 10)
-  const [date,    setDate]    = useState(todayStr)
-  const [trips,   setTrips]   = useState<Trip[]>([])
-  const [loading, setLoading] = useState(true)
-  const [busy,    setBusy]    = useState(false)
+  const todayDow = new Date().getDay() // 0=Sun
+  const canBookNextWeek = todayDow === 0 || todayDow >= 4 // Thu, Fri, Sat, Sun
+
+  const [trips,       setTrips]      = useState<Trip[]>([])
+  const [loading,     setLoading]    = useState(true)
+  const [busy,        setBusy]       = useState(false)
+  const [pastTables,  setPastTables] = useState<{ weekStart: string; trips: Trip[] }[]>([])
+  const [loadingPast, setLoadingPast]= useState(false)
+  const [pastCount,   setPastCount]  = useState(0)
+  const [selected,    setSelected]   = useState<{ date: string; truckNo: number; round: string } | null>(null)
 
   const loadTrips = useCallback(async () => {
     setLoading(true)
-    const r = await fetch(`/api/delivery/trips?date=${date}`)
-    if (r.ok) setTrips(await r.json())
-    else setTrips([])
+    const sat = new Date(weekB + 'T00:00:00'); sat.setDate(sat.getDate() + 5)
+    const to  = sat.toISOString().slice(0, 10)
+    const r = await fetch(`/api/delivery/trips?from=${weekA}&to=${to}`)
+    setTrips(r.ok ? await r.json() : [])
     setLoading(false)
-  }, [date])
+  }, [weekA, weekB])
 
   useEffect(() => { loadTrips() }, [loadTrips])
-
-  const shiftDate = (d: number) => {
-    const dt = new Date(date + 'T00:00:00')
-    dt.setDate(dt.getDate() + d)
-    setDate(dt.toISOString().slice(0, 10))
-  }
 
   const patch = async (body: object) => {
     setBusy(true)
     await fetch('/api/delivery/trips', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
     await loadTrips()
     setBusy(false)
   }
 
-  const handleCreateTrip = async (truckNo: number, round: string) => {
+  const handleCreateTrip = async (truckNo: number, round: string, date: string) => {
     setBusy(true)
     const r = await fetch('/api/delivery/trips', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ truck_no: truckNo, trip_date: date, round }),
     })
     if (r.ok) {
       const trip = await r.json()
-      // เติม stops จาก schedule + เรียงเส้นทาง
       await fetch('/api/delivery/trips', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'populate_from_schedule', trip_id: trip.id }),
       })
       await loadTrips()
+      setSelected({ date, truckNo, round })
     }
     setBusy(false)
   }
@@ -558,109 +749,79 @@ function TripDayView({ branches }: { branches: Branch[] }) {
   const handleRemoveStop = (id: number) => patch({ action: 'remove_stop', id })
   const handleOptimize   = (tripId: number) => patch({ action: 'optimize_route', trip_id: tripId })
 
-  // ── day summary stats ──────────────────────────────────────────────────────
-  const activeTrips    = trips.filter(t => t.status !== 'cancelled')
-  const totalDelivered = activeTrips.reduce((s, t) => s + t.stops.filter(st => st.status === 'delivered').length, 0)
-  const totalStops     = activeTrips.reduce((s, t) => s + t.stops.length, 0)
-  const anyInProgress  = activeTrips.some(t => t.status === 'in_progress')
+  const loadPastWeek = async () => {
+    if (loadingPast) return
+    const next = pastCount + 1
+    setLoadingPast(true)
+    const pastMon = getWeekStart(-next)
+    const pastSat = (() => { const d = new Date(pastMon + 'T00:00:00'); d.setDate(d.getDate() + 5); return d.toISOString().slice(0, 10) })()
+    const r = await fetch(`/api/delivery/trips?from=${pastMon}&to=${pastSat}`)
+    if (r.ok) {
+      const data: Trip[] = await r.json()
+      setPastTables(prev => [...prev, { weekStart: pastMon, trips: data }])
+    }
+    setPastCount(next)
+    setLoadingPast(false)
+  }
 
-  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
+  const allTrips     = [...trips, ...pastTables.flatMap(w => w.trips)]
+  const selectedTrip = selected
+    ? allTrips.find(t =>
+        t.trip_date === selected.date && t.truck_no === selected.truckNo &&
+        t.round === selected.round && t.status !== 'cancelled'
+      ) ?? null
+    : null
+  const selectedLabel = selected
+    ? `${new Date(selected.date + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })} · ${TRUCKS.find(t => t.no === selected.truckNo)?.name ?? ''} · รอบ${selected.round}`
+    : ''
 
   return (
     <div className="flex flex-col gap-4">
-      {/* date nav */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => shiftDate(-1)}
-          className="px-2.5 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 leading-none">‹</button>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white" />
-        <button onClick={() => shiftDate(1)}
-          className="px-2.5 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 leading-none">›</button>
-        <button onClick={() => setDate(todayStr)} disabled={date === todayStr}
-          className="px-2.5 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-500 disabled:opacity-30">
-          วันนี้
-        </button>
-        <span className="text-sm text-gray-600">{dateLabel}</span>
-        {anyInProgress && (
-          <span className="ml-auto px-2.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 animate-pulse">
-            กำลังวิ่งอยู่
-          </span>
-        )}
-      </div>
-
-      {/* stats strip */}
-      {!loading && activeTrips.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {TRUCKS.map(truck => {
-            const tTrips = activeTrips.filter(t => t.truck_no === truck.no)
-            if (!tTrips.length) return null
-            const tDel   = tTrips.reduce((s, t) => s + t.stops.filter(st => st.status === 'delivered').length, 0)
-            const tTotal = tTrips.reduce((s, t) => s + t.stops.length, 0)
-            const tDist  = tTrips.reduce((s, t) => s + (t.total_distance_km ? parseFloat(String(t.total_distance_km)) : 0), 0)
-            return (
-              <div key={truck.no} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-gray-200 shadow-sm text-xs">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${truck.badge}`}>{truck.name}</span>
-                <span className="text-gray-600 font-medium">{tDel}/{tTotal} สาขา</span>
-                {tDist > 0 && <span className="text-gray-400">{tDist.toFixed(1)} กม.</span>}
-              </div>
-            )
-          })}
-          {totalStops > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-50 border border-orange-200 text-xs font-bold text-orange-700">
-              รวม {totalDelivered}/{totalStops} สาขา
-            </div>
-          )}
-        </div>
-      )}
-
       {loading ? (
         <div className="text-gray-400 text-sm py-12 text-center">กำลังโหลด...</div>
-      ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {TRUCKS.map(truck => (
-            <div key={truck.no} className="rounded-lg border border-gray-200 shadow-sm overflow-hidden bg-white">
-              <div className={`px-4 py-2.5 flex items-center gap-2 ${truck.no === 1 ? 'bg-blue-600' : 'bg-violet-600'} text-white`}>
-                <span className="font-bold text-sm">{truck.name}</span>
-                <span className="text-xs opacity-75">{truck.no === 1 ? 'CF01' : 'CF02'}</span>
-              </div>
-              {ROUNDS.map(round => {
-                const trip = trips.find(t => t.truck_no === truck.no && t.round === round && t.status !== 'cancelled')
-                return (
-                  <div key={round} className="border-t border-gray-100">
-                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-gray-600">รอบ{round}</span>
-                      {!trip && (
-                        <button onClick={() => handleCreateTrip(truck.no, round)} disabled={busy}
-                          className="px-2.5 py-0.5 text-[11px] rounded bg-[#9b9484] hover:bg-[#857e72] text-white disabled:opacity-50">
-                          + สร้างรอบวิ่ง
-                        </button>
-                      )}
-                    </div>
-                    <div className="p-2">
-                      {trip ? (
-                        <TripCard
-                          trip={trip}
-                          branches={branches}
-                          onUpdateTrip={handleUpdateTrip}
-                          onUpdateStop={handleUpdateStop}
-                          onAddStop={handleAddStop}
-                          onRemoveStop={handleRemoveStop}
-                          onOptimize={handleOptimize}
-                          busy={busy}
-                        />
-                      ) : (
-                        <div className="text-[11px] text-gray-300 italic py-1 px-1">ยังไม่มีรอบวิ่ง</div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+      ) : (<>
+        <WeekTripTable label="สัปดาห์นี้"  weekStart={weekA} trips={trips} canBook={true}            todayStr={todayStr} selected={selected} onSelect={setSelected} />
+        <WeekTripTable label="สัปดาห์หน้า" weekStart={weekB} trips={trips} canBook={canBookNextWeek} todayStr={todayStr} selected={selected} onSelect={setSelected} />
+
+        {/* detail panel */}
+        {selected && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50/30 p-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-sm font-semibold text-gray-700">{selectedLabel}</span>
+              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 leading-none text-lg">✕</button>
             </div>
-          ))}
+            {selectedTrip ? (
+              <TripCard
+                trip={selectedTrip} branches={branches} busy={busy}
+                onUpdateTrip={handleUpdateTrip} onUpdateStop={handleUpdateStop}
+                onAddStop={handleAddStop} onRemoveStop={handleRemoveStop} onOptimize={handleOptimize}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-5">
+                <p className="text-sm text-gray-400">ยังไม่มีรอบวิ่งสำหรับช่วงเวลานี้</p>
+                <button onClick={() => handleCreateTrip(selected.truckNo, selected.round, selected.date)} disabled={busy}
+                  className="px-4 py-2 text-sm rounded bg-[#9b9484] hover:bg-[#857e72] text-white disabled:opacity-50">
+                  + สร้างรอบวิ่ง
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* past weeks */}
+        {pastTables.map((pw, pi) => (
+          <WeekTripTable key={pw.weekStart} label={`สัปดาห์ก่อน (${pi + 1})`}
+            weekStart={pw.weekStart} trips={pw.trips} canBook={false}
+            todayStr={todayStr} selected={selected} onSelect={setSelected} />
+        ))}
+
+        <div className="flex justify-center pt-1">
+          <button onClick={loadPastWeek} disabled={loadingPast}
+            className="px-4 py-1.5 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-500 disabled:opacity-50 transition-colors">
+            {loadingPast ? 'กำลังโหลด...' : '↓ ดูสัปดาห์ก่อน'}
+          </button>
         </div>
-      )}
+      </>)}
     </div>
   )
 }
@@ -1111,9 +1272,10 @@ export default function DeliveryPage() {
 
         {activeTab === 'history' && <HistoryTable />}
 
-        {activeTab === 'trips' && <TripDayView branches={branches} />}
+        {activeTab === 'trips' && <TripWeekView branches={branches} />}
 
         {activeTab === 'schedule' && <>
+        <DriverSettings />
         <div>
           <h2 className="text-sm font-bold text-gray-600 mb-3">📅 ตารางคิวรถจัดส่ง</h2>
           {loadingSched ? (

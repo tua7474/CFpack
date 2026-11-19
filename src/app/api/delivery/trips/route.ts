@@ -346,13 +346,12 @@ export async function PATCH(req: NextRequest) {
       mon.setDate(dt.getDate() + diffToMon)
       const weekStart = mon.toISOString().slice(0, 10)
 
-      // ดึง warehouse lat/lng จาก system_settings
-      const { rows: wRows } = await pool.query(
-        `SELECT key, value FROM system_settings WHERE key IN ('warehouse_lat','warehouse_lng')`
+      // ดึงพิกัดโกดัง จากสาขาสีดำ (color_group='black')
+      const { rows: depotRows } = await pool.query(
+        `SELECT lat::float AS lat, lng::float AS lng FROM branches WHERE color_group='black' AND lat IS NOT NULL AND lng IS NOT NULL LIMIT 1`
       )
-      const wMap = Object.fromEntries(wRows.map(r => [r.key, r.value]))
-      const depot: Depot | null = (wMap.warehouse_lat && wMap.warehouse_lng)
-        ? { lat: parseFloat(wMap.warehouse_lat), lng: parseFloat(wMap.warehouse_lng) }
+      const depot: Depot | null = depotRows[0]
+        ? { lat: depotRows[0].lat, lng: depotRows[0].lng }
         : null
 
       // ดึง branches จาก delivery_schedule
@@ -381,15 +380,20 @@ export async function PATCH(req: NextRequest) {
         ordered = sched
       }
 
-      // insert stops (ข้ามถ้ามีอยู่แล้ว)
+      // insert stops พร้อม order_nos ที่ยังค้างส่ง
       let inserted = 0
       for (let i = 0; i < ordered.length; i++) {
         const r = ordered[i]
+        const { rows: oRows } = await pool.query(
+          `SELECT order_no FROM booking_orders WHERE branch_id=$1 AND payment_status!='paid' AND trip_id IS NULL ORDER BY created_at`,
+          [r.branch_id]
+        )
+        const orderNos = oRows.map((o: { order_no: string }) => o.order_no)
         const { rowCount } = await pool.query(`
           INSERT INTO delivery_trip_stops (trip_id, stop_order, branch_id, branch_name, delivery_type, order_nos)
-          SELECT $1,$2,$3,$4,'รอพ่วง','{}'
+          SELECT $1,$2,$3,$4,'รอพ่วง',$5
           WHERE NOT EXISTS (SELECT 1 FROM delivery_trip_stops WHERE trip_id=$1 AND branch_id=$3)
-        `, [trip_id, i + 1, r.branch_id, r.name])
+        `, [trip_id, i + 1, r.branch_id, r.name, orderNos])
         inserted += rowCount ?? 0
       }
 
@@ -413,14 +417,13 @@ export async function PATCH(req: NextRequest) {
     if (body.action === 'optimize_route') {
       const { trip_id } = body
 
-      // ดึง warehouse lat/lng
-      const { rows: wRows } = await pool.query(
-        `SELECT key, value FROM system_settings WHERE key IN ('warehouse_lat','warehouse_lng')`
+      // ดึงพิกัดโกดัง จากสาขาสีดำ (color_group='black')
+      const { rows: depotRows2 } = await pool.query(
+        `SELECT lat::float AS lat, lng::float AS lng FROM branches WHERE color_group='black' AND lat IS NOT NULL AND lng IS NOT NULL LIMIT 1`
       )
-      const wMap = Object.fromEntries(wRows.map(r => [r.key, r.value]))
-      if (!wMap.warehouse_lat || !wMap.warehouse_lng)
-        return NextResponse.json({ error: 'warehouse coords not set' }, { status: 400 })
-      const depot: Depot = { lat: parseFloat(wMap.warehouse_lat), lng: parseFloat(wMap.warehouse_lng) }
+      if (!depotRows2[0])
+        return NextResponse.json({ error: 'ไม่พบพิกัดสาขาสีดำ (โกดัง)' }, { status: 400 })
+      const depot: Depot = { lat: depotRows2[0].lat, lng: depotRows2[0].lng }
 
       // ดึง pending stops ที่มี lat/lng
       const { rows: stops } = await pool.query(`
