@@ -65,6 +65,8 @@ const GROUP_MAP: Record<string, SecInfo> = {
   'เบิกฟรี':            { section_order: 6, section_name: 'Air Cushion',     is_vat_included: false, subgroup_order: 9, subgroup_name: 'เบิกฟรี' },
 }
 
+const SWITCHABLE_SUBGROUP_NAMES = new Set(['ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
+
 // ── GET /api/orders/image?no=ORDER_NO ─────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -87,6 +89,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'not found' }, { status: 404 })
     }
     const order = orderRows[0]
+    const isVatOrder = orderNo.startsWith('V') && !orderNo.startsWith('NV')
     const quantities: Record<string, number>     = order.quantities ?? {}
     const foyItems: Record<string, number>       = order.foy_item_quantities ?? {}
     const foyQty: Record<string, { qty: number; amount: number }> = order.foy_quantities ?? {}
@@ -127,7 +130,8 @@ export async function GET(req: NextRequest) {
       if (!info) continue
       const qty = quantities[String(p.id)] ?? 0
       if (qty <= 0) continue
-      const price = parseFloat(p.price ?? '0')
+      const basePrice = parseFloat(p.price ?? '0')
+      const price = (isVatOrder && SWITCHABLE_SUBGROUP_NAMES.has(info.subgroup_name)) ? basePrice * 1.07 : basePrice
       if (!secMap.has(info.section_order)) {
         secMap.set(info.section_order, { name: info.section_name, isVat: info.is_vat_included, items: [] })
       }

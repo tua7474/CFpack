@@ -437,6 +437,7 @@ export default function OrdersPage() {
     // - มีทั้งคู่      → แบ่งด้วย SWITCHABLE_SG (ซองใสปะหน้า ฯลฯ → NV, อื่นๆ → V)
     const SWITCHABLE_SG = new Set(['ซองใสปะหน้า', 'ฝาปิดกระบอก', 'ถุงหิ้วบริการ', 'เชือก',
       'ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
+    const VAT_SWITCH_SG = new Set(['ซองPPกันกระแทก', 'บับเบิล', 'บับเบิลสี', 'บับเบิลบาง 35g'])
     const orderNvTotal  = parseFloat(order.nv_total ?? '0') || 0
     const orderVTotal   = parseFloat(order.v_total  ?? '0') || 0
     const nvOnly = orderNvTotal > 0 && orderVTotal === 0
@@ -452,7 +453,9 @@ export default function OrdersPage() {
       if (!qty) continue
       const p = productMap.get(Number(idStr))
       if (!p) continue
-      const price = adjustPrice(parseFloat(p.price ?? '0') || 0)
+      const basePrice = adjustPrice(parseFloat(p.price ?? '0') || 0)
+      const isVatSwitch = vOnly && VAT_SWITCH_SG.has(p.subgroup_name)
+      const price = isVatSwitch ? Math.round(basePrice * 1.07 * 100) / 100 : basePrice
       const key = p.subgroup_name || p.section_name
       const targetMap = nvOnly ? nvSectionMap
                       : vOnly  ? vSectionMap
