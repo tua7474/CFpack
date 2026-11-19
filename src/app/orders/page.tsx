@@ -459,7 +459,7 @@ export default function OrdersPage() {
       const key = p.subgroup_name || p.section_name
       const targetMap = nvOnly ? nvSectionMap
                       : vOnly  ? vSectionMap
-                      : SWITCHABLE_SG.has(p.subgroup_name) ? nvSectionMap : vSectionMap
+                      : (SWITCHABLE_SG.has(p.subgroup_name) && !VAT_SWITCH_SG.has(p.subgroup_name)) ? nvSectionMap : vSectionMap
       if (!targetMap.has(key)) {
         targetMap.set(key, { order: p.section_order, subOrder: p.subgroup_order, items: [] })
       }

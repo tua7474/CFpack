@@ -282,7 +282,7 @@ function Booking2Inner() {
   const [priorityMode, setPriorityMode]         = useState<PriorityLevel | null>(null)
   const [autoCapEnabled, setAutoCapEnabled]     = useState(true)  // auto-add ฝาปิดกระบอก 2x when กระบอก qty changes
   const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
-  const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
+  const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('vat')
   const [isManager, setIsManager]           = useState(false)
   const [allBranches, setAllBranches]       = useState<{ id: number; name: string; color_group: string | null }[]>([])
   const [showBranchSwitch, setShowBranchSwitch] = useState(false)
@@ -1978,7 +1978,7 @@ function Booking2Inner() {
                             if (compactPrintMode && !compactActiveFoyCats[si].has(rowIdx)) {
                               return [<td key={`${si}-fc`} colSpan={4} className="border border-gray-200 bg-gray-50 py-0" />]
                             }
-                            const catBg = vatMode === 'no-vat' ? '#f97316' : (FOY_CAT_BG[cell.category] ?? '#9b9484')
+                            const catBg = '#f97316'
                             return [
                               <td key={`${si}-fc`} colSpan={4}
                                 onClick={handleFoyNavigate}
@@ -2123,7 +2123,7 @@ function Booking2Inner() {
             <div className="foy-print-frame bg-white">
               {(() => {
                 const FOY_CATS  = ['2 มิล', '4 มิล', '1.5 มิล', 'ฝอยหยัก'] as const
-                const catBgColor = vatMode === 'no-vat' ? '#f97316' : '#9b9484'
+                const catBgColor = '#f97316'
                 const CAT_BG:   Record<string, string> = { '2 มิล': catBgColor, '4 มิล': catBgColor, '1.5 มิล': catBgColor, 'ฝอยหยัก': catBgColor }
                 const MODEL_BG: Record<string, string> = { '2 มิล': '#F7DC6F', '4 มิล': '#F0B27A', '1.5 มิล': '#F1948A', 'ฝอยหยัก': '#C39BD3' }
                 const ROW_BG:   Record<string, string> = { '2 มิล': '#FCF3CF', '4 มิล': '#FAE5D3', '1.5 มิล': '#FADBD8', 'ฝอยหยัก': '#FBDEF0' }
