@@ -3070,13 +3070,7 @@ const SLIP_TYPE_OPTS = [
   { key: 'กล่อง', label: 'สลิปกล่อง'  },
 ]
 
-type SlipAutoSuggest = {
-  purpose: 'PAY' | 'STORE'
-  orderNo?: string
-  orderAmt?: number
-}
-
-function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
+function slipConfirmCard(slip: SlipRow): object {
   const fmtAmount = Number(slip.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   // เวลาส่ง เช่น "30 ก.ย. 14:32"
@@ -3084,29 +3078,6 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     timeZone: 'Asia/Bangkok'
   })
-
-  const autoBox: object = suggest
-    ? {
-        type: 'box', layout: 'vertical',
-        backgroundColor: suggest.purpose === 'PAY' ? '#dcfce7' : '#fef9c3',
-        cornerRadius: '4px', paddingAll: '4px', margin: 'xs',
-        contents: [{
-          type: 'text', size: 'xxs', wrap: false,
-          color: suggest.purpose === 'PAY' ? '#15803d' : '#92400e',
-          text: suggest.purpose === 'PAY'
-            ? `พบใบจอง ${suggest.orderNo} ฿${Number(suggest.orderAmt).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`
-            : 'ไม่พบใบจองที่ตรงกับยอดนี้',
-        }],
-      }
-    : { type: 'text', text: ' ', size: 'xxs', color: '#ffffff', margin: 'none' }
-
-  // ชำระบิล: แสดงเฉพาะเมื่อพบใบจองตรงกัน (เหนือปุ่ม 3 ปุ่ม)
-  const payRow: object[] = suggest?.purpose === 'PAY' ? [{
-    type: 'box', layout: 'vertical', margin: 'xs',
-    backgroundColor: '#16a34a', cornerRadius: '4px', paddingAll: '5px',
-    action: { type: 'postback', data: `SLIP_PURPOSE:${slip.id}:PAY`, displayText: 'ชำระบิล' },
-    contents: [{ type: 'text', text: 'ชำระบิล', size: 'xs', color: '#ffffff', align: 'center', weight: 'bold' }],
-  }] : []
 
   return {
     type: 'flex',
@@ -3136,8 +3107,6 @@ function slipConfirmCard(slip: SlipRow, suggest?: SlipAutoSuggest): object {
             color: '#555555', wrap: true,
             action: { type: 'postback', label: 'แก้ผู้รับ', data: `SLIP_EDIT:${slip.id}:account_name` },
           },
-          autoBox,
-          ...payRow,
           { type: 'separator', margin: 'xs', color: '#d1d5db' },
           // แถว 1: 5 ปุ่มหักค่าของ (ปลายทาง)
           {
@@ -3567,20 +3536,7 @@ ${itemList}
     messageId,
   ])
 
-  // Auto-detect matching pending order
-  let suggest: SlipAutoSuggest = { purpose: 'STORE' }
-  if (branchId) {
-    const { rows: pending } = await pool.query(`
-      SELECT id, order_no, total_amount::float, COALESCE(paid_amount,0)::float AS paid_amount FROM booking_orders
-      WHERE branch_id=$1 AND payment_status != 'paid' AND status != 'cancelled'
-    `, [branchId])
-    const matched = pending.find(o => Math.abs((parseFloat(o.total_amount) - parseFloat(o.paid_amount)) - scanResult.amount!) < 0.01)
-    if (matched) {
-      suggest = { purpose: 'PAY', orderNo: matched.order_no, orderAmt: matched.total_amount - matched.paid_amount }
-    }
-  }
-
-  return reply(replyToken, [slipConfirmCard(slip, suggest)])
+  return reply(replyToken, [slipConfirmCard(slip)])
   } catch (e) {
     console.error('[handleImage] error:', e)
     return reply(replyToken, [{ type: 'text', text: `⚠️ เกิดข้อผิดพลาดในการสแกนสลิป\n${String(e)}` }])
