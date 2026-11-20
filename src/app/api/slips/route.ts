@@ -219,8 +219,12 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { id } = await req.json()
-    await pool.query('DELETE FROM slips WHERE id=$1', [id])
+    const body = await req.json()
+    if (Array.isArray(body.ids) && body.ids.length > 0) {
+      await pool.query('DELETE FROM slips WHERE id = ANY($1)', [body.ids])
+    } else {
+      await pool.query('DELETE FROM slips WHERE id=$1', [body.id])
+    }
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error(err)

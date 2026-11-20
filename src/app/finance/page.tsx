@@ -166,57 +166,90 @@ function SlipCell({ entries, amtColor }: { entries: SlipEntry[]; amtColor: strin
 
 interface ModalInfo { title: string; entries: SlipEntry[]; storeSlips?: SlipEntry[] }
 
-function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, showCount }: {
+function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, creditEntries, onReload, showCount }: {
   entries: SlipEntry[]; amtColor: string; title: string
   onDetail: (info: ModalInfo) => void
   storeEntries?: SlipEntry[]
+  creditEntries?: SlipEntry[]  // b.store เท่านั้น (applied=false) — สำหรับปุ่มเคลียร์เครดิต
+  onReload?: () => void
   showCount?: boolean
 }) {
   const { thisMondayStr, lastMondayStr, twoMondaysStr, isoDow } = getWeekBounds()
   const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+  const [clearing, setClearing] = useState<string | null>(null)
+
+  const handleClearCredit = async (label: string, slipIds: number[]) => {
+    if (!confirm(`เคลียร์ยอดเครดิต ${slipIds.length} รายการ (${label})?`)) return
+    setClearing(label)
+    await fetch('/api/slips', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: slipIds }),
+    })
+    setClearing(null)
+    onReload?.()
+  }
+
   const groups = [
     {
       label: '2 สัปดาห์ก่อน',
-      items:  entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
-      stores: (storeEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
-      pastSat: true,          // เกิน 7 วันแล้ว — ระงับทุกวัน
+      items:   entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
+      stores:  (storeEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
+      credits: (creditEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
+      pastSat: true,
     },
     {
       label: 'สัปดาห์ที่แล้ว',
-      items:  entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
-      stores: (storeEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
-      pastSat: isoDow === 6,  // ครบ 7 วัน = วันเสาร์ของสัปดาห์ถัดไป
+      items:   entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
+      stores:  (storeEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
+      credits: (creditEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
+      pastSat: isoDow === 6,
     },
     {
       label: 'สัปดาห์นี้',
-      items:  entries.filter(e => e.date >= thisMondayStr),
-      stores: (storeEntries ?? []).filter(e => e.date >= thisMondayStr),
-      pastSat: false,         // สัปดาห์ปัจจุบัน ยังไม่นับ
+      items:   entries.filter(e => e.date >= thisMondayStr),
+      stores:  (storeEntries ?? []).filter(e => e.date >= thisMondayStr),
+      credits: (creditEntries ?? []).filter(e => e.date >= thisMondayStr),
+      pastSat: false,
     },
   ].filter(g => g.items.length > 0)
   if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   return (
     <div className="flex flex-col gap-0.5">
-      {groups.map(({ label, items, stores, pastSat }) => {
-        const orderTotal = items.reduce((s, e) => s + e.amount, 0)
-        const allPaid    = items.length > 0 && items.every(e => e.payment_status === 'paid')
-        const noSlips    = stores.length === 0
-        const suspended  = storeEntries !== undefined && !allPaid && noSlips && pastSat
-        const dynColor   = storeEntries !== undefined
+      {groups.map(({ label, items, stores, credits, pastSat }) => {
+        const orderTotal  = items.reduce((s, e) => s + e.amount, 0)
+        const allPaid     = items.length > 0 && items.every(e => e.payment_status === 'paid')
+        const noSlips     = stores.length === 0
+        const suspended   = storeEntries !== undefined && !allPaid && noSlips && pastSat
+        const dynColor    = storeEntries !== undefined
           ? (allPaid ? 'text-green-600' : 'text-red-500')
           : amtColor
+        const creditIds   = credits.map(e => e.slip_id).filter((id): id is number => id != null)
+        const isClearing  = clearing === label
         return (
-          <button key={label}
-            onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
-            className={`text-left text-[11px] font-mono font-semibold ${dynColor} hover:underline leading-tight flex items-center gap-1`}
-          >
-            <span>{showCount ? `${items.length}/` : ''}{fmt(orderTotal)}</span>
-            {suspended && (
-              <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-600 border border-red-300 leading-none whitespace-nowrap">
-                🚫 ระงับ
-              </span>
+          <div key={label} className="flex items-center gap-1">
+            <button
+              onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
+              className={`text-left text-[11px] font-mono font-semibold ${dynColor} hover:underline leading-tight flex items-center gap-1`}
+            >
+              <span>{showCount ? `${items.length}/` : ''}{fmt(orderTotal)}</span>
+              {suspended && (
+                <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-600 border border-red-300 leading-none whitespace-nowrap">
+                  🚫 ระงับ
+                </span>
+              )}
+            </button>
+            {creditIds.length > 0 && (
+              <button
+                onClick={() => handleClearCredit(label, creditIds)}
+                disabled={isClearing}
+                className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 border border-gray-200 leading-none disabled:opacity-40"
+                title="เคลียร์ยอดเครดิต"
+              >
+                {isClearing ? '…' : '×'}
+              </button>
             )}
-          </button>
+          </div>
         )
       })}
     </div>
@@ -259,9 +292,9 @@ function DetailModal({ modal, onClose, onSaved }: {
   const storeTotal      = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
   const cutTotal        = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
   const remaining       = Math.max(0, storeTotal - cutTotal)
-  const showStoreCredit = storeTotal > 0   // แสดงยอดหักค่าของ เฉพาะเมื่อมี store slips
-  // ตัดยอดแสดงเสมอ — ทุกสาขาสามารถตัดยอดได้ไม่ว่าจะมี store slips หรือไม่
-  const showCut    = sorted.some(e => e.order_no)
+  const showStoreCredit = storeTotal > 0
+  // ตัดยอด: แสดงเฉพาะเมื่อมีเครดิต (store slips) มาหัก
+  const showCut    = storeTotal > 0 && sorted.some(e => e.order_no)
   // Only newly-cut entries (not pre-paid) need saving
   const newlyCut   = sorted.filter((e, i) => cutSet.has(i) && !paidSet.has(i) && e.order_no)
   const hasCut     = newlyCut.length > 0
@@ -273,6 +306,19 @@ function DetailModal({ modal, onClose, onSaved }: {
       if (next.has(i)) next.delete(i); else next.add(i)
       return next
     })
+  }
+
+  const handleDirectCut = async (order_no: string) => {
+    if (!confirm(`ยืนยันตัดบิล ${order_no}?\n(ชำระแล้ว — ไม่หักเครดิต)`)) return
+    setSaving(true)
+    await fetch('/api/orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_no, payment_status: 'paid' }),
+    })
+    setSaving(false)
+    onSaved?.()
+    onClose()
   }
 
   const handleCancelSlip = async (slip_id: number) => {
@@ -351,24 +397,31 @@ function DetailModal({ modal, onClose, onSaved }: {
                     {cancellingSlipId === e.slip_id ? '...' : 'ยกเลิก'}
                   </button>
                 )}
-                {showCut && (
-                  isPaid ? (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-green-100 text-green-600 border border-green-300">
-                      ✓ ชำระแล้ว
-                    </span>
-                  ) : (
+                {isPaid ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-green-100 text-green-600 border border-green-300">
+                    ✓ ชำระแล้ว
+                  </span>
+                ) : e.order_no ? (
+                  <div className="flex flex-col gap-0.5 flex-shrink-0">
+                    {showCut && (
+                      <button
+                        onClick={() => toggleCut(i)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${
+                          isCut ? 'bg-green-500 text-white' : 'bg-red-500 text-white hover:bg-red-600'
+                        }`}
+                      >
+                        {isCut ? '✓ ตัดแล้ว' : 'ตัดยอด'}
+                      </button>
+                    )}
                     <button
-                      onClick={() => toggleCut(i)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 transition-colors ${
-                        isCut
-                          ? 'bg-green-500 text-white'
-                          : 'bg-red-500 text-white hover:bg-red-600'
-                      }`}
+                      onClick={() => handleDirectCut(e.order_no!)}
+                      disabled={saving}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
                     >
-                      {isCut ? '✓ ตัดแล้ว' : 'ตัดยอด'}
+                      ตัดบิลนี้
                     </button>
-                  )
-                )}
+                  </div>
+                ) : null}
               </div>
             )
           })}
@@ -628,7 +681,7 @@ export default function FinancePage() {
                             <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`ตัดยอด — ${b.name}`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} showCount />
+                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`ตัดยอด — ${b.name}`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} creditEntries={b.store} onReload={load} showCount />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
