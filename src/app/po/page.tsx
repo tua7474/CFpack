@@ -673,6 +673,10 @@ function POInner() {
 
   const handleSave = async () => {
     if (!pendingCount && !hasFoyPending && !editOrderNo) return
+    if (!supplier) {
+      setSaveMsg('⚠️ กรุณาเลือกซัพพลายเออร์ก่อนบันทึก')
+      return
+    }
     setSaving(true)
     setSaveMsg(null)
     try {
@@ -1507,7 +1511,7 @@ function POInner() {
                                 className={`${base} p-1 align-middle bg-white`}>
                                 <div className="flex flex-col justify-center h-full gap-0.5">
                                   <div className="text-[7px] text-gray-500 font-semibold leading-none">ซัพพลายเออร์</div>
-                                  <select value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none bg-white border-gray-400 text-gray-500">
+                                  <select value={supplier} onChange={e => { setSupplier(e.target.value); setSaveMsg(null) }} className={`w-full border-2 rounded font-bold text-[13px] h-8 px-0.5 focus:outline-none bg-white ${!supplier && saveMsg ? 'border-red-500' : 'border-gray-400'} text-gray-500`}>
                                     <option value="">— เลือกซัพพลายเออร์ —</option>
                                     {supplierList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
