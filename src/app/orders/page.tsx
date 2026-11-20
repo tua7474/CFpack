@@ -1193,7 +1193,7 @@ export default function OrdersPage() {
                                 <span className="inline-block px-2 py-1 text-xs rounded border border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed select-none whitespace-nowrap">
                                   ✕ ยกเลิกแล้ว
                                 </span>
-                              ) : pickedUp ? (
+                              ) : pickedUp || hasPO ? (
                                 <span className="inline-block px-2 py-1 text-xs rounded border border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed select-none whitespace-nowrap">
                                   ✎ แก้ไขไม่ได้
                                 </span>
