@@ -190,33 +190,35 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, c
     onReload?.()
   }
 
+  // เครดิตรวมทุกสัปดาห์ — ใช้ร่วมกัน ไม่แยกรายสัปดาห์
+  const allStoreEntries = storeEntries ?? []
+  const allCreditIds    = (creditEntries ?? []).map(e => e.slip_id).filter((id): id is number => id != null)
+  const isClearing      = clearing === 'all'
+
   const groups = [
     {
       label: '2 สัปดาห์ก่อน',
       items:   entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
       stores:  (storeEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
-      credits: (creditEntries ?? []).filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr),
       pastSat: true,
     },
     {
       label: 'สัปดาห์ที่แล้ว',
       items:   entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
       stores:  (storeEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
-      credits: (creditEntries ?? []).filter(e => e.date >= lastMondayStr && e.date < thisMondayStr),
       pastSat: isoDow === 6,
     },
     {
       label: 'สัปดาห์นี้',
       items:   entries.filter(e => e.date >= thisMondayStr),
       stores:  (storeEntries ?? []).filter(e => e.date >= thisMondayStr),
-      credits: (creditEntries ?? []).filter(e => e.date >= thisMondayStr),
       pastSat: false,
     },
   ].filter(g => g.items.length > 0)
   if (groups.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
   return (
     <div className="flex flex-col gap-0.5">
-      {groups.map(({ label, items, stores, credits, pastSat }) => {
+      {groups.map(({ label, items, stores, pastSat }) => {
         const orderTotal  = items.reduce((s, e) => s + e.amount, 0)
         const allPaid     = items.length > 0 && items.every(e => e.payment_status === 'paid')
         const noSlips     = stores.length === 0
@@ -224,12 +226,10 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, c
         const dynColor    = storeEntries !== undefined
           ? (allPaid ? 'text-green-600' : 'text-red-500')
           : amtColor
-        const creditIds   = credits.map(e => e.slip_id).filter((id): id is number => id != null)
-        const isClearing  = clearing === label
         return (
           <div key={label} className="flex items-center gap-1">
             <button
-              onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: stores.length > 0 ? stores : undefined })}
+              onClick={() => onDetail({ title: `${title} (${label})`, entries: items, storeSlips: allStoreEntries.length > 0 ? allStoreEntries : undefined })}
               className={`text-left text-[11px] font-mono font-semibold ${dynColor} hover:underline leading-tight flex items-center gap-1`}
             >
               <span>{showCount ? `${items.length}/` : ''}{fmt(orderTotal)}</span>
@@ -239,19 +239,19 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, c
                 </span>
               )}
             </button>
-            {creditIds.length > 0 && (
-              <button
-                onClick={() => handleClearCredit(label, creditIds)}
-                disabled={isClearing}
-                className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 border border-gray-200 leading-none disabled:opacity-40"
-                title="เคลียร์ยอดเครดิต"
-              >
-                {isClearing ? '…' : '×'}
-              </button>
-            )}
           </div>
         )
       })}
+      {allCreditIds.length > 0 && (
+        <button
+          onClick={() => handleClearCredit('all', allCreditIds)}
+          disabled={isClearing}
+          className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 border border-gray-200 leading-none disabled:opacity-40 self-start"
+          title="เคลียร์ยอดเครดิตทั้งหมด"
+        >
+          {isClearing ? '…' : '× เคลียร์เครดิต'}
+        </button>
+      )}
     </div>
   )
 }
