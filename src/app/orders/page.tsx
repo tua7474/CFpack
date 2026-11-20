@@ -300,8 +300,8 @@ export default function OrdersPage() {
       }),
     })
     if (!res.ok) { alert('เกิดข้อผิดพลาดในการออก PO'); return }
-    const { poNo } = await res.json()
-    await patch(order.order_no, { linked_po_no: poNo })
+    const { po_no } = await res.json()
+    await patch(order.order_no, { linked_po_no: po_no })
   }
 
   const handlePayment = async (order_no: string) => {
