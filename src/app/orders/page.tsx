@@ -290,9 +290,10 @@ export default function OrdersPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        supplier:     factoryName,
-        total_amount: parseFloat(order.total_amount) || 0,
-        quantities:   order.quantities ?? {},
+        supplier:        factoryName,
+        delivery_point:  order.branch_name ?? null,
+        total_amount:    parseFloat(order.total_amount) || 0,
+        quantities:      order.quantities ?? {},
         foy_quantities:      order.foy_quantities ?? {},
         foy_item_quantities: order.foy_item_quantities ?? {},
         nv_total: order.nv_total ? parseFloat(order.nv_total) : null,

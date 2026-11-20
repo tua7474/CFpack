@@ -94,6 +94,7 @@ async function ensureTable() {
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS ordered_at TIMESTAMP`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS delivery_due DATE`)
   await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`)
+  await pool.query(`ALTER TABLE po_orders ADD COLUMN IF NOT EXISTS delivery_point VARCHAR(200)`)
 }
 
 async function genPoNo(): Promise<string> {
@@ -155,11 +156,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   await ensureTable()
-  const { supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, priorities } = await request.json()
+  const { supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, priorities, delivery_point } = await request.json()
   const po_no = await genPoNo()
   const { rows } = await pool.query(
-    `INSERT INTO po_orders (po_no, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    `INSERT INTO po_orders (po_no, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, delivery_point)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [
       po_no,
       supplier ?? null,
@@ -170,6 +171,7 @@ export async function POST(request: Request) {
       JSON.stringify(foy_item_quantities ?? {}),
       nv_total ?? null,
       v_total ?? null,
+      delivery_point ?? null,
     ]
   )
   const created = rows[0]
@@ -187,7 +189,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   await ensureTable()
   const body = await request.json()
-  const { id, po_no, order_no, status, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, factory_total, ordered_at, delivery_due } = body
+  const { id, po_no, order_no, status, supplier, notes, total_amount, quantities, foy_quantities, foy_item_quantities, nv_total, v_total, factory_total, ordered_at, delivery_due, delivery_point } = body
 
   // Support lookup by id, po_no, or order_no
   const lookupValue = id ?? po_no ?? order_no
@@ -213,6 +215,7 @@ export async function PATCH(request: Request) {
     else { sets.push(`ordered_at = $${i++}`); vals.push(ordered_at) }
   }
   if (delivery_due        !== undefined) { sets.push(`delivery_due = $${i++}`);        vals.push(delivery_due) }
+  if (delivery_point      !== undefined) { sets.push(`delivery_point = $${i++}`);      vals.push(delivery_point) }
 
   if (status === 'received') {
     sets.push(`received_at = NOW()`)

@@ -277,7 +277,9 @@ function POInner() {
   const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('no-vat')
   const [supplier, setSupplier] = useState('')
   const [notes, setNotes] = useState('')
+  const [deliveryPoint, setDeliveryPoint] = useState('')
   const [supplierList, setSupplierList] = useState<{ id: number; name: string }[]>([])
+  const [branchList, setBranchList] = useState<{ id: number; name: string }[]>([])
 
   // Load foy result from booking-foy (new order mode only)
   useEffect(() => {
@@ -329,6 +331,9 @@ function POInner() {
         foy_quantities?: Record<string, { qty: number; amount: number }>;
         foy_item_quantities?: Record<string, number>;
         withdrawal_type_id?: number | null;
+        supplier?: string | null;
+        notes?: string | null;
+        delivery_point?: string | null;
         priorities?: Record<string, string>;
       } | null) => {
         if (!order) return
@@ -359,6 +364,9 @@ function POInner() {
         if (order.source_type) setSourceType(order.source_type as 'โกดัง' | 'หน้าร้าน' | 'โรงกล่อง' | 'โรงบับเบิล')
         if (order.vehicle_type) setVehicleType(order.vehicle_type)
         if (order.withdrawal_type_id) setWithdrawalTypeId(order.withdrawal_type_id)
+        if (order.supplier) setSupplier(order.supplier)
+        if (order.notes) setNotes(order.notes)
+        if (order.delivery_point) setDeliveryPoint(order.delivery_point)
         if (order.priorities && Object.keys(order.priorities).length > 0) {
           const prio: Record<number, PriorityLevel | null> = {}
           for (const [k, v] of Object.entries(order.priorities)) {
@@ -414,11 +422,15 @@ function POInner() {
       .catch(() => {})
   }, [])
 
-  // Fetch supplier list
+  // Fetch supplier list + branch list
   useEffect(() => {
     fetch('/api/suppliers')
       .then(r => r.json())
       .then((data: { id: number; name: string }[]) => setSupplierList(Array.isArray(data) ? data : []))
+      .catch(() => {})
+    fetch('/api/branches')
+      .then(r => r.json())
+      .then((data: { id: number; name: string }[]) => setBranchList(Array.isArray(data) ? data : []))
       .catch(() => {})
   }, [])
 
@@ -699,6 +711,7 @@ function POInner() {
           body: JSON.stringify({
             order_no: editOrderNo, total_amount: effectiveTotal, quantities,
             supplier: supplier || null, notes: notes || null,
+            delivery_point: deliveryPoint || null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
             priorities: productPriorities,
             nv_total: noVatColTotal > 0 ? noVatColTotal : null,
@@ -727,6 +740,7 @@ function POInner() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             total_amount: effectiveTotal, quantities, supplier: supplier || null, notes: notes || null,
+            delivery_point: deliveryPoint || null,
             foy_quantities: foyPending, foy_item_quantities: foyItemPending,
             priorities: productPriorities,
             nv_total: noVatColTotal > 0 ? noVatColTotal : null,
@@ -1533,7 +1547,16 @@ function POInner() {
                                 </div>
                               </td>,
                               <td key={`${si}-ip8b`} colSpan={2} rowSpan={3}
-                                className={`${base} bg-gray-50`} />,
+                                className={`${base} p-1 bg-gray-50 align-middle`}>
+                                <div className="flex flex-col justify-center h-full gap-0.5">
+                                  <div className="text-[7px] text-gray-500 font-semibold leading-none">จุดลงสินค้า</div>
+                                  <select value={deliveryPoint} onChange={e => setDeliveryPoint(e.target.value)} className="w-full border rounded font-bold text-[11px] h-7 px-0.5 focus:outline-none bg-white border-gray-400 text-gray-600">
+                                    <option value="">— เลือก —</option>
+                                    <option value="โกดัง">โกดัง</option>
+                                    {branchList.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                  </select>
+                                </div>
+                              </td>,
                             ]
                             if (pr === 11 || pr === 12) return []
                             return [<td key={`${si}-ipx`} colSpan={4} className="border border-gray-200 bg-gray-50" />]

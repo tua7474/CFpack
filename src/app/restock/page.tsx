@@ -14,9 +14,10 @@ interface POOrder {
   factory_total: string | null
   quantities:    Record<string, number>
   created_at:    string
-  received_at:   string | null
-  ordered_at:    string | null
-  delivery_due:  string | null
+  received_at:    string | null
+  ordered_at:     string | null
+  delivery_due:   string | null
+  delivery_point: string | null
 }
 
 interface SessionInfo { branch_name: string; phone: string; is_admin: boolean }
@@ -267,6 +268,7 @@ export default function RestockPage() {
                   <th className="px-2 py-2 text-right whitespace-nowrap font-semibold">ส่วนต่าง</th>
                   <th className="px-2 py-2 text-center whitespace-nowrap font-semibold">สั่ง</th>
                   <th className="px-2 py-2 text-center whitespace-nowrap font-semibold">กำหนดส่ง</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap font-semibold">จุดลงสินค้า</th>
                   <th className="px-2 py-2 text-center whitespace-nowrap font-semibold">สถานะ</th>
                   <th className="px-2 py-2 text-center whitespace-nowrap font-semibold"></th>
                 </tr>
@@ -368,6 +370,11 @@ export default function RestockPage() {
                           disabled={busy[order.id]}
                           className="border border-gray-200 rounded px-1 py-1 text-xs w-28 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-300 disabled:opacity-50"
                         />
+                      </td>
+
+                      {/* จุดลงสินค้า */}
+                      <td className="px-2 py-2 text-center whitespace-nowrap text-xs text-gray-600">
+                        {order.delivery_point ?? <span className="text-gray-300">—</span>}
                       </td>
 
                       {/* สถานะ */}
