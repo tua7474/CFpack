@@ -54,6 +54,7 @@ interface BookingOrder {
   hold_by: string | null
   billing_start_date: string | null
   expected_delivery_date: string | null
+  linked_po_no: string | null
 }
 
 // Display row = 1 order may split into NV + V rows
@@ -278,6 +279,29 @@ export default function OrdersPage() {
     setPickupOpen(null)
     setPickupDelivery('')
     handlePrint(order)
+  }
+
+  const FACTORY_TYPES = new Set(['โรงBB', 'โรงกล่อง', 'โรงกระบอก'])
+
+  const handleCreatePO = async (order: BookingOrder) => {
+    const factoryName = withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? ''
+    if (!confirm(`ออกใบ PO สำหรับใบจอง ${order.order_no}?\nซัพพลายเออร์: ${factoryName}`)) return
+    const res = await fetch('/api/po', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        supplier:     factoryName,
+        total_amount: parseFloat(order.total_amount) || 0,
+        quantities:   order.quantities ?? {},
+        foy_quantities:      order.foy_quantities ?? {},
+        foy_item_quantities: order.foy_item_quantities ?? {},
+        nv_total: order.nv_total ? parseFloat(order.nv_total) : null,
+        v_total:  order.v_total  ? parseFloat(order.v_total)  : null,
+      }),
+    })
+    if (!res.ok) { alert('เกิดข้อผิดพลาดในการออก PO'); return }
+    const { poNo } = await res.json()
+    await patch(order.order_no, { linked_po_no: poNo })
   }
 
   const handlePayment = async (order_no: string) => {
@@ -1096,11 +1120,14 @@ export default function OrdersPage() {
                       }
                     }
                     return displayRows.map(({ order, displayNo, displayAmount, vatTag }, i) => {
-                    const cancelled = order.status === 'cancelled'
-                    const pickedUp  = order.pickup_status === 'picked_up'
-                    const paid      = order.payment_status === 'paid'
-                    const onHold    = order.is_on_hold === true
-                    const isPaying  = payingOrderNo === order.order_no
+                    const cancelled   = order.status === 'cancelled'
+                    const pickedUp    = order.pickup_status === 'picked_up'
+                    const paid        = order.payment_status === 'paid'
+                    const onHold      = order.is_on_hold === true
+                    const isPaying    = payingOrderNo === order.order_no
+                    const factoryName = withdrawalTypes.find(w => w.id === order.withdrawal_type_id)?.name ?? ''
+                    const isFactory   = FACTORY_TYPES.has(factoryName)
+                    const hasPO       = !!order.linked_po_no
                     return (
                       <tr key={`${order.id}-${vatTag ?? 'x'}`} className={cancelled ? 'bg-red-50 opacity-60' : onHold ? 'bg-indigo-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
 
@@ -1306,43 +1333,62 @@ export default function OrdersPage() {
                               </div>
                             </div>
                           ) : (isAdmin || isManager) ? (
-                            /* ── ก่อนขึ้นของ (admin/manager): ปุ่มรวม + dropdown จัดส่ง ── */
-                            pickupOpen === order.order_no ? (
-                              <div className="flex flex-col gap-1.5 text-left min-w-[160px]">
-                                <div className="text-[10px] font-semibold text-gray-600">เลือกช่องทางจัดส่ง</div>
-                                <select
-                                  value={pickupDelivery}
-                                  onChange={e => setPickupDelivery(e.target.value)}
-                                  className="w-full text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-                                >
-                                  <option value="">— เลือกการจัดส่ง —</option>
-                                  {deliveries.map(d => (
-                                    <option key={d} value={d}>{d}</option>
-                                  ))}
-                                </select>
-                                <div className="flex gap-1">
-                                  <button
-                                    onClick={() => handlePickupAndPrint(order)}
-                                    disabled={!pickupDelivery}
-                                    className="flex-1 px-2 py-1 text-[10px] rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                                  >
-                                    📦 ยืนยัน+พิมพ์
-                                  </button>
-                                  <button
-                                    onClick={() => { setPickupOpen(null); setPickupDelivery('') }}
-                                    className="px-2 py-1 text-[10px] rounded bg-gray-100 hover:bg-gray-200 text-gray-500 border border-gray-300 transition-colors"
-                                  >
-                                    ✕
-                                  </button>
+                            isFactory ? (
+                              /* ── ใบจองโรงงาน: ออก PO ── */
+                              hasPO ? (
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-600">
+                                    ✅ ออก PO แล้ว
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 font-mono">{order.linked_po_no}</span>
                                 </div>
-                              </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleCreatePO(order)}
+                                  className="px-3 py-1.5 text-xs rounded bg-orange-500 hover:bg-orange-600 text-white border border-orange-600 transition-colors font-semibold shadow-sm whitespace-nowrap"
+                                >
+                                  📋 ออก PO / สั่งพิมพ์
+                                </button>
+                              )
                             ) : (
-                              <button
-                                onClick={() => { setPickupOpen(order.order_no); setPickupDelivery('') }}
-                                className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 transition-colors font-semibold shadow-sm whitespace-nowrap"
-                              >
-                                📦 ขึ้นของ / สั่งพิมพ์
-                              </button>
+                              /* ── ใบจองปกติ: ขึ้นของ / สั่งพิมพ์ (เดิม) ── */
+                              pickupOpen === order.order_no ? (
+                                <div className="flex flex-col gap-1.5 text-left min-w-[160px]">
+                                  <div className="text-[10px] font-semibold text-gray-600">เลือกช่องทางจัดส่ง</div>
+                                  <select
+                                    value={pickupDelivery}
+                                    onChange={e => setPickupDelivery(e.target.value)}
+                                    className="w-full text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                  >
+                                    <option value="">— เลือกการจัดส่ง —</option>
+                                    {deliveries.map(d => (
+                                      <option key={d} value={d}>{d}</option>
+                                    ))}
+                                  </select>
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => handlePickupAndPrint(order)}
+                                      disabled={!pickupDelivery}
+                                      className="flex-1 px-2 py-1 text-[10px] rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                                    >
+                                      📦 ยืนยัน+พิมพ์
+                                    </button>
+                                    <button
+                                      onClick={() => { setPickupOpen(null); setPickupDelivery('') }}
+                                      className="px-2 py-1 text-[10px] rounded bg-gray-100 hover:bg-gray-200 text-gray-500 border border-gray-300 transition-colors"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => { setPickupOpen(order.order_no); setPickupDelivery('') }}
+                                  className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 transition-colors font-semibold shadow-sm whitespace-nowrap"
+                                >
+                                  📦 ขึ้นของ / สั่งพิมพ์
+                                </button>
+                              )
                             )
                           ) : (
                             /* ── สาขา/ตัวแทน: แสดงสถานะ + ดูใบจอง ── */

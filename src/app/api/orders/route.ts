@@ -473,6 +473,7 @@ export async function GET(request: Request) {
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS hold_by               TEXT`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS billing_start_date    DATE`).catch(() => {})
   await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS expected_delivery_date DATE`).catch(() => {})
+  await pool.query(`ALTER TABLE booking_orders ADD COLUMN IF NOT EXISTS linked_po_no VARCHAR(20)`).catch(() => {})
   await pool.query(`
     CREATE TABLE IF NOT EXISTS booking_order_hold_log (
       id               SERIAL PRIMARY KEY,
@@ -594,7 +595,7 @@ async function adjustStockDelta(
 
 export async function PATCH(request: Request) {
   const body = await request.json()
-  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col } = body
+  const { order_no, status, payment_status, payment_date, payment_bank, pickup_status, total_amount, quantities, source_type, vehicle_type, branch_name, foy_quantities, foy_item_quantities, withdrawal_type_id, priorities, nv_total, v_total, coupon_amount, coupon_col, linked_po_no } = body
   const { action: holdAction, reason: holdReason, acted_by: holdActedBy, expected_delivery_date } = body
 
   // ── พักบิล / ส่งของแล้ว ───────────────────────────────────────────────────
@@ -673,6 +674,7 @@ export async function PATCH(request: Request) {
   if (v_total             !== undefined) { sets.push(`v_total = $${i++}`);              vals.push(v_total) }
   if (coupon_amount       !== undefined) { sets.push(`coupon_amount = $${i++}`);        vals.push(coupon_amount) }
   if (coupon_col          !== undefined) { sets.push(`coupon_col = $${i++}`);           vals.push(coupon_col) }
+  if (linked_po_no        !== undefined) { sets.push(`linked_po_no = $${i++}`);         vals.push(linked_po_no) }
 
   vals.push(order_no)
   const { rows } = await pool.query(
