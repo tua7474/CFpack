@@ -29,6 +29,7 @@ interface POOrder {
   po_no:          string
   supplier:       string | null
   notes:          string | null
+  delivery_point: string | null
   total_amount:   string
   quantities:     Record<string, number>
   foy_quantities: Record<string, { qty: number; amount: number }>
@@ -334,8 +335,8 @@ function POPrintInner() {
                   <span className="text-gray-700">{order.supplier ?? '-'}</span>
                 </div>
                 <div className="flex-1 px-3 py-1.5">
-                  <span className="font-semibold text-gray-500">หมายเหตุ: </span>
-                  <span className="text-gray-700">{order.notes ?? ''}</span>
+                  <span className="font-semibold text-gray-500">จุดลงสินค้า: </span>
+                  <span className="text-gray-700">{order.delivery_point ?? '-'}</span>
                 </div>
               </div>
 

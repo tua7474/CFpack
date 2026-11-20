@@ -92,7 +92,16 @@ export default function RestockPage() {
     if (!confirm('ยืนยันว่ารับสินค้าแล้ว? สต็อคจะถูกอัพเดทอัตโนมัติ')) return
     setBusy(prev => ({ ...prev, [id]: true }))
     try {
-      await patchOrder(id, { status: 'received' })
+      const res = await fetch('/api/po', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: 'received' }),
+      })
+      const data = await res.json()
+      await fetchOrders()
+      if (data?.warning) {
+        alert(`⚠️ ${data.warning}`)
+      }
     } finally {
       setBusy(prev => ({ ...prev, [id]: false }))
     }

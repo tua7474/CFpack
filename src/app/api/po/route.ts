@@ -229,28 +229,83 @@ export async function PATCH(request: Request) {
     vals
   )
 
-  // If marking received, add catalog stock (skip FOY items — their IDs are from paper_stock, not products_catalog)
+  // If marking received, add stock — branch stock OR main catalog depending on delivery_point
   if (status === 'received' && rows[0]) {
     const qty: Record<string, number> = quantities ?? rows[0].quantities ?? {}
+    const foyQty: Record<string, number> = rows[0].foy_quantities ?? {}
+    const dp: string | null = rows[0].delivery_point ?? null
+    const isWarehouse = !dp || dp === 'โกดัง'
+
     let itemCount = 0
-    for (const [idStr, q] of Object.entries(qty)) {
-      if (!q || (q as number) <= 0) continue
-      await pool.query(
-        `UPDATE products_catalog SET quantity = COALESCE(quantity, 0) + $1, last_added_qty = $1, last_added_at = NOW() WHERE id = $2`,
-        [q, Number(idStr)]
+    let branchWarning: string | null = null
+
+    if (isWarehouse) {
+      // เติมสต็อคหลัก (products_catalog)
+      for (const [idStr, q] of Object.entries(qty)) {
+        if (!q || (q as number) <= 0) continue
+        await pool.query(
+          `UPDATE products_catalog SET quantity = COALESCE(quantity, 0) + $1, last_added_qty = $1, last_added_at = NOW() WHERE id = $2`,
+          [q, Number(idStr)]
+        )
+        await pool.query(
+          `INSERT INTO catalog_stock_log (product_id, action, qty) VALUES ($1, 'po_receive', $2)`,
+          [Number(idStr), q]
+        )
+        itemCount++
+      }
+    } else {
+      // เติมสต็อคสาขา — หา branch_id จาก delivery_point
+      const { rows: branchRows } = await pool.query(
+        `SELECT id FROM branches WHERE name = $1 LIMIT 1`, [dp]
       )
-      await pool.query(
-        `INSERT INTO catalog_stock_log (product_id, action, qty) VALUES ($1, 'po_receive', $2)`,
-        [Number(idStr), q]
-      )
-      itemCount++
+      if (branchRows.length === 0) {
+        branchWarning = `ไม่พบสาขา "${dp}" ในระบบ — กรุณาตรวจสอบจุดลงสินค้าและเติมสต็อคด้วยตัวเอง`
+      } else {
+        const branchId = branchRows[0].id
+        // เติม branch_stock (สินค้าปกติ)
+        for (const [idStr, q] of Object.entries(qty)) {
+          if (!q || (q as number) <= 0) continue
+          await pool.query(
+            `INSERT INTO branch_stock (branch_id, product_id, quantity)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (branch_id, product_id)
+             DO UPDATE SET quantity = branch_stock.quantity + EXCLUDED.quantity, updated_at = NOW()`,
+            [branchId, Number(idStr), q]
+          )
+          itemCount++
+        }
+        // เติม branch_foy_stock (ฝอย)
+        for (const [idStr, q] of Object.entries(foyQty)) {
+          if (!q || (q as number) <= 0) continue
+          await pool.query(
+            `INSERT INTO branch_foy_stock (branch_id, paper_stock_id, quantity)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (branch_id, paper_stock_id)
+             DO UPDATE SET quantity = branch_foy_stock.quantity + EXCLUDED.quantity, updated_at = NOW()`,
+            [branchId, Number(idStr), q]
+          )
+          itemCount++
+        }
+      }
     }
+
+    const notifyDetail = branchWarning
+      ? branchWarning
+      : isWarehouse
+        ? `อัพเดทสต็อคโกดัง ${itemCount} รายการเรียบร้อย`
+        : `อัพเดทสต็อคสาขา "${dp}" ${itemCount} รายการเรียบร้อย`
+
     pushToWarehouse([poNotifyBubble({
-      icon: '✅', title: 'รับสินค้าแล้ว — อัพเดทสต็อค',
+      icon: branchWarning ? '⚠️' : '✅',
+      title: branchWarning ? 'รับสินค้าแล้ว — ตรวจสอบสต็อค' : 'รับสินค้าแล้ว — อัพเดทสต็อค',
       poNo: rows[0].po_no,
       supplier: rows[0].supplier,
-      detail: `อัพเดทสต็อค ${itemCount} รายการเรียบร้อย`, detailColor: '#2e7d32',
+      detail: notifyDetail, detailColor: branchWarning ? '#b71c1c' : '#2e7d32',
     })]).catch(() => {})
+
+    if (branchWarning) {
+      return NextResponse.json({ ...rows[0], warning: branchWarning })
+    }
   } else if (rows[0]) {
     // อัพเดทข้อมูลอื่นๆ
     const changed: string[] = []
