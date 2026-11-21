@@ -288,6 +288,20 @@ function DetailModal({ modal, onClose, onSaved }: {
   const [cutSet,  setCutSet]  = useState<Set<number>>(() => new Set(paidSet))
   const [saving,  setSaving]  = useState(false)
   const [cancellingSlipId, setCancellingSlipId] = useState<number | null>(null)
+  const [resetting, setResetting] = useState<Set<string>>(() => new Set())
+
+  const handleResetPaid = async (order_no: string) => {
+    if (!confirm(`รีเซ็ตสถานะชำระของ ${order_no} กลับเป็น "ยังไม่ชำระ"?`)) return
+    setResetting(prev => new Set(prev).add(order_no))
+    await fetch('/api/orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_no, payment_status: 'unpaid' }),
+    })
+    setResetting(prev => { const n = new Set(prev); n.delete(order_no); return n })
+    onSaved?.()
+    onClose()
+  }
 
   const storeTotal      = (modal.storeSlips ?? []).reduce((s, e) => s + e.amount, 0)
   const cutTotal        = sorted.reduce((s, e, i) => s + (cutSet.has(i) ? e.amount : 0), 0)
@@ -398,9 +412,20 @@ function DetailModal({ modal, onClose, onSaved }: {
                   </button>
                 )}
                 {isPaid ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-green-100 text-green-600 border border-green-300">
-                    ✓ ชำระแล้ว
-                  </span>
+                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-green-100 text-green-600 border border-green-300">
+                      ✓ ชำระแล้ว
+                    </span>
+                    {e.order_no && (
+                      <button
+                        onClick={() => handleResetPaid(e.order_no!)}
+                        disabled={resetting.has(e.order_no)}
+                        className="text-[9px] px-1.5 py-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 border border-red-200 hover:border-red-400 transition-colors disabled:opacity-40"
+                      >
+                        {resetting.has(e.order_no) ? '...' : '↺ รีเซ็ต'}
+                      </button>
+                    )}
+                  </div>
                 ) : e.order_no ? (
                   <div className="flex flex-col gap-0.5 flex-shrink-0">
                     {showCut && (
