@@ -33,7 +33,7 @@ interface OrderDetails {
   coupon_col: string
   vehicle_type: string
   withdrawal_type_name: string
-  items: { name: string; qty: number; total: number }[]
+  items: { name: string; qty: number; total: number; is_vat: boolean }[]
 }
 
 async function fetchOrderDetails(order_no: string): Promise<OrderDetails | null> {
@@ -53,23 +53,23 @@ async function fetchOrderDetails(order_no: string): Promise<OrderDetails | null>
   const foyItems: Record<string, number>   = order.foy_item_quantities ?? {}
   const foyQty: Record<string, { qty: number; amount: number }> = order.foy_quantities ?? {}
 
-  const items: { name: string; qty: number; total: number }[] = []
+  const items: { name: string; qty: number; total: number; is_vat: boolean }[] = []
 
-  // Regular products
+  // Regular products — section_order=1 is VAT (กล่อง), all others are NV
   const productIds = Object.keys(quantities).map(Number).filter(id => quantities[String(id)] > 0)
   if (productIds.length) {
     const { rows } = await pool.query(
-      `SELECT id, product_name, price::float
+      `SELECT id, product_name, price::float, section_order
        FROM products_catalog WHERE id = ANY($1)
        ORDER BY section_order, subgroup_order, id`,
       [productIds]
     )
     for (const p of rows) {
       const qty = quantities[String(p.id)] ?? 0
-      if (qty > 0) items.push({ name: p.product_name, qty, total: p.price * qty })
+      if (qty > 0) items.push({ name: p.product_name, qty, total: p.price * qty, is_vat: p.section_order === 1 })
     }
   }
-  // FOY items (paper_stock)
+  // FOY items (paper_stock) — always NV
   const foyItemIds = Object.keys(foyItems).map(Number).filter(id => foyItems[String(id)] > 0)
   if (foyItemIds.length) {
     const { rows } = await pool.query(
@@ -79,13 +79,13 @@ async function fetchOrderDetails(order_no: string): Promise<OrderDetails | null>
     )
     for (const fp of rows) {
       const qty = foyItems[String(fp.id)] ?? 0
-      if (qty > 0) items.push({ name: fp.model_name, qty, total: fp.warehouse_price * qty })
+      if (qty > 0) items.push({ name: fp.model_name, qty, total: fp.warehouse_price * qty, is_vat: false })
     }
   }
-  // Old FOY format
+  // Old FOY format — always NV
   for (const [model, data] of Object.entries(foyQty)) {
     if (data.qty > 0 && !items.find(x => x.name === model))
-      items.push({ name: model, qty: data.qty, total: data.amount })
+      items.push({ name: model, qty: data.qty, total: data.amount, is_vat: false })
   }
 
   return {
@@ -129,39 +129,41 @@ function buildBodyContents(order_no: string, d: OrderDetails, includeThank: bool
     })
   }
 
-  // รายการสินค้า
-  if (d.items.length > 0) {
+  // รายการสินค้า — แยก NV / V
+  const nvItems = d.items.filter(x => !x.is_vat)
+  const vItems  = d.items.filter(x =>  x.is_vat)
+
+  const renderItemGroup = (groupItems: typeof d.items, label: string, labelColor: string, subtotalColor: string) => {
+    if (groupItems.length === 0) return
     contents.push({ type: 'separator', margin: 'sm', color: '#cccccc' })
-    for (const item of d.items) {
+    contents.push({
+      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+      contents: [
+        { type: 'text', text: label, size: 'xxs', color: labelColor, flex: 1, weight: 'bold' },
+      ],
+    })
+    for (const item of groupItems) {
       contents.push({
         type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
         contents: [
-          { type: 'text', text: item.name,         size: 'xxs', color: '#333333', flex: 4, wrap: true },
-          { type: 'text', text: `×${item.qty}`,    size: 'xxs', color: '#888888', flex: 1, align: 'end' },
-          { type: 'text', text: fmt(item.total),   size: 'xxs', color: '#1a5c29', flex: 2, align: 'end', weight: 'bold' },
+          { type: 'text', text: item.name,       size: 'xxs', color: '#333333', flex: 4, wrap: true },
+          { type: 'text', text: `×${item.qty}`,  size: 'xxs', color: '#888888', flex: 1, align: 'end' },
+          { type: 'text', text: fmt(item.total), size: 'xxs', color: '#1a5c29', flex: 2, align: 'end', weight: 'bold' },
         ],
       })
     }
+    const subtotal = groupItems.reduce((s, x) => s + x.total, 0)
+    contents.push({
+      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
+      contents: [
+        { type: 'text', text: `รวม${label}`, size: 'xxs', color: subtotalColor, flex: 3, weight: 'bold' },
+        { type: 'text', text: fmt(subtotal),  size: 'xxs', color: subtotalColor, flex: 2, align: 'end', weight: 'bold' },
+      ],
+    })
   }
 
-  // ยอดรวม
-  contents.push({ type: 'separator', margin: 'sm', color: '#cccccc' })
-  if (d.nv_total != null && d.v_total != null) {
-    contents.push({
-      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
-      contents: [
-        { type: 'text', text: 'ไม่มีใบกำกับ', size: 'xxs', color: '#c05000', flex: 3, wrap: true },
-        { type: 'text', text: fmt(d.nv_total), size: 'xxs', color: '#c05000', flex: 2, align: 'end', weight: 'bold' },
-      ],
-    })
-    contents.push({
-      type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
-      contents: [
-        { type: 'text', text: 'มีใบกำกับ', size: 'xxs', color: '#555555', flex: 3, wrap: true },
-        { type: 'text', text: fmt(d.v_total), size: 'xxs', color: '#555555', flex: 2, align: 'end', weight: 'bold' },
-      ],
-    })
-  }
+  renderItemGroup(nvItems, 'NV (ไม่มีใบกำกับ)', '#c05000', '#c05000')
+  renderItemGroup(vItems,  'V (มีใบกำกับ)',      '#1a56b0', '#1a56b0')
   if (d.coupon_amount > 0) {
     contents.push({
       type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'xs',
