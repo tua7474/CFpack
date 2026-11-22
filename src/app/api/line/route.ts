@@ -673,7 +673,9 @@ function getWeekStartDate(weeksAgo: number): string {
 // ดึงทุกออเดอร์ของสาขา (ไม่จำกัดจำนวน ไม่กรองวันที่ ยกเว้น cancelled) — ตรงกับ finance page
 async function getAllBranchOrders(branchId: number) {
   const { rows } = await pool.query(`
-    SELECT order_no, total_amount::float AS total_amount, status, payment_status, created_at
+    SELECT order_no, total_amount::float AS total_amount,
+           nv_total::float AS nv_total, v_total::float AS v_total,
+           status, payment_status, created_at
     FROM booking_orders
     WHERE branch_id = $1 AND status != 'cancelled'
     ORDER BY created_at ASC
@@ -2723,7 +2725,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
     }
 
     // ── ดึงข้อมูล: ตรวจสอบบล็อก + ใบจองทั้งหมด (เหมือน finance page ยอดรวมใบจอง) ──
-    type OrderRow = { order_no: string; total_amount: number; status: string; payment_status: string; created_at: string }
+    type OrderRow = { order_no: string; total_amount: number; nv_total: number | null; v_total: number | null; status: string; payment_status: string; created_at: string }
     let allOrders: OrderRow[] = []
     let blocked = false
     const emptySlips: WeekSlipData = { payCount: 0, payTotal: 0, storeCount: 0, storeTotal: 0 }
@@ -2827,6 +2829,25 @@ async function handleText(text: string, userId: string, replyToken: string, sour
         const dateStr = new Date(o.created_at).toLocaleDateString('th-TH', {
           day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok'
         })
+        const hasVNV  = o.nv_total != null && o.v_total != null
+        const amtColor = paid ? '#16a34a' : '#dc2626'
+
+        const amtCol = hasVNV
+          ? {
+              type: 'box', layout: 'vertical', flex: 3, contents: [
+                { type: 'box', layout: 'horizontal', contents: [
+                  { type: 'text', text: 'NV', size: 'xxs', color: '#c05000', flex: 0, weight: 'bold' },
+                  { type: 'text', text: fmtAmt(Number(o.nv_total)), size: 'xxs', color: '#c05000', weight: 'bold', flex: 1, align: 'end' },
+                ]},
+                { type: 'box', layout: 'horizontal', contents: [
+                  { type: 'text', text: 'V', size: 'xxs', color: '#1a56b0', flex: 0, weight: 'bold' },
+                  { type: 'text', text: fmtAmt(Number(o.v_total)), size: 'xxs', color: '#1a56b0', weight: 'bold', flex: 1, align: 'end' },
+                ]},
+              ],
+            }
+          : { type: 'text', text: fmtAmt(Number(o.total_amount)), size: 'xxs',
+              color: amtColor, weight: 'bold', flex: 3, align: 'end' }
+
         return {
           type: 'box', layout: 'horizontal',
           paddingTop: '1px', paddingBottom: '1px', paddingStart: '2px', paddingEnd: '2px',
@@ -2834,8 +2855,7 @@ async function handleText(text: string, userId: string, replyToken: string, sour
             { type: 'text', text: paid ? '✅' : '⏳', size: 'xxs', flex: 1 },
             { type: 'text', text: o.order_no, size: 'xxs', color: '#333333', weight: 'bold', flex: 4 },
             { type: 'text', text: dateStr, size: 'xxs', color: '#888888', flex: 3, align: 'center' },
-            { type: 'text', text: fmtAmt(Number(o.total_amount)), size: 'xxs',
-              color: paid ? '#16a34a' : '#dc2626', weight: 'bold', flex: 3, align: 'end' },
+            amtCol,
           ],
         }
       })
