@@ -283,6 +283,8 @@ function Booking2Inner() {
   const [autoCapEnabled, setAutoCapEnabled]     = useState(true)  // auto-add ฝาปิดกระบอก 2x when กระบอก qty changes
   const [productPriorities, setProductPriorities] = useState<Record<number, PriorityLevel | null>>({})
   const [vatMode, setVatMode] = useState<'no-vat' | 'vat'>('vat')
+  const [storedNvTotal, setStoredNvTotal] = useState<number | null>(null)
+  const [storedVTotal,  setStoredVTotal]  = useState<number | null>(null)
   const [isManager, setIsManager]           = useState(false)
   const [allBranches, setAllBranches]       = useState<{ id: number; name: string; color_group: string | null }[]>([])
   const [showBranchSwitch, setShowBranchSwitch] = useState(false)
@@ -381,6 +383,8 @@ function Booking2Inner() {
       .then((order: {
         quantities: Record<string, number>;
         total_amount: string;
+        nv_total?: number | null;
+        v_total?: number | null;
         source_type: string | null;
         vehicle_type: string | null;
         foy_quantities?: Record<string, { qty: number; amount: number }>;
@@ -411,6 +415,14 @@ function Booking2Inner() {
           localStorage.removeItem(editTempKey)
         }
         setPending(qty)
+        // Restore stored totals — used for display in view/print mode
+        const nv = order.nv_total ?? null
+        const vt = order.v_total  ?? null
+        setStoredNvTotal(nv)
+        setStoredVTotal(vt)
+        // Set vatMode to match stored order so the correct column is highlighted
+        if ((nv ?? 0) > 0) setVatMode('no-vat')
+        else setVatMode('vat')
         // Restore FOY data — prefer localStorage (set by booking-foy after edit) over DB value
         // ต้องมี cf_foy_pending='1' จึงจะใช้ localStorage (ป้องกัน contamination จาก session เก่า)
         const foyHandoff = localStorage.getItem('cf_foy_pending') === '1'
@@ -1169,6 +1181,9 @@ function Booking2Inner() {
     ? Math.round(switchableExclVatTotal * 1.07 * 100) / 100 - _freeDiscountInclVat
     : 0)
   const effectiveTotal  = manualTotal !== '' ? (parseFloat(manualTotal) || 0) : (noVatColTotal + vatColTotal - appliedCouponVal)
+  // เมื่อดู/พิมพ์ใบจองที่มีอยู่แล้ว ใช้ยอดที่เก็บไว้ใน DB แทนยอดที่คำนวณใหม่
+  const displayNvTotal = (editOrderNo && storedNvTotal != null) ? storedNvTotal : noVatColTotal
+  const displayVTotal  = (editOrderNo && storedVTotal  != null) ? storedVTotal  : vatColTotal
   const cannotBook25k   = vehicleType === 'จองรถ60000' && effectiveTotal < 25000 && !vehicleType.includes('รับเอง')
 
   const BOX_GROUPS_RENDER = new Set(['กล่อง', 'กล่อง Thank You', 'กล่องผลไม้ 5 ชั้น', 'กล่อง 5 ชั้น', 'กล่องเอกสาร'])
@@ -1771,7 +1786,7 @@ function Booking2Inner() {
                                         className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'no-vat' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                                         โนแวต
                                       </button>
-                                      {couponVal > 0 && noVatColTotal > 0 && (
+                                      {couponVal > 0 && displayNvTotal > 0 && (
                                         <button
                                           onClick={() => setAppliedCouponCol(prev => prev === 'no-vat' ? null : 'no-vat')}
                                           className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${appliedCouponCol === 'no-vat' ? 'bg-red-500 text-white' : 'text-red-500 border border-red-300 hover:bg-red-50'}`}>
@@ -1780,15 +1795,15 @@ function Booking2Inner() {
                                       )}
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">ไม่รวมแวต (฿)</div>
-                                    {noVatColTotal > 0 && appliedCouponCol === 'no-vat' && appliedCouponVal > 0 ? (
+                                    {displayNvTotal > 0 && appliedCouponCol === 'no-vat' && appliedCouponVal > 0 ? (
                                       <div className="w-full flex flex-col items-end gap-0">
-                                        <div className="text-[9px] text-gray-400 leading-none line-through">{fmt2(noVatColTotal)}</div>
+                                        <div className="text-[9px] text-gray-400 leading-none line-through">{fmt2(displayNvTotal)}</div>
                                         <div className="text-[8px] text-red-500 font-bold leading-none">-{fmt2(appliedCouponVal)}</div>
-                                        <div className={`text-xl font-extrabold leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>{fmt2(noVatColTotal - appliedCouponVal)}</div>
+                                        <div className={`text-xl font-extrabold leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>{fmt2(displayNvTotal - appliedCouponVal)}</div>
                                       </div>
                                     ) : (
                                       <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'no-vat' ? 'text-orange-500' : 'text-gray-400'}`}>
-                                        {noVatColTotal > 0 ? fmt2(noVatColTotal) : ''}
+                                        {displayNvTotal > 0 ? fmt2(displayNvTotal) : ''}
                                       </div>
                                     )}
                                   </div>
@@ -1802,7 +1817,7 @@ function Booking2Inner() {
                                         className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${vatMode === 'vat' ? 'bg-[#9b9484] text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                                         รวมแวต
                                       </button>
-                                      {couponVal > 0 && vatColTotal > 0 && (
+                                      {couponVal > 0 && displayVTotal > 0 && (
                                         <button
                                           onClick={() => setAppliedCouponCol(prev => prev === 'vat' ? null : 'vat')}
                                           className={`px-1.5 py-0.5 text-[8px] font-bold rounded transition-colors ${appliedCouponCol === 'vat' ? 'bg-red-500 text-white' : 'text-red-500 border border-red-300 hover:bg-red-50'}`}>
@@ -1811,15 +1826,15 @@ function Booking2Inner() {
                                       )}
                                     </div>
                                     <div className="text-[9px] font-extrabold text-gray-500 self-start leading-none">รวมแวต 7% (฿)</div>
-                                    {vatColTotal > 0 && appliedCouponCol === 'vat' && appliedCouponVal > 0 ? (
+                                    {displayVTotal > 0 && appliedCouponCol === 'vat' && appliedCouponVal > 0 ? (
                                       <div className="w-full flex flex-col items-end gap-0">
-                                        <div className="text-[9px] text-gray-400 leading-none line-through">{fmt2(vatColTotal)}</div>
+                                        <div className="text-[9px] text-gray-400 leading-none line-through">{fmt2(displayVTotal)}</div>
                                         <div className="text-[8px] text-red-500 font-bold leading-none">-{fmt2(appliedCouponVal)}</div>
-                                        <div className={`text-xl font-extrabold leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>{fmt2(vatColTotal - appliedCouponVal)}</div>
+                                        <div className={`text-xl font-extrabold leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>{fmt2(displayVTotal - appliedCouponVal)}</div>
                                       </div>
                                     ) : (
                                       <div className={`w-full text-xl font-extrabold text-right leading-none ${vatMode === 'vat' ? 'text-green-600' : 'text-gray-400'}`}>
-                                        {vatColTotal > 0 ? fmt2(vatColTotal) : ''}
+                                        {displayVTotal > 0 ? fmt2(displayVTotal) : ''}
                                       </div>
                                     )}
                                   </div>
