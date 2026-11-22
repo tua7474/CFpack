@@ -2836,12 +2836,12 @@ async function handleText(text: string, userId: string, replyToken: string, sour
           ? {
               type: 'box', layout: 'vertical', flex: 3, contents: [
                 { type: 'box', layout: 'horizontal', contents: [
-                  { type: 'text', text: 'NV', size: 'xxs', color: '#c05000', flex: 0, weight: 'bold' },
-                  { type: 'text', text: fmtAmt(Number(o.nv_total)), size: 'xxs', color: '#c05000', weight: 'bold', flex: 1, align: 'end' },
+                  { type: 'text', text: 'NV', size: 'xxs', color: paid ? '#16a34a' : '#c05000', flex: 0, weight: 'bold' },
+                  { type: 'text', text: fmtAmt(Number(o.nv_total)), size: 'xxs', color: paid ? '#16a34a' : '#c05000', weight: 'bold', flex: 1, align: 'end' },
                 ]},
                 { type: 'box', layout: 'horizontal', contents: [
-                  { type: 'text', text: 'V', size: 'xxs', color: '#7b1c1c', flex: 0, weight: 'bold' },
-                  { type: 'text', text: fmtAmt(Number(o.v_total)), size: 'xxs', color: '#7b1c1c', weight: 'bold', flex: 1, align: 'end' },
+                  { type: 'text', text: 'V', size: 'xxs', color: paid ? '#16a34a' : '#7b1c1c', flex: 0, weight: 'bold' },
+                  { type: 'text', text: fmtAmt(Number(o.v_total)), size: 'xxs', color: paid ? '#16a34a' : '#7b1c1c', weight: 'bold', flex: 1, align: 'end' },
                 ]},
               ],
             }
