@@ -41,7 +41,9 @@ async function ensureTable() {
       created_at    TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `)
-  await pool.query(`ALTER TABLE slips ADD COLUMN IF NOT EXISTS applied BOOLEAN NOT NULL DEFAULT FALSE`)
+  await pool.query(`ALTER TABLE slips ADD COLUMN IF NOT EXISTS applied    BOOLEAN   NOT NULL DEFAULT FALSE`)
+  await pool.query(`ALTER TABLE slips ADD COLUMN IF NOT EXISTS deducted   BOOLEAN   NOT NULL DEFAULT FALSE`)
+  await pool.query(`ALTER TABLE slips ADD COLUMN IF NOT EXISTS deducted_at TIMESTAMP`)
 }
 
 // ── Date range helpers (Bangkok time) ─────────────────────────────────────────
@@ -192,7 +194,19 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, slip_date, account_name, category, status, applied, branch_id } = await req.json()
+    const body = await req.json()
+
+    // Bulk deduct/un-deduct by ids array
+    if (Array.isArray(body.ids) && body.ids.length > 0 && body.deducted !== undefined) {
+      const deductedAt = body.deducted ? new Date() : null
+      await pool.query(
+        `UPDATE slips SET deducted=$1, deducted_at=$2 WHERE id = ANY($3)`,
+        [body.deducted, deductedAt, body.ids]
+      )
+      return NextResponse.json({ ok: true })
+    }
+
+    const { id, slip_date, account_name, category, status, applied, branch_id, deducted } = body
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
     const sets: string[] = []
@@ -204,6 +218,12 @@ export async function PATCH(req: NextRequest) {
     if (status       !== undefined) { sets.push(`status=$${i++}`);       vals.push(status) }
     if (applied      !== undefined) { sets.push(`applied=$${i++}`);      vals.push(applied) }
     if (branch_id    !== undefined) { sets.push(`branch_id=$${i++}`);    vals.push(branch_id) }
+    if (deducted     !== undefined) {
+      sets.push(`deducted=$${i++}`)
+      vals.push(deducted)
+      sets.push(`deducted_at=$${i++}`)
+      vals.push(deducted ? new Date() : null)
+    }
     if (!sets.length) return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
 
     vals.push(id)

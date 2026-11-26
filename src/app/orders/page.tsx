@@ -446,7 +446,7 @@ export default function OrdersPage() {
   // ── Print render: ใบจอง ────────────────────────────────────────────────────
 
   function BookingPrint({ order }: { order: BookingOrder }) {
-    type BookedItem = { product: CatalogProduct; qty: number; total: number }
+    type BookedItem = { product: CatalogProduct; qty: number; price: number; total: number }
 
     // Price group adjustment (orange/null = base, yellow = ×1.09, red = ×1.09×1.07)
     const colorGroup = allBranches.find(b => b.name === order.branch_name)?.color_group ?? null
@@ -488,7 +488,7 @@ export default function OrdersPage() {
       if (!targetMap.has(key)) {
         targetMap.set(key, { order: p.section_order, subOrder: p.subgroup_order, items: [] })
       }
-      targetMap.get(key)!.items.push({ product: p, qty, total: price * qty })
+      targetMap.get(key)!.items.push({ product: p, qty, price, total: price * qty })
     }
 
     const sortSections = (m: SectionMap) =>
@@ -518,7 +518,7 @@ export default function OrdersPage() {
       // - V-only form (vatLabel='V', nvTotal=0): show foy (no NV form exists to carry it)
       // - V form when NV also exists (vatLabel='V', nvTotal>0): skip (foy already in NV)
       // - Legacy null: always show foy
-      type FoyCI = { item: StockItem; qty: number; total: number }
+      type FoyCI = { item: StockItem; qty: number; price: number; total: number }
       const foyModelMap = new Map<string, FoyCI[]>()
       const showFoyHere = vatLabel !== 'V' || nvTotal === 0
       if (showFoyHere) {
@@ -529,7 +529,7 @@ export default function OrdersPage() {
           if (!s) continue
           const price = adjustPrice(parseFloat(s.warehouse_price ?? '0') || 0)
           if (!foyModelMap.has(s.model_name)) foyModelMap.set(s.model_name, [])
-          foyModelMap.get(s.model_name)!.push({ item: s, qty: qtyVal, total: price * qtyVal })
+          foyModelMap.get(s.model_name)!.push({ item: s, qty: qtyVal, price, total: price * qtyVal })
         }
       }
 
@@ -593,6 +593,7 @@ export default function OrdersPage() {
                       <div key={idx} style={{ ...rowBase, alignItems: 'center', backgroundColor: idx % 2 === 0 ? 'white' : '#f0f0f0', color: '#111' }}>
                         <PrioSymbol prio={prio} />
                         <span style={{ flex: 1 }}>{item.product.product_name}</span>
+                        <span style={{ flexShrink: 0, color: '#666', minWidth: '10mm', textAlign: 'right' }}>{item.price.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                         <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{item.qty}</span>
                         <span style={{ flexShrink: 0, color: '#333', minWidth: '10mm', textAlign: 'right' }}>{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                       </div>
@@ -616,6 +617,7 @@ export default function OrdersPage() {
                         <PrioSymbol prio={foyPrio} />
                         <span style={{ flexShrink: 0, fontFamily: 'monospace', color: '#555', fontSize: '7.5pt', minWidth: '8mm' }}>{fi.item.color_code}</span>
                         <span style={{ flex: 1 }}>{fi.item.color_name}</span>
+                        <span style={{ flexShrink: 0, color: '#666', minWidth: '10mm', textAlign: 'right' }}>{fi.price.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                         <span style={{ fontWeight: 'bold', flexShrink: 0 }}>×{fi.qty}</span>
                         <span style={{ flexShrink: 0, color: '#333', minWidth: '10mm', textAlign: 'right' }}>{fi.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
                       </div>

@@ -48,7 +48,7 @@ const GROUP_LABEL: Record<ColorGroup, string> = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string; slip_id?: number }
+interface SlipEntry { date: string; amount: number; order_no?: string; payment_status?: string; slip_id?: number; deducted?: boolean }
 interface BranchFinance {
   id: number; name: string; color_group: string | null
   pay: SlipEntry[]; store: SlipEntry[]; vat: SlipEntry[]; fee: SlipEntry[]
@@ -182,9 +182,9 @@ function WeeklyCompactCell({ entries, amtColor, title, onDetail, storeEntries, c
     if (!confirm(`เคลียร์ยอดเครดิต ${slipIds.length} รายการ (${label})?`)) return
     setClearing(label)
     await fetch('/api/slips', {
-      method: 'DELETE',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: slipIds }),
+      body: JSON.stringify({ ids: slipIds, deducted: true }),
     })
     setClearing(null)
     onReload?.()
@@ -545,13 +545,147 @@ function GroupedSlipCell({ entries, amtColor, title, onDetail, compact }: {
   )
 }
 
+// ── StoreSummaryCell — แสดงยอด store slips ในตาราง ───────────────────────────
+
+function StoreSummaryCell({ entries, onClick }: { entries: SlipEntry[]; onClick: () => void }) {
+  if (entries.length === 0) return <span className="text-gray-300 text-[10px]">-</span>
+  const { thisMondayStr, lastMondayStr, twoMondaysStr } = getWeekBounds()
+  const groups = [
+    { label: '2wk', items: entries.filter(e => e.date >= twoMondaysStr && e.date < lastMondayStr) },
+    { label: '1wk', items: entries.filter(e => e.date >= lastMondayStr && e.date < thisMondayStr) },
+    { label: 'now', items: entries.filter(e => e.date >= thisMondayStr) },
+    { label: 'old', items: entries.filter(e => e.date < twoMondaysStr) },
+  ].filter(g => g.items.length > 0)
+  const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+  if (groups.length === 0) return (
+    <button onClick={onClick} className="text-[9px] text-gray-400 hover:text-gray-600 leading-tight">
+      ดูประวัติ
+    </button>
+  )
+  return (
+    <div className="flex flex-col gap-0.5">
+      {groups.map(({ label, items }) => {
+        const nd = items.filter(e => !e.deducted)
+        const dc = items.filter(e => e.deducted).length
+        return (
+          <button key={label} onClick={onClick}
+            className="text-left text-[11px] font-mono font-semibold hover:underline leading-tight flex items-center gap-1">
+            {nd.length > 0 && (
+              <span className="text-green-600">{nd.length}/{fmt(nd.reduce((s, e) => s + e.amount, 0))}</span>
+            )}
+            {dc > 0 && (
+              <span className="text-gray-400 text-[9px]">(+{dc})</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── StoreDeductModal — ดู/toggle deducted ของ store slips ────────────────────
+
+function StoreDeductModal({ branch, entries, onClose, onReload }: {
+  branch: string; entries: SlipEntry[]; onClose: () => void; onReload: () => void
+}) {
+  const [toggling, setToggling] = useState<Set<number>>(new Set())
+
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date))
+
+  const handleToggle = async (entry: SlipEntry) => {
+    if (!entry.slip_id) return
+    const id = entry.slip_id
+    setToggling(prev => new Set(prev).add(id))
+    await fetch('/api/slips', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, deducted: !entry.deducted }),
+    })
+    setToggling(prev => { const n = new Set(prev); n.delete(id); return n })
+    onReload()
+  }
+
+  const nonDeducted = sorted.filter(e => !e.deducted)
+  const deductedList = sorted.filter(e => e.deducted)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs mx-4 max-h-[80vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex justify-between items-center px-4 py-3 border-b border-gray-200">
+          <span className="font-bold text-sm text-gray-800">{branch} — หักค่าของ</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+
+        {/* List */}
+        <div className="overflow-y-auto flex-1 px-4 py-2">
+          {sorted.length === 0 && (
+            <p className="text-gray-400 text-xs py-6 text-center">ไม่มีรายการ</p>
+          )}
+          {sorted.map((e, i) => {
+            const isDeducted = !!e.deducted
+            const isLoading  = e.slip_id != null && toggling.has(e.slip_id)
+            return (
+              <div key={i} className={`flex items-center gap-2 py-2 border-b border-gray-100 last:border-0`}>
+                {/* สัญลักษณ์สี */}
+                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isDeducted ? 'bg-gray-300' : 'bg-green-500'}`} />
+                <div className="flex flex-col leading-tight flex-1 min-w-0">
+                  <span className={`text-[10px] ${isDeducted ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {fmtDateShort(e.date)}
+                  </span>
+                  <span className={`text-xs font-mono font-semibold ${isDeducted ? 'text-gray-400 line-through' : 'text-amber-700'}`}>
+                    {fmtAmt(e.amount)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleToggle(e)}
+                  disabled={isLoading}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 transition-colors border disabled:opacity-40 ${
+                    isDeducted
+                      ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 border-gray-300'
+                      : 'bg-green-100 text-green-700 hover:bg-green-200 border-green-300'
+                  }`}
+                >
+                  {isLoading ? '...' : isDeducted ? 'ยกเลิก' : 'หักค่าของ'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 rounded-b-xl flex flex-col gap-0.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-600 font-medium">รอหัก {nonDeducted.length} รายการ</span>
+            <span className="font-mono font-bold text-green-600">
+              {fmtAmt(nonDeducted.reduce((s, e) => s + e.amount, 0))}
+            </span>
+          </div>
+          {deductedList.length > 0 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-400">หักแล้ว {deductedList.length} รายการ</span>
+              <span className="font-mono text-gray-400">
+                {fmtAmt(deductedList.reduce((s, e) => s + e.amount, 0))}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function FinancePage() {
-  const [data, setData]       = useState<BranchFinance[]>([])
-  const [loading, setLoading] = useState(true)
-  const [period, setPeriod]   = useState<Period>('month')
-  const [modal, setModal]     = useState<ModalInfo | null>(null)
+  const [data, setData]         = useState<BranchFinance[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [period, setPeriod]     = useState<Period>('month')
+  const [modal, setModal]       = useState<ModalInfo | null>(null)
+  const [storeModal, setStoreModal] = useState<{ branch: string; entries: SlipEntry[] } | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -697,7 +831,10 @@ export default function FinancePage() {
                             <GroupedSlipCell entries={b.pay}   amtColor="text-green-700" title={`${b.name} — ยอดตรงใบจอง`}   onDetail={setModal} compact />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <GroupedSlipCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-amber-700" title={`${b.name} — หักค่าของ`} onDetail={setModal} compact />
+                            <StoreSummaryCell
+                              entries={b.store}
+                              onClick={() => setStoreModal({ branch: b.name, entries: b.store })}
+                            />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <MonthlySlipCell entries={b.vat} amtColor="text-blue-700"   title={`${b.name} — แวต`} onDetail={setModal} />
@@ -706,7 +843,7 @@ export default function FinancePage() {
                             <MonthlySlipCell entries={b.fee} amtColor="text-purple-700" title={`${b.name} — Fee`}  onDetail={setModal} />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
-                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`ตัดยอด — ${b.name}`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} creditEntries={b.store} onReload={load} showCount />
+                            <WeeklyCompactCell entries={b.order_entries} amtColor="text-gray-700" title={`ตัดยอด — ${b.name}`} onDetail={setModal} storeEntries={[...b.pay, ...b.store]} creditEntries={b.store.filter(e => !e.deducted)} onReload={load} showCount />
                           </td>
                           <td className="px-3 py-2 border-r border-gray-200 text-right">
                             <WeeklyCompactCell entries={[...b.pay, ...b.store].sort((a, x) => a.date.localeCompare(x.date))} amtColor="text-green-700" title={`${b.name} — ชำระแล้ว`} onDetail={setModal} />
@@ -751,6 +888,16 @@ export default function FinancePage() {
 
       {/* Detail modal */}
       {modal && <DetailModal modal={modal} onClose={() => setModal(null)} onSaved={() => { setModal(null); load() }} />}
+
+      {/* Store deduct modal */}
+      {storeModal && (
+        <StoreDeductModal
+          branch={storeModal.branch}
+          entries={storeModal.entries}
+          onClose={() => setStoreModal(null)}
+          onReload={() => { setStoreModal(null); load() }}
+        />
+      )}
     </div>
   )
 }
