@@ -285,13 +285,13 @@ export default function FoyLinePage() {
 
   // ── Computed ─────────────────────────────────────────────────────────────────
 
-  // เรียงใหม่สุด (raw_date มากที่สุด) อยู่บน, ไม่มีวันที่อยู่ล่างสุด
+  // เรียงใหม่สุด (raw_date มากที่สุด) อยู่บน, ไม่มีวันที่ (ล็อตใหม่) อยู่บนสุด
   const sortedRows = rows
     .map((row, idx) => ({ row, idx }))
     .sort((a, b) => {
       if (!a.row.raw_date && !b.row.raw_date) return 0
-      if (!a.row.raw_date) return 1
-      if (!b.row.raw_date) return -1
+      if (!a.row.raw_date) return -1
+      if (!b.row.raw_date) return 1
       return b.row.raw_date.localeCompare(a.row.raw_date)
     })
 
